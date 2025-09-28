@@ -1,31 +1,18 @@
-const fs = require('fs');
-const mkdir = require('mk-dirs');
-const pretty = require('pretty-bytes');
-const { minify } = require('terser');
-const sizer = require('gzip-size');
-const pkg = require('./package');
-const ESM = fs.readFileSync('src/index.js', 'utf8');
-const regexparam = require('regexparam').toString();
+import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'mk-dirs';
+import prettyBytes from 'pretty-bytes';
+import { gzipSizeSync } from 'gzip-size';
+import { minify } from 'terser';
+import pkg from './package.json' with { type: 'json' };
 
-mkdir('dist').then(() => {
-	// Copy as is for ESM
-	fs.writeFileSync(pkg.module, ESM);
+const ESM = readFileSync('src/index.js', 'utf8');
 
-	// Mutate (im|ex)ports for CJS
-	const CJS = regexparam.replace('function ', 'function convert ').concat(
-		ESM.replace(`import convert from 'regexparam';`, '')
-			.replace(/export default/, 'module.exports =')
-	);
+await mkdir('dist');
 
-	fs.writeFileSync(pkg.main, CJS);
+// Write ESM bundle as-is
+writeFileSync(pkg.module, ESM);
 
-	// Minify & print gzip-size
-	const { code } = minify(CJS, { toplevel:true, compress:{ passes:10 } });
-	console.log(`> gzip size: ${pretty(sizer.sync(code))}`);
-
-	// Write UMD bundle
-	const name = pkg['umd:name'] || pkg.name;
-	let UMD = `!function(e,t){"object"==typeof exports&&"undefined"!=typeof module?module.exports=t():"function"==typeof define&&define.amd?define(t):e.${name}=t()}(this,function(){`;
-	UMD += code.replace(/module.exports=/, 'return ') + '});';
-	fs.writeFileSync(pkg.unpkg, UMD);
-});
+// Minify ESM source to report gzip size only
+const minOut = await minify(ESM, { toplevel: true, compress: { passes: 10 } });
+if (minOut.error) throw minOut.error;
+console.log(`> gzip size: ${prettyBytes(gzipSizeSync(minOut.code))}`);

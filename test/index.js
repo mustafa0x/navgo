@@ -1,6 +1,6 @@
 import { suite } from 'uvu';
 import * as assert from 'uvu/assert';
-import navaid from '../src';
+import navaid from '../src/index.js';
 
 global.history = {};
 
@@ -210,7 +210,7 @@ run('$.run (wildcard)', () => {
 	let ctx = new navaid();
 	ctx.on('foo/bar/*', o => {
 		let wild = ran ? 'baz/bat/quz' : 'baz';
-		assert.equal(o, { wild }, '~> o.wild is expected');
+		assert.equal(o, { ['*']: wild }, '~> o["*"] is expected');
 		plan -= 1;
 		ran = true;
 	});
@@ -228,7 +228,7 @@ run('$.run (query)', () => {
 		navaid()
 			.on('foo/*', o => {
 				plan -= 1;
-				assert.is(o.wild, 'baz/bat', '~> trims query from "wild" key');
+				assert.is(o['*'], 'baz/bat', '~> trims query from "*" key');
 			})
 			.on('/bar/:id', o => {
 				plan -= 1;

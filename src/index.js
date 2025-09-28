@@ -1,4 +1,4 @@
-import convert from 'regexparam';
+import { parse } from 'regexparam'
 
 export default function Navaid(base, on404) {
 	var rgx, curr, routes=[], $={};
@@ -18,7 +18,8 @@ export default function Navaid(base, on404) {
 	}
 
 	$.on = function (pat, fn) {
-		(pat = convert(pat)).fn = fn;
+		pat = parse(pat)
+		pat.fn = fn
 		routes.push(pat);
 		return $;
 	}
