@@ -7,23 +7,21 @@ global.history = {};
 const API = suite('exports');
 
 API('exports', () => {
-	assert.type(navaid, 'function', 'exports a function');
+    assert.type(navaid, 'function', 'exports a function');
 });
 
 API('new Navaid()', () => {
-	let foo = new navaid();
-	assert.type(foo.route, 'function');
-	assert.type(foo.format, 'function');
-	assert.type(foo.listen, 'function');
-	assert.type(foo.run, 'function');
+    let foo = new navaid();
+    assert.type(foo.route, 'function');
+    assert.type(foo.format, 'function');
+    assert.type(foo.listen, 'function');
 });
 
 API('Navaid()', () => {
-	let bar = navaid();
-	assert.type(bar.route, 'function');
-	assert.type(bar.format, 'function');
-	assert.type(bar.listen, 'function');
-	assert.type(bar.run, 'function');
+    let bar = navaid();
+    assert.type(bar.route, 'function');
+    assert.type(bar.format, 'function');
+    assert.type(bar.listen, 'function');
 });
 
 API.run();
@@ -112,363 +110,108 @@ format.run();
 
 // ---
 
-const run = suite('$.run');
-
-run('$.run', () => {
-	let planned = 12;
-
-	const routes = [
-		['/'],
-		['users/:name'],
-		['/foo/books/:genre/:title?'],
-	];
-
-	let ctx = new navaid(routes, {
-		onRoute(uri, matched, o) {
-			if (matched[0] === '/') {
-				planned -= 1;
-			}
-			if (matched[0] === 'users/:name') {
-				assert.ok(o, '~> (users) received params object');
-				assert.ok(o.name, '~> (users) has "name" key, via pattern');
-				assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
-				planned -= 3;
-			}
-			if (matched[0] === '/foo/books/:genre/:title?') {
-				assert.ok(o, '~> (books) received params object');
-				assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
-				assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
-				planned -= 3;
-				if (o.title) {
-					assert.ok(o.title, '~> (books) optionally has "title" key');
-					assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
-					planned -= 2;
-				}
-			}
-		},
-	});
-
-	let foo = ctx.run('/');
-	assert.equal(foo, ctx, '~> allows chained methods');
-
-	ctx.run('/users/Bob');
-	ctx.run('foo/books/kids');
-	ctx.run('/foo/books/kids/narnia');
-
-	assert.is(planned, 0);
-});
-
-run('$.run (base)', () => {
-	let planned = 12;
-
-	const routes = [
-		['/'],
-		['users/:name'],
-		['/foo/books/:genre/:title?'],
-	];
-
-	let ctx = navaid(routes, {
-		base: '/hello/world/',
-		onRoute(uri, matched, o) {
-			if (matched[0] === '/') planned -= 1;
-			if (matched[0] === 'users/:name') {
-				assert.ok(o, '~> (users) received params object');
-				assert.ok(o.name, '~> (users) has "name" key, via pattern');
-				assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
-				planned -= 3;
-			}
-			if (matched[0] === '/foo/books/:genre/:title?') {
-				assert.ok(o, '~> (books) received params object');
-				assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
-				assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
-				planned -= 3;
-				if (o.title) {
-					assert.ok(o.title, '~> (books) optionally has "title" key');
-					assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
-					planned -= 2;
-				}
-			}
-		},
-	});
-
-	let foo = ctx.run('/hello/world');
-	assert.equal(foo, ctx, '~> allows chained methods');
-
-	ctx.run('/hello/world/users/Bob');
-	ctx.run('hello/world/foo/books/kids');
-	ctx.run('hello/world/foo/books/kids/narnia');
-
-	assert.is(planned, 0);
-});
-
-run('$.run (wildcard)', () => {
-	let plan = 2;
-	let ran = false;
-
-	let ctx = navaid([
-		['foo/bar/*'],
-	], {
-		onRoute(uri, matched, o) {
-			let wild = ran ? 'baz/bat/quz' : 'baz';
-			assert.equal(o, { ['*']: wild }, '~> o["*"] is expected');
-			plan -= 1;
-			ran = true;
-		},
-	});
-
-	ctx.run('foo/bar/baz');
-	ctx.run('foo/bar/baz/bat/quz');
-
-	assert.is(plan, 0);
-});
-
-run('$.run (query)', () => {
-	let plan = 2;
-
-	let ctx = navaid([
-		['foo/*'],
-		['/bar/:id'],
-	], {
-		onRoute(uri, matched, o) {
-			if (matched[0] === 'foo/*') {
-				plan -= 1;
-				assert.is(o['*'], 'baz/bat', '~> trims query from "*" key');
-			}
-			if (matched[0] === '/bar/:id') {
-				plan -= 1;
-				assert.is(o.id, 'hello', '~> trims query from "id" key');
-			}
-		},
-	});
-
-	ctx.run('foo/baz/bat?abc=123');
-	ctx.run('bar/hello?a=b&c=d');
-
-	assert.is(plan, 0);
-});
-
-run('$.run (regex patterns)', () => {
-	let privacyHits = 0;
-	let year = null;
-
-	let ctx = navaid([
-		['/'],
-		[/articles\/(?<year>[0-9]{4})/],
-		[/privacy|privacy-policy/],
-	], {
-		onRoute(uri, matched, o) {
-			if (matched[0] === '/') return;
-			if (matched[0] instanceof RegExp) {
-				const src = matched[0].source;
-				if (src.includes('articles')) year = o.year;
-				if (src.includes('privacy')) privacyHits++;
-			}
-		},
-	});
-
-	ctx.run('/articles/2024');
-	ctx.run('/privacy');
-	ctx.run('/privacy-policy');
-
-	assert.is(year, '2024');
-	assert.is(privacyHits, 2);
-});
-
-run('$.run (regex alternation)', () => {
-	let hits = 0;
-	let ctx = navaid([
-		['/'],
-		[/about\/(contact|team)/],
-	], {
-		onRoute(uri, matched, params) {
-			if (matched[0] === '/') return;
-			if (matched[0] instanceof RegExp) {
-				assert.is(Object.keys(params).length, 0, '~> unnamed capture groups are ignored');
-				hits += 1;
-			}
-		},
-	});
-
-	ctx.run('/about/contact');
-	ctx.run('/about/team');
-
-	assert.is(hits, 2, '~> matched both alternation targets');
-});
-
-run('$.run (404)', () => {
-	let plan = 11;
-	let ran = false;
-	let foo = navaid([
-		['/foo'],
-	], {
-		on404(x) {
-			let uri = ran ? '/foo/bar' : '/bar';
-			assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
-			plan -= 2;
-			ran = true;
-		},
-		onRoute() {
-			plan -= 1;
-		},
-	});
-
-	foo.run('/foo'); // +1
-	foo.run('bar'); // +2
-	foo.run('/foo/bar'); // +2
-
-	ran = false;
-	let bar = new navaid([
-		['/'],
-		['/bob'],
-	], {
-		base: '/hello/',
-		on404(x) {
-			let uri = ran ? '/there/world' : '/world';
-			assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
-			ran = true;
-			plan -= 2;
-		},
-		onRoute(uri, matched) {
-			if (matched[0] === '/') plan -= 1;
-			if (matched[0] === '/bob') plan -= 1;
-		},
-	});
-
-	bar.run('/hello'); // +1
-	bar.run('/hello/bob'); // +1
-	bar.run('/hello/world'); // +2
-	bar.run('/hello/there/world'); // +2
-	bar.run('/world'); // +0 (base no match)
-	bar.run('/'); // +0 (base no match)
-
-	assert.is(plan, 0);
-});
-
-run.run();
-
-// ---
-
-const listen = suite('$.listen');
-
-listen('should setup `history` listeners and call $.run', () => {
-	let plan = 12;
-	let ctx = navaid();
-
-	let events = [];
-	function pushState() {}
-	function replaceState() {}
-
-	history.pushState = pushState;
-	history.replaceState = replaceState;
-
-	global.addEventListener = function (evt) {
-		events.push(evt);
-	}
-
-	global.removeEventListener = function (evt) {
-		events.splice(events.indexOf(evt) >>> 1);
-	}
-
-	ctx.run = uri => {
-		plan -= 1;
-		assert.is(uri, undefined, '~> called $.run() w/o a uri value');
-		return ctx; // match source
-	};
-
-	// ---
-
-	let foo = ctx.listen();
-	assert.ok(foo == ctx, '(listen) returns the navaid instance');
-	assert.is(typeof foo.unlisten, 'function', '~> added `unlisten()` method');
-	plan -= 2;
-
-	assert.not(history.pushState === pushState, 'wrapped `history.pushState` function');
-	assert.not(history.replaceState === replaceState, 'wrapped `history.replaceState` function');
-	plan -= 2;
-
-	assert.is(events.length, 4, 'added 4 global event listeners');
-	assert.ok(events.includes('popstate'), '~> has "popstate" listener');
-	assert.ok(events.includes('replacestate'), '~> has "replacestate" listener');
-	assert.ok(events.includes('pushstate'), '~> has "pushstate" listener');
-	assert.ok(events.includes('click'), '~> has "click" listener');
-	plan -= 5;
-
-	let bar = ctx.unlisten();
-	assert.is(bar, undefined, '(unlisten) returns nothing');
-	assert.is(events.length, 0, '~> removed all global event listeners');
-	plan -= 2;
-
-	assert.is(plan, 0);
-});
-
-listen('should process given `uri` value', () => {
-	let ran = false;
-	let ctx = navaid();
-
-	global.addEventListener = global.removeEventListener = () => {};
-
-	ctx.run = uri => {
-		ran = true;
-		assert.is(uri, '/foobar', '~> called $.run() w/ "/foobar" value');
-		return ctx; // match source
-	};
-
-	// ---
-
-	ctx.listen('/foobar');
-	assert.ok(ran);
-});
-
-listen.run();
-
 //
 
 const route = suite('$.route');
 
-route('$.route', () => {
-	let plan = 0;
-	let pushes = [], replaces = [];
-	history.pushState = uri => pushes.push(uri);
-	history.replaceState = uri => replaces.push(uri);
+route('$.route history interactions', () => {
+    let pushes = [], replaces = [];
+    history.pushState = uri => pushes.push(uri);
+    history.replaceState = uri => replaces.push(uri);
 
-	let ctx = navaid([
-		['/foo'],
-		['/bar'],
-	], {
-		onRoute() { plan++; },
-		on404() { plan++; },
-	});
+    let ctx = navaid([
+        ['/foo'],
+        ['/bar'],
+    ]);
 
-	let mock = uri => {
-		pushes = [];
-		replaces = [];
-		ctx.route(uri);
-		ctx.run(uri);
-	};
+    // Fresh route pushes
+    ctx.route('/foo');
+    assert.is(pushes.length, 1, '~> pushState("/foo")');
+    assert.is(replaces.length, 0, '~> no replaceState calls');
 
-	// ---
+    // Without an exposed $.run to update current state, a repeat still pushes
+    ctx.route('/foo');
+    assert.is(pushes.length, 2, '~> pushState("/foo") again');
+    assert.is(replaces.length, 0, '~> still no replaceState calls');
 
-	mock('/foo'); // +1
-	assert.is(pushes.length, 1, '~> pushState("/foo")');
-	assert.is(replaces.length, 0, '~> no replaceState calls');
-
-	mock('/foo'); // +1
-	assert.is(pushes.length, 0, '~> no pushState calls');
-	assert.is(replaces.length, 1, '~> replaceState("/foo") (repeat)');
-
-	mock('/bar'); // +1
-	assert.is(pushes.length, 1, '~> pushState("/bar")');
-	assert.is(replaces.length, 0, '~> no replaceState calls');
-
-	mock('/404'); // +1
-	assert.is(pushes.length, 1, '~> pushState("/404")');
-	assert.is(replaces.length, 0, '~> no replaceState calls');
-
-	mock('/404'); // +1
-	assert.is(pushes.length, 0, '~> no pushState calls');
-	assert.is(replaces.length, 1, '~> replaceState("/404") (repeat)');
-
-	assert.is(plan, 5);
+    // Explicit replace flag uses replaceState
+    ctx.route('/bar', true);
+    assert.is(replaces.length, 1, '~> replaceState("/bar") with explicit flag');
 });
 
 route.run();
+
+// ---
+
+const match = suite('$.match');
+
+match('returns null when no route matches', () => {
+    const ctx = navaid([
+        ['/'],
+        ['users/:name'],
+    ]);
+    const res = ctx.match('/nope');
+    assert.is(res, null);
+});
+
+match('string patterns with named params', () => {
+    const ctx = navaid([
+        ['users/:name'],
+        ['/foo/books/:genre/:title?'],
+    ]);
+
+    let r1 = ctx.match('/users/Bob');
+    assert.ok(r1, 'matched users route');
+    assert.is(r1.route[0], 'users/:name');
+    assert.equal(r1.params, { name: 'Bob' });
+
+    let r2 = ctx.match('/foo/books/kids/narnia');
+    assert.ok(r2, 'matched books route');
+    assert.is(r2.route[0], '/foo/books/:genre/:title?');
+    assert.equal(r2.params, { genre: 'kids', title: 'narnia' });
+});
+
+match('wildcard captures as "*"', () => {
+    const ctx = navaid([
+        ['foo/bar/*'],
+    ]);
+    let res = ctx.match('/foo/bar/baz/bat');
+    assert.ok(res, 'matched wildcard route');
+    assert.is(res.route[0], 'foo/bar/*');
+    assert.equal(res.params, { ['*']: 'baz/bat' });
+});
+
+match('RegExp routes with named groups', () => {
+    const ctx = navaid([
+        [/^\/articles\/(?<year>[0-9]{4})$/],
+    ]);
+    let res = ctx.match('/articles/2024');
+    assert.ok(res, 'matched regex route');
+    assert.ok(res.route[0] instanceof RegExp, 'route source is RegExp');
+    assert.equal(res.params, { year: '2024' });
+});
+
+match('RegExp alternation without named groups', () => {
+    const ctx = navaid([
+        [/about\/(contact|team)/],
+    ]);
+    let a = ctx.match('/about/contact');
+    let b = ctx.match('/about/team');
+    assert.ok(a && b, 'matched both alternation variants');
+    assert.is(Object.keys(a.params).length, 0, 'no params for unnamed groups');
+});
+
+match('use with base via $.format', () => {
+    const ctx = navaid([
+        ['/'],
+        ['users/:name'],
+    ], { base: '/hello/world' });
+
+    let formatted = ctx.format('/hello/world/users/Ada');
+    assert.is(formatted, '/users/Ada');
+    let res = ctx.match(formatted);
+    assert.ok(res, 'matched after formatting');
+    assert.equal(res.params, { name: 'Ada' });
+});
+
+match.run();

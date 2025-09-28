@@ -33,39 +33,46 @@ export default function Navaid(routes_ = [], opts = {}) {
 		history[(uri === curr || replace ? 'replace' : 'push') + 'State'](uri, null, uri)
 	}
 
-	$.run = function (uri) {
-		let i = 0
-		const params = {}
-		let arr
-		let obj
-		if ((uri = $.format(uri || location.pathname))) {
-			uri = uri.match(/[^\?#]*/)[0]
-			for (curr = uri; i < routes.length; i++) {
-				if ((arr = (obj = routes[i]).pattern.exec(uri))) {
-					// string patterns -> use named keys from regexparam
-					if (obj.keys?.length) {
-						for (i = 0; i < obj.keys.length; ) {
-							params[obj.keys[i]] = arr[++i] || null
-						}
-					} else if (arr.groups) {
-						// RegExp with named groups
-						for (const k in arr.groups) params[k] = arr.groups[k]
+	$.match = function (uri) {
+		let arr, obj
+		for (let i = 0; i < routes.length; i++) {
+			if ((arr = (obj = routes[i]).pattern.exec(uri))) {
+				const params = {}
+				// string patterns -> named keys from regexparam
+				if (obj.keys?.length) {
+					for (let j = 0; j < obj.keys.length; ) {
+						params[obj.keys[j]] = arr[++j] || null
 					}
-					opts.onRoute?.(uri, obj.data || null, params)
-					return $
+				} else if (arr.groups) {
+					// RegExp with named groups
+					for (const k in arr.groups) params[k] = arr.groups[k]
 				}
+				return { route: obj.data || null, params }
 			}
-			opts.on404?.(uri)
 		}
-		return $
+		return null
 	}
 
-	$.listen = function (u) {
+	function run() {
+		const uri = $.format(location.pathname)
+		if (!url) return
+
+		uri = uri.match(/[^\?#]*/)[0]
+		curr = uri
+		const hit = match(uri)
+		if (hit) {
+			opts.onRoute?.(uri, hit.route, hit.params)
+			return
+		}
+		opts.on404?.(uri)
+	}
+
+	$.listen = function () {
 		wrap('push')
 		wrap('replace')
 
-		function run() {
-			$.run()
+		function run_wrapped() {
+			run()
 		}
 
 		function click(e) {
@@ -81,19 +88,19 @@ export default function Navaid(routes_ = [], opts = {}) {
 			}
 		}
 
-		addEventListener('popstate', run)
-		addEventListener('replacestate', run)
-		addEventListener('pushstate', run)
+		addEventListener('popstate', run_wrapped)
+		addEventListener('replacestate', run_wrapped)
+		addEventListener('pushstate', run_wrapped)
 		addEventListener('click', click)
 
 		$.unlisten = function () {
-			removeEventListener('popstate', run)
-			removeEventListener('replacestate', run)
-			removeEventListener('pushstate', run)
+			removeEventListener('popstate', run_wrapped)
+			removeEventListener('replacestate', run_wrapped)
+			removeEventListener('pushstate', run_wrapped)
 			removeEventListener('click', click)
 		}
 
-		return $.run(u)
+		run()
 	}
 
 	return $
