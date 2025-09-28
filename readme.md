@@ -20,7 +20,7 @@
   </a>
 </div>
 
-<div align="center">A navigation aid (aka, router) for the browser in 865 bytes~!</div>
+<div align="center">A navigation aid (aka, router) for the browser in ~772 bytes (min+gzip)!</div>
 
 ## Install
 
@@ -32,63 +32,76 @@ $ npm install --save navaid
 ## Usage
 
 ```js
-const navaid = require('navaid');
+import navaid from 'navaid';
 
-// Setup router
-let router = navaid();
-// or: new Navaid();
+// Define routes up front
+const routes = [
+  ['/',                        /* optional data */],
+  ['/users/:username'],
+  ['/books/*'],
+];
 
-// Attach routes
-router
-  .on('/', () => {
-    console.log('~> /');
-  })
-  .on('/users/:username', params => {
-    console.log('~> /users/:username', params);
-  })
-  .on('/books/*', params => {
-    console.log('~> /books/*', params);
-  });
+// Create router with options + callbacks
+const router = navaid(routes, {
+  base: '/',
+  on404(uri) {
+    console.log('404 for', uri);
+  },
+  onRoute(uri, matched, params) {
+    // `matched` is the tuple from your `routes` list
+    // e.g. ['/users/:username']
+    console.log('matched:', matched[0], 'uri:', uri, 'params:', params);
+  },
+});
 
 // Run as single instance
 router.run('/');
-//=> "~> /"
+//=> "matched: / uri: / params: {}"
 router.run('/users/lukeed');
-//=> "~> /users/:username { username: 'lukeed' }"
+//=> "matched: /users/:username uri: /users/lukeed params: { username: 'lukeed' }"
 router.run('/books/kids/narnia');
-//=> "~> /books/* { wild: 'kids/narnia' }"
+//=> "matched: /books/* uri: /books/kids/narnia params: { '*': 'kids/narnia' }"
 
-// Run as long-lived router w/ history & "<a>" bindings
-// Also immediately calls `run()` handler for current location
+// Long‑lived router: history + <a> bindings
+// Also immediately processes the current location
 router.listen();
 ```
 
 ## API
 
-### navaid(base, on404)
+### navaid(routes?, options?)
 
-Returns: `Navaid`
+Returns: `Router`
 
-#### base
-Type: `String`<br>
-Default: `'/'`
+Create a router by defining your routes up front and passing callbacks via `options`.
 
-The base pathname for your application. By default, Navaid assumes it's operating on the root.
+#### routes
+Type: `Array<[pattern: string, data?: any]>`<br>
+Default: `[]`
 
-All routes will be processed _relative to_ this path (see [`on()`](#onpattern-handler)). Similarly, while [`listen`](#listen)ing, Navaid **will not** intercept any links that don't lead with this `base` pathname.
+Each route is a tuple whose first item is the pattern string and whose second (optional) item is any data you want to associate (often a lazy import). The `data` is not used by Navaid itself; it’s returned to you via `onRoute`.
 
-> **Note:** Navaid will accept a `base` with or without a leading and/or trailing slash, as all cases are handled identically.
+Supported pattern types:
 
-#### on404
-Type: `Function`<br>
-Default: `undefined`
+- static (`/users`)
+- named parameters (`/users/:id`)
+- nested parameters (`/users/:id/books/:title`)
+- optional parameters (`/users/:id?/books/:title?`)
+- wildcards (`/users/*`)
 
-The function to run if the incoming pathname did not match any of your defined defined patterns.<br>
-When defined, this function will receive the formatted `uri` as its only parameter; see [`format()`](#formaturi).
+> Note: Pattern strings are matched relative to the [`base`](#base) path.
 
-> **Important:** Navaid ***only*** processes routes that match your `base` path!<br>
-Put differently, `on404` will never run for URLs that do not begin with `base`.<br>
-This allows you to mount _multiple_ Navaid instances on the same page, each with different `base` paths. :wink:
+#### options
+Type: `Object`
+
+- base: `String` (default `'/'`)
+  - The base pathname for your application. Navaid will accept it with or without leading/trailing slashes.
+- on404: `(uri: string) => void`
+  - Called when no route matches. Receives the formatted `uri`; see [`format`](#formaturi).
+- onRoute: `(uri: string, matched: [string, any?], params: Record<string, string|null>) => void`
+  - Called when a route matches. `matched` is the original tuple from your `routes` list and `params` contains extracted values (including `'*'` for wildcards). Optional parameters that aren’t present are `null`.
+
+> Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`. This allows multiple Navaid instances to coexist on the same page with different bases.
 
 
 ### format(uri)
@@ -129,51 +142,10 @@ If `true`, then [`history.replaceState`](https://developer.mozilla.org/en-US/doc
 This is generally used for redirects; for example, redirecting a user away from a login page if they're already logged in.
 
 
-### on(pattern, handler)
-Returns: `Navaid`
-
-Define a function `handler` to run when a route matches the given `pattern` string.
-
-#### pattern
-Type: `String`
-
-The supported pattern types are:
-
-* static (`/users`)
-* named parameters (`/users/:id`)
-* nested parameters (`/users/:id/books/:title`)
-* optional parameters (`/users/:id?/books/:title?`)
-* any match / wildcards (`/users/*`)
-
-> **Note:** It does not matter if your pattern begins with a `/` — it will be added if missing.
-
-
-#### handler
-Type: `Function`
-
-The function to run when its `pattern` is matched.
-
-> **Note:** This can also be a `Promise` or `async` function, but it's up to you to handle its result/error.
-
-For `pattern`s with named parameters and/or wildcards, the `handler` will receive an "params" object containing the parsed values.
-
-When wildcards are used, the "params" object will fill a `wild` key with the URL segment(s) that match from that point & onward.
-
-```js
-let r = new Navaid();
-
-r.on('/users/:id', console.log).run('/users/lukeed');
-//=> { id: 'lukeed' }
-
-r.on('/users/:id/books/:title?', console.log).run('/users/lukeed/books/narnia');
-//=> { id: 'lukeed', title: 'narnia' }
-
-r.on('/users/:id/jobs/*').run('/users/lukeed/jobs/foo/bar/baz/bat');
-//=> { id: 'lukeed', wild: 'foo/bar/baz/bat' }
-```
+> Migration from v2: The `.on(pattern, handler)` API has been replaced with route-table initialization and the `onRoute` callback. Define all routes up front and respond within `onRoute`.
 
 ### run(uri)
-Returns: `Navaid`
+Returns: `Router`
 
 Executes the matching handler for the specified path.
 
@@ -185,10 +157,10 @@ Unlike `route()`, this does not pass through the `history` state nor emit any ev
 Type: `String`<br>
 Default: `location.pathname`
 
-The pathname to process. Its matching `handler` (as defined by [`on()`](#onpattern-handler)) will be executed.
+The pathname to process. If it matches a route, your `onRoute` callback will be executed.
 
 ### listen(uri?)
-Returns: `Navaid`
+Returns: `Router`
 
 Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
 

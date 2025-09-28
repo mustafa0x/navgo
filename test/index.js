@@ -16,7 +16,6 @@ API('new Navaid()', () => {
 	assert.type(foo.format, 'function');
 	assert.type(foo.listen, 'function');
 	assert.type(foo.run, 'function');
-	assert.type(foo.on, 'function');
 });
 
 API('Navaid()', () => {
@@ -25,7 +24,6 @@ API('Navaid()', () => {
 	assert.type(bar.format, 'function');
 	assert.type(bar.listen, 'function');
 	assert.type(bar.run, 'function');
-	assert.type(bar.on, 'function');
 });
 
 API.run();
@@ -45,7 +43,7 @@ format('empty base', () => {
 });
 
 format('base with leading slash', () => {
-	let bar = navaid('/hello');
+	let bar = navaid([], { base: '/hello' });
 	assert.is(bar.format('/hello/world'), '/world');
 	assert.is(bar.format('hello/world'), '/world');
 	assert.is(bar.format('/world'), false);
@@ -56,7 +54,7 @@ format('base with leading slash', () => {
 });
 
 format('base without leading slash', () => {
-	let baz = new navaid('hello');
+	let baz = new navaid([], { base: 'hello' });
 	assert.is(baz.format('/hello/world'), '/world');
 	assert.is(baz.format('hello/world'), '/world');
 	assert.is(baz.format('/hello.123'), false);
@@ -68,7 +66,7 @@ format('base without leading slash', () => {
 });
 
 format('base with trailing slash', () => {
-	let bat = navaid('hello/');
+	let bat = navaid([], { base: 'hello/' });
 	assert.is(bat.format('/hello/world'), '/world');
 	assert.is(bat.format('hello/world'), '/world');
 	assert.is(bat.format('/hello.123'), false);
@@ -80,7 +78,7 @@ format('base with trailing slash', () => {
 });
 
 format('base with leading and trailing slash', () => {
-	let quz = new navaid('/hello/');
+	let quz = new navaid([], { base: '/hello/' });
 	assert.is(quz.format('/hello/world'), '/world');
 	assert.is(quz.format('hello/world'), '/world');
 	assert.is(quz.format('/hello.123'), false);
@@ -92,7 +90,7 @@ format('base with leading and trailing slash', () => {
 });
 
 format('base = "/" only', () => {
-	let qut = navaid('/');
+	let qut = navaid([], { base: '/' });
 	assert.is(qut.format('/hello/world'), '/hello/world');
 	assert.is(qut.format('hello/world'), '/hello/world');
 	assert.is(qut.format('/world'), '/world');
@@ -100,7 +98,7 @@ format('base = "/" only', () => {
 });
 
 format('base with nested path', () => {
-	let qar = new navaid('/hello/there');
+	let qar = new navaid([], { base: '/hello/there' });
 	assert.is(qar.format('hello/there/world/'), '/world');
 	assert.is(qar.format('/hello/there/world/'), '/world');
 	assert.is(qar.format('/hello/there/world?foo=bar'), '/world?foo=bar');
@@ -114,47 +112,40 @@ format.run();
 
 // ---
 
-const on = suite('$.on');
-
-on('$.on', () => {
-	let ctx = new navaid();
-	let foo = ctx.on('/', () => 'index');
-	assert.equal(ctx, foo, '~> allows chained methods');
-	let bar = foo.on('hello', () => 'world');
-	assert.equal(foo, bar, '~> still chainabled');
-});
-
-on.run();
-
-// ---
-
 const run = suite('$.run');
 
 run('$.run', () => {
 	let planned = 12;
-	let ctx = new navaid();
 
-	ctx.on('/', () => {
-		planned -= 1;
-	});
+	const routes = [
+		['/'],
+		['users/:name'],
+		['/foo/books/:genre/:title?'],
+	];
 
-	ctx.on('users/:name', o => {
-		assert.ok(o, '~> (users) received params object');
-		assert.ok(o.name, '~> (users) has "name" key, via pattern');
-		assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
-		planned -= 3;
-	});
-
-	ctx.on('/foo/books/:genre/:title?', o => {
-		assert.ok(o, '~> (books) received params object');
-		assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
-		assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
-		planned -= 3;
-		if (o.title) {
-			assert.ok(o.title, '~> (books) optionally has "title" key');
-			assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
-			planned -= 2;
-		}
+	let ctx = new navaid(routes, {
+		onRoute(uri, matched, o) {
+			if (matched[0] === '/') {
+				planned -= 1;
+			}
+			if (matched[0] === 'users/:name') {
+				assert.ok(o, '~> (users) received params object');
+				assert.ok(o.name, '~> (users) has "name" key, via pattern');
+				assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
+				planned -= 3;
+			}
+			if (matched[0] === '/foo/books/:genre/:title?') {
+				assert.ok(o, '~> (books) received params object');
+				assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
+				assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
+				planned -= 3;
+				if (o.title) {
+					assert.ok(o.title, '~> (books) optionally has "title" key');
+					assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
+					planned -= 2;
+				}
+			}
+		},
 	});
 
 	let foo = ctx.run('/');
@@ -169,29 +160,35 @@ run('$.run', () => {
 
 run('$.run (base)', () => {
 	let planned = 12;
-	let ctx = navaid('/hello/world/');
 
-	ctx.on('/', () => {
-		planned -= 1;
-	});
+	const routes = [
+		['/'],
+		['users/:name'],
+		['/foo/books/:genre/:title?'],
+	];
 
-	ctx.on('users/:name', o => {
-		assert.ok(o, '~> (users) received params object');
-		assert.ok(o.name, '~> (users) has "name" key, via pattern');
-		assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
-		planned -= 3;
-	});
-
-	ctx.on('/foo/books/:genre/:title?', o => {
-		assert.ok(o, '~> (books) received params object');
-		assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
-		assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
-		planned -= 3;
-		if (o.title) {
-			assert.ok(o.title, '~> (books) optionally has "title" key');
-			assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
-			planned -= 2;
-		}
+	let ctx = navaid(routes, {
+		base: '/hello/world/',
+		onRoute(uri, matched, o) {
+			if (matched[0] === '/') planned -= 1;
+			if (matched[0] === 'users/:name') {
+				assert.ok(o, '~> (users) received params object');
+				assert.ok(o.name, '~> (users) has "name" key, via pattern');
+				assert.is(o.name, 'Bob', '~> (users) the "name" value is expected');
+				planned -= 3;
+			}
+			if (matched[0] === '/foo/books/:genre/:title?') {
+				assert.ok(o, '~> (books) received params object');
+				assert.ok(o.genre, '~> (books) has "genre" key, via pattern');
+				assert.is(o.genre, 'kids', '~> (books) the "genre" value is expected');
+				planned -= 3;
+				if (o.title) {
+					assert.ok(o.title, '~> (books) optionally has "title" key');
+					assert.is(o.title, 'narnia', '~> (books) the "title" value is expected');
+					planned -= 2;
+				}
+			}
+		},
 	});
 
 	let foo = ctx.run('/hello/world');
@@ -207,12 +204,16 @@ run('$.run (base)', () => {
 run('$.run (wildcard)', () => {
 	let plan = 2;
 	let ran = false;
-	let ctx = new navaid();
-	ctx.on('foo/bar/*', o => {
-		let wild = ran ? 'baz/bat/quz' : 'baz';
-		assert.equal(o, { ['*']: wild }, '~> o["*"] is expected');
-		plan -= 1;
-		ran = true;
+
+	let ctx = navaid([
+		['foo/bar/*'],
+	], {
+		onRoute(uri, matched, o) {
+			let wild = ran ? 'baz/bat/quz' : 'baz';
+			assert.equal(o, { ['*']: wild }, '~> o["*"] is expected');
+			plan -= 1;
+			ran = true;
+		},
 	});
 
 	ctx.run('foo/bar/baz');
@@ -224,17 +225,21 @@ run('$.run (wildcard)', () => {
 run('$.run (query)', () => {
 	let plan = 2;
 
-	let ctx = (
-		navaid()
-			.on('foo/*', o => {
+	let ctx = navaid([
+		['foo/*'],
+		['/bar/:id'],
+	], {
+		onRoute(uri, matched, o) {
+			if (matched[0] === 'foo/*') {
 				plan -= 1;
 				assert.is(o['*'], 'baz/bat', '~> trims query from "*" key');
-			})
-			.on('/bar/:id', o => {
+			}
+			if (matched[0] === '/bar/:id') {
 				plan -= 1;
 				assert.is(o.id, 'hello', '~> trims query from "id" key');
-			})
-	);
+			}
+		},
+	});
 
 	ctx.run('foo/baz/bat?abc=123');
 	ctx.run('bar/hello?a=b&c=d');
@@ -245,15 +250,18 @@ run('$.run (query)', () => {
 run('$.run (404)', () => {
 	let plan = 11;
 	let ran = false;
-	let foo = navaid('/', x => {
-		let uri = ran ? '/foo/bar' : '/bar';
-		assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
-		plan -= 2;
-		ran = true;
-	});
-
-	foo.on('/foo', () => {
-		plan -= 1;
+	let foo = navaid([
+		['/foo'],
+	], {
+		on404(x) {
+			let uri = ran ? '/foo/bar' : '/bar';
+			assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
+			plan -= 2;
+			ran = true;
+		},
+		onRoute() {
+			plan -= 1;
+		},
 	});
 
 	foo.run('/foo'); // +1
@@ -261,19 +269,21 @@ run('$.run (404)', () => {
 	foo.run('/foo/bar'); // +2
 
 	ran = false;
-	let bar = new navaid('/hello/', x => {
-		let uri = ran ? '/there/world' : '/world';
-		assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
-		ran = true;
-		plan -= 2;
-	});
-
-	bar.on('/', () => {
-		plan -= 1;
-	});
-
-	bar.on('/bob', () => {
-		plan -= 1;
+	let bar = new navaid([
+		['/'],
+		['/bob'],
+	], {
+		base: '/hello/',
+		on404(x) {
+			let uri = ran ? '/there/world' : '/world';
+			assert.is(x, uri, `~~> handler receives the uri "${x}" (formatted)`);
+			ran = true;
+			plan -= 2;
+		},
+		onRoute(uri, matched) {
+			if (matched[0] === '/') plan -= 1;
+			if (matched[0] === '/bob') plan -= 1;
+		},
 	});
 
 	bar.run('/hello'); // +1
@@ -373,11 +383,13 @@ route('$.route', () => {
 	history.pushState = uri => pushes.push(uri);
 	history.replaceState = uri => replaces.push(uri);
 
-	let ctx = (
-		navaid('/', () => plan++)
-			.on('/foo', () => plan++)
-			.on('/bar', () => plan++)
-	);
+	let ctx = navaid([
+		['/foo'],
+		['/bar'],
+	], {
+		onRoute() { plan++; },
+		on404() { plan++; },
+	});
 
 	let mock = uri => {
 		pushes = [];
