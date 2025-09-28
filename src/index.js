@@ -9,8 +9,15 @@ export default function Navaid(routes_ = [], opts = {}) {
 	const base = normalize(opts.base || '/')
 	const rgx = base == '/' ? /^\/+/ : new RegExp('^\\' + base + '(?=\\/|$)\\/?', 'i')
 
+	// Pre-compile provided routes: route tuple is [patternOrRegex, data]
 	for (let r of routes_) {
-		let pat = parse(r[0])
+		const patOrRx = r[0]
+		let pat
+		if (patOrRx instanceof RegExp) {
+			pat = { pattern: patOrRx, keys: null } // regex route (keys handled via groups or positions)
+		} else {
+			pat = parse(patOrRx) // string pattern via regexparam
+		}
 		pat.data = r // keep the original tuple for onRoute
 		routes.push(pat)
 	}
@@ -35,8 +42,14 @@ export default function Navaid(routes_ = [], opts = {}) {
 			uri = uri.match(/[^\?#]*/)[0]
 			for (curr = uri; i < routes.length; i++) {
 				if ((arr = (obj = routes[i]).pattern.exec(uri))) {
-					for (i = 0; i < obj.keys.length; ) {
-						params[obj.keys[i]] = arr[++i] || null
+					// string patterns -> use named keys from regexparam
+					if (obj.keys?.length) {
+						for (i = 0; i < obj.keys.length; ) {
+							params[obj.keys[i]] = arr[++i] || null
+						}
+					} else if (arr.groups) {
+						// RegExp with named groups
+						for (const k in arr.groups) params[k] = arr.groups[k]
 					}
 					opts.onRoute?.(uri, obj.data || null, params)
 					return $

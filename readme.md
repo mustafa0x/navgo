@@ -34,11 +34,13 @@ $ npm install --save navaid
 ```js
 import navaid from 'navaid';
 
-// Define routes up front
+// Define routes up front (strings or RegExp)
 const routes = [
   ['/',                        /* optional data */],
   ['/users/:username'],
   ['/books/*'],
+  [/articles\/(?<year>[0-9]{4})/],
+  [/privacy|privacy-policy/],
 ];
 
 // Create router with options + callbacks
@@ -49,7 +51,7 @@ const router = navaid(routes, {
   },
   onRoute(uri, matched, params) {
     // `matched` is the tuple from your `routes` list
-    // e.g. ['/users/:username']
+    // e.g. ['/users/:username'] or a RegExp
     console.log('matched:', matched[0], 'uri:', uri, 'params:', params);
   },
 });
@@ -61,6 +63,12 @@ router.run('/users/lukeed');
 //=> "matched: /users/:username uri: /users/lukeed params: { username: 'lukeed' }"
 router.run('/books/kids/narnia');
 //=> "matched: /books/* uri: /books/kids/narnia params: { '*': 'kids/narnia' }"
+
+router.run('/articles/2024');
+//=> "matched: /articles\\/(?<year>[0-9]{4})/ uri: /articles/2024 params: { year: '2024' }"
+
+router.run('/privacy');
+//=> "matched: /privacy|privacy-policy/ uri: /privacy params: {}"
 
 // Long‑lived router: history + <a> bindings
 // Also immediately processes the current location
@@ -88,8 +96,11 @@ Supported pattern types:
 - nested parameters (`/users/:id/books/:title`)
 - optional parameters (`/users/:id?/books/:title?`)
 - wildcards (`/users/*`)
+- RegExp patterns (with optional named groups)
 
-> Note: Pattern strings are matched relative to the [`base`](#base) path.
+> Notes:
+> - Pattern strings are matched relative to the [`base`](#base) path.
+> - RegExp patterns are used as-is. If you use named capture groups (e.g. `(?<year>\d{4})`), those keys will appear in the `params` object. Unnamed groups are ignored.
 
 #### options
 Type: `Object`

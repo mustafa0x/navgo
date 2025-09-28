@@ -247,6 +247,54 @@ run('$.run (query)', () => {
 	assert.is(plan, 0);
 });
 
+run('$.run (regex patterns)', () => {
+	let privacyHits = 0;
+	let year = null;
+
+	let ctx = navaid([
+		['/'],
+		[/articles\/(?<year>[0-9]{4})/],
+		[/privacy|privacy-policy/],
+	], {
+		onRoute(uri, matched, o) {
+			if (matched[0] === '/') return;
+			if (matched[0] instanceof RegExp) {
+				const src = matched[0].source;
+				if (src.includes('articles')) year = o.year;
+				if (src.includes('privacy')) privacyHits++;
+			}
+		},
+	});
+
+	ctx.run('/articles/2024');
+	ctx.run('/privacy');
+	ctx.run('/privacy-policy');
+
+	assert.is(year, '2024');
+	assert.is(privacyHits, 2);
+});
+
+run('$.run (regex alternation)', () => {
+	let hits = 0;
+	let ctx = navaid([
+		['/'],
+		[/about\/(contact|team)/],
+	], {
+		onRoute(uri, matched, params) {
+			if (matched[0] === '/') return;
+			if (matched[0] instanceof RegExp) {
+				assert.is(Object.keys(params).length, 0, '~> unnamed capture groups are ignored');
+				hits += 1;
+			}
+		},
+	});
+
+	ctx.run('/about/contact');
+	ctx.run('/about/team');
+
+	assert.is(hits, 2, '~> matched both alternation targets');
+});
+
 run('$.run (404)', () => {
 	let plan = 11;
 	let ran = false;

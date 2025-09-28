@@ -8,7 +8,7 @@ declare module 'navaid' {
 	export type UnknownHandler = (uri: string) => void;
 
 	/** A route tuple: [pattern, data?] */
-	export type RouteTuple<T = unknown> = [pattern: string, data?: T];
+	export type RouteTuple<T = unknown> = [pattern: string | RegExp, data?: T];
 
 	export interface Router {
 		/** Format `uri` relative to the configured base. */
