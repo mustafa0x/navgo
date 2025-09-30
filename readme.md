@@ -1,38 +1,14 @@
-<div align="center">
-  <img src="navaid.png" alt="navaid" height="160" />
-</div>
-
-<div align="center">
-  <a href="https://npmjs.org/package/navaid">
-    <img src="https://badgen.now.sh/npm/v/navaid" alt="version" />
-  </a>
-  <a href="https://github.com/lukeed/navaid/actions">
-    <img src="https://github.com/lukeed/navaid/workflows/CI/badge.svg" alt="CI" />
-  </a>
-  <a href="https://licenses.dev/npm/navaid">
-    <img src="https://licenses.dev/b/npm/navaid" alt="licenses" />
-  </a>
-  <a href="https://npmjs.org/package/navaid">
-    <img src="https://badgen.now.sh/npm/dm/navaid" alt="downloads" />
-  </a>
-  <a href="https://packagephobia.now.sh/result?p=navaid">
-    <img src="https://packagephobia.now.sh/badge?p=navaid" alt="install size" />
-  </a>
-</div>
-
-<div align="center">A navigation aid (aka, router) for the browser in ~772 bytes (min+gzip)!</div>
-
 ## Install
 
 ```
-$ npm install --save navaid
+$ pnpm install --dev navaid
 ```
 
 
 ## Usage
 
 ```js
-import navaid from 'navaid';
+import Navaid from 'navaid';
 
 // Define routes up front (strings or RegExp)
 const routes = [
@@ -44,31 +20,20 @@ const routes = [
 ];
 
 // Create router with options + callbacks
-const router = navaid(routes, {
+const router = new Navaid(routes, {
   base: '/',
   on404(uri) {
     console.log('404 for', uri);
   },
-  onRoute(uri, matched, params) {
+  onRoute(uri, matched, params, data) {
     // `matched` is the tuple from your `routes` list
     // e.g. ['/users/:username'] or a RegExp
-    console.log('matched:', matched[0], 'uri:', uri, 'params:', params);
+    console.log('matched:', matched[0], 'uri:', uri, 'params:', params, 'data:', data);
   },
 });
 
-// Run as single instance
-router.run('/');
-//=> "matched: / uri: / params: {}"
-router.run('/users/lukeed');
-//=> "matched: /users/:username uri: /users/lukeed params: { username: 'lukeed' }"
-router.run('/books/kids/narnia');
-//=> "matched: /books/* uri: /books/kids/narnia params: { '*': 'kids/narnia' }"
-
-router.run('/articles/2024');
-//=> "matched: /articles\\/(?<year>[0-9]{4})/ uri: /articles/2024 params: { year: '2024' }"
-
-router.run('/privacy');
-//=> "matched: /privacy|privacy-policy/ uri: /privacy params: {}"
+// Process current location
+router.run();
 
 // Long‑lived router: history + <a> bindings
 // Also immediately processes the current location
@@ -77,11 +42,11 @@ router.listen();
 
 ## API
 
-### navaid(routes?, options?)
+### new Navaid(routes?, options?)
 
 Returns: `Router`
 
-Create a router by defining your routes up front and passing callbacks via `options`.
+Create a router instance by defining your routes up front and passing callbacks via `options`.
 
 #### routes
 Type: `Array<[pattern: string, data?: any]>`<br>
@@ -109,8 +74,8 @@ Type: `Object`
   - The base pathname for your application. Navaid will accept it with or without leading/trailing slashes.
 - on404: `(uri: string) => void`
   - Called when no route matches. Receives the formatted `uri`; see [`format`](#formaturi).
-- onRoute: `(uri: string, matched: [string, any?], params: Record<string, string|null>) => void`
-  - Called when a route matches. `matched` is the original tuple from your `routes` list and `params` contains extracted values (including `'*'` for wildcards). Optional parameters that aren’t present are `null`.
+- onRoute: `(uri: string, matched: [string, any?], params: Record<string, string|null>, data?: unknown) => void`
+  - Called when a route matches. `matched` is the original tuple from your `routes` list, `params` contains extracted values (including `'*'` for wildcards), and `data` is any value returned by your route's `loaders` (if defined). Optional parameters that aren’t present are `null`.
 
 > Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`. This allows multiple Navaid instances to coexist on the same page with different bases.
 
@@ -132,46 +97,29 @@ The path to format.
 
 > **Note:** Much like [`base`](#base), paths with or without leading and trailing slashes are handled identically.
 
-### route(uri, replace)
-Returns: `undefined`
+### goto(uri, options?)
+Returns: `Promise<void>`
 
-Programmatically route to a path whilst modifying & using the `history` events.
+Runs any matching route `loaders` before updating the URL and emitting `onRoute`. Use `replace: true` to replace the current history entry.
 
 #### uri
 Type: `String`
 
-The desired path to navigate.
+The desired path to navigate. If it begins with `/` and does not match the configured [`base`](#base), it will be prefixed automatically.
 
-> **Important:** Navaid will prefix your `uri` with the [`base`](#base), if/when defined.
+#### options
+Type: `Object`
 
-#### replace
-Type: `Boolean`<br>
-Default: `false`
+- replace: `Boolean` (default `false`)
+  - When `true`, uses `history.replaceState`; otherwise `history.pushState`.
 
-If `true`, then [`history.replaceState`](https://developer.mozilla.org/en-US/docs/Web/API/History_API#The_replaceState()_method) will be used. Otherwise [`history.pushState`](https://developer.mozilla.org/en-US/docs/Web/API/History_API#Adding_and_modifying_history_entries) will be used.
+### run()
+Returns: `void`
 
-This is generally used for redirects; for example, redirecting a user away from a login page if they're already logged in.
+Processes the current `location.pathname`. This does not modify browser history nor emit History API events.
 
-
-> Migration from v2: The `.on(pattern, handler)` API has been replaced with route-table initialization and the `onRoute` callback. Define all routes up front and respond within `onRoute`.
-
-### run(uri)
-Returns: `Router`
-
-Executes the matching handler for the specified path.
-
-Unlike `route()`, this does not pass through the `history` state nor emit any events.
-
-> **Note:** You'll generally want to use `listen()` instead, but `run()` may be useful in Node.js/SSR contexts.
-
-#### uri
-Type: `String`<br>
-Default: `location.pathname`
-
-The pathname to process. If it matches a route, your `onRoute` callback will be executed.
-
-### listen(uri?)
-Returns: `Router`
+### listen()
+Returns: `void`
 
 Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
 
@@ -183,11 +131,22 @@ These are the (global) events that Navaid creates and/or responds to:
 
 Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (eg; <kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
-#### uri
-Type: `String`<br>
-Default: `undefined`
+While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
-*(Optional)* Any value passed to `listen()` will be forwarded to the underlying [`run()`](#runuri) call.<br>When not defined, `run()` will read the current `location.pathname` value.
+### preload(uri)
+Returns: `Promise<unknown>`
+
+Preload a route’s `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
+
+### pushState(url?, state?)
+Returns: `void`
+
+Perform a shallow history push: updates the URL/state without triggering route processing.
+
+### replaceState(url?, state?)
+Returns: `void`
+
+Perform a shallow history replace: updates the URL/state without triggering route processing.
 
 ### unlisten()
 Returns: `undefined`

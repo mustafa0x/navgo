@@ -1,51 +1,101 @@
-declare module 'navaid' {
+/**
+ * Route parameter bag. Keys come from named parameters or `'*'` for wildcards.
+ * For string patterns, missing optional params are `null`.
+ * For RegExp named groups, missing groups may be `undefined`.
+ */
+export type Params = Record<string, string | null | undefined>
+
+/** Built-in matcher helpers shape. */
+export interface MatcherHelpers {
+	int(opts?: {
+		min?: number | null
+		max?: number | null
+	}): (value: string | null | undefined) => boolean
+	oneOf(values: Iterable<string>): (value: string | null | undefined) => boolean
+}
+
+/** Optional per-route hooks recognized by Navaid. */
+export interface Hooks {
+	/** Validate params with custom matchers. Return `false` to skip a match. */
+	matchers?: Record<string, (value: string | null | undefined) => boolean>
+	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
+	loaders?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Invoked on navigation. Return `false` or call `ctx.cancel()` to cancel. */
+	beforeNavigate?(ctx: NavigationContext): void | boolean | Promise<void | boolean>
+}
+
+export interface NavigationContext {
+	type: 'link' | 'goto' | string
+	from: { uri: string | null; params: Params }
+	to: { uri: string; params: Params }
+	cancelled: boolean
+	cancel(): void
+}
+
+/** A route tuple: [pattern, data?]. The `data` may include {@link Hooks}. */
+export type RouteTuple<T = unknown> = [pattern: string | RegExp, data?: T]
+
+/** Result of calling `router.match(uri)` */
+export interface MatchResult<T = unknown> {
+	route: RouteTuple<T>
+	params: Params
+}
+
+export interface Router<T = unknown> {
+	/** Format `uri` relative to the configured base. */
+	format(uri: string): string | false
+	/** SvelteKit-like navigation that runs loaders before updating the URL. */
+	goto(uri: string, opts?: { replace?: boolean }): Promise<void>
+	/** Shallow push — updates URL/state without triggering handlers. */
+	pushState(url?: string | URL, state?: any): void
+	/** Shallow replace — updates URL/state without triggering handlers. */
+	replaceState(url?: string | URL, state?: any): void
+	/** Manually preload loaders for a URL (deduped). */
+	preload(uri: string): Promise<unknown | void>
+	/** Try to match `uri`; returns route tuple and params or `null`. */
+	match(uri: string): MatchResult<T> | null
+	/** Process the current location (or call within listeners). */
+	run(e?: any): void
+	/** Attach history + click listeners and immediately process current location. */
+	listen(): void
+	/** Remove listeners installed by `listen()`. */
+	unlisten(): void
+}
+
+export interface Options<T = unknown> {
+	/** App base path. Default '/' */
+	base?: string
+	/** Delay before hover preloading in milliseconds. Default 20. */
+	preloadDelay?: number
+	/** Disable hover/touch preloading when `false`. Default true. */
+	preloadOnHover?: boolean
+	/** Called when no route matches. Receives formatted URI. */
+	on404?(uri: string): void
 	/**
-	 * Route parameter bag. Keys come from named parameters or `'*'` for wildcards.
-	 * Missing optional params are set to `null`.
+	 * Called when a route matches.
+	 * @param uri The formatted, matched URI
+	 * @param matched The matched route tuple from your original `routes` list
+	 * @param params The extracted params (including '*' for wildcards)
+	 * @param data Any data returned from `loaders` for this navigation (if any)
 	 */
-	// Includes keys from `regexparam` patterns and from RegExp named capture groups.
-	export type Params = Record<string, string | null>;
+	onRoute?(uri: string, matched: RouteTuple<T>, params: Params, data?: unknown): void
+}
 
-	export type UnknownHandler = (uri: string) => void;
+/** Navaid default export: class-based router. */
+export default class Navaid<T = unknown> implements Router<T> {
+	constructor(routes?: Array<RouteTuple<T>>, opts?: Options<T>)
+	format(uri: string): string | false
+	goto(uri: string, opts?: { replace?: boolean }): Promise<void>
+	pushState(url?: string | URL, state?: any): void
+	replaceState(url?: string | URL, state?: any): void
+	preload(uri: string): Promise<unknown | void>
+	match(uri: string): MatchResult<T> | null
+	run(e?: any): void
+	listen(): void
+	unlisten(): void
 
-	/** A route tuple: [pattern, data?] */
-	export type RouteTuple<T = unknown> = [pattern: string | RegExp, data?: T];
-
-	/** Result of calling `router.match(uri)` */
-	export interface MatchResult<T = unknown> {
-		route: RouteTuple<T>;
-		params: Params;
-	}
-
-	export interface Router {
-		/** Format `uri` relative to the configured base. */
-		format(uri: string): string | false;
-		/** Navigate programmatically using History API. */
-		route(uri: string, replace?: boolean): void;
-		/** Try to match `uri`; returns route tuple and params or `null`. */
-		match(uri: string): MatchResult | null;
-		/** Attach history + click listeners. */
-		listen(): void;
-		/** Remove listeners installed by `listen()` (only present after calling `listen`). */
-		unlisten?: VoidFunction;
-	}
-
-    export interface Options<T = unknown> {
-        /** App base path. Default '/' */
-        base?: string;
-        /** Called when no route matches. Receives formatted URI. */
-        on404?(uri: string): void;
-        /**
-         * Called when a route matches.
-         * @param uri The formatted, matched URI
-         * @param matched The matched route tuple from your original `routes` list
-         * @param params The extracted params (including '*' for wildcards)
-         */
-        onRoute?(uri: string, matched: RouteTuple<T>, params: Params): void;
-    }
-
-	/**
-	 * Create a Navaid router. Define routes up front and respond via callbacks.
-	 */
-    export default function navaid<T = unknown>(routes?: Array<RouteTuple<T>>, opts?: Options<T>): Router;
+	/** Built-in matcher helpers. */
+	static int: MatcherHelpers['int']
+	static oneOf: MatcherHelpers['oneOf']
+	static matchers: MatcherHelpers
 }

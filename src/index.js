@@ -1,119 +1,375 @@
 import { parse } from 'regexparam'
 
-export default function Navaid(routes_ = [], opts = {}) {
-	let curr
-	let $ = {}
-	const routes = []
-	const normalize = uri => '/' + (uri || '').replace(/^\/|\/$/g, '')
+/**
+ * Navaid with routing ergonomics:
+ * - load-then-navigate (goto)
+ * - per-route hooks: loaders(params): Promise|Promise[]; beforeNavigate(ctx)
+ * - param matchers via hooks.matchers
+ * - shallow routing: pushState/replaceState that don't trigger route handlers
+ * - preload on hover/tap
+ *
+ * Route shape examples:
+ *   ['/users/:id', {
+ *     matchers: { id: Navaid.matchers.int({ min: 1, max: 114 }) },
+ *     loaders(params) { return fetch(`/api/users/${params.id}`).then(r => r.json()) },
+ *     beforeNavigate({ from, to, type, cancel }) {
+ *       // return false or call cancel() to stop navigation
+ *     }
+ *   }]
+ */
+export default class Navaid {
+	#opts
+	#routes
+	#base
+	#rgx
+	#preloads
+	#current
+	#run_wrapped
+	#click
+	#mousemove
+	#tap
 
-	const base = normalize(opts.base || '/')
-	const rgx = base == '/' ? /^\/+/ : new RegExp('^\\' + base + '(?=\\/|$)\\/?', 'i')
-
-	// Pre-compile provided routes: route tuple is [patternOrRegex, data]
-	for (let r of routes_) {
-		const patOrRx = r[0]
-		let pat
-		if (patOrRx instanceof RegExp) {
-			pat = { pattern: patOrRx, keys: null } // regex route (keys handled via groups or positions)
-		} else {
-			pat = parse(patOrRx) // string pattern via regexparam
+	static int(opts = {}) {
+		const { min = null, max = null } = opts
+		return v => {
+			if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
+			const n = Number(v)
+			if (min != null && n < min) return false
+			if (max != null && n > max) return false
+			return true
 		}
-		pat.data = r // keep the original tuple for onRoute
-		routes.push(pat)
 	}
 
-	$.format = function (uri) {
+	static oneOf(values) {
+		const set = new Set(values)
+		return v => set.has(v)
+	}
+
+	static matchers = {
+		int: (...args) => this.int(...args),
+		oneOf: (...args) => this.oneOf(...args),
+	}
+
+	constructor(routes_ = [], opts = {}) {
+		this.#opts = opts
+		this.#routes = []
+		this.#base = this.#normalize(this.#opts.base || '/')
+		this.#rgx =
+			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
+
+		// preload cache: href -> { promise, data, error }
+		this.#preloads = new Map()
+		// last matched route info
+		this.#current = { uri: null, route: null, params: {} }
+
+		for (const r of routes_) {
+			const patOrRx = r[0]
+			let pat
+			if (patOrRx instanceof RegExp) {
+				pat = { pattern: patOrRx, keys: null }
+			} else {
+				pat = parse(patOrRx)
+			}
+			pat.data = r // keep original tuple: [pattern, hooks, ...]
+			this.#routes.push(pat)
+		}
+	}
+
+	//
+	// Helpers
+	//
+	#normalize(uri) {
+		return '/' + (uri || '').replace(/^\/|\/$/g, '')
+	}
+
+	format(uri) {
 		if (!uri) return uri
-		uri = normalize(uri)
-		return rgx.test(uri) && uri.replace(rgx, '/')
+		uri = this.#normalize(uri)
+		return this.#rgx.test(uri) && uri.replace(this.#rgx, '/')
 	}
 
-	$.route = function (uri, replace) {
-		if (uri[0] == '/' && !rgx.test(uri)) uri = base + uri
-		history[(uri === curr || replace ? 'replace' : 'push') + 'State'](uri, null, uri)
+	/**
+	 * Programmatic navigation that runs loaders before changing URL.
+	 * @param {string} uri
+	 * @param {{ replace?: boolean }} [opts]
+	 * @returns {Promise<void>}
+	 */
+	async goto(uri, opts = {}) {
+		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
+		const url = new URL(uri, location.href)
+		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+		if (!path) return
+
+		const hit = this.match(path)
+		if (!hit) {
+			this.#opts.on404?.(path)
+			return
+		}
+
+		// run beforeNavigate (leave on current, enter on next)
+		const ctx = this.#makeNavCtx({ to: { uri: path, params: hit.params }, type: 'link' })
+		const cancelled = await this.#runBeforeNav(ctx, this.#current.route, hit.route)
+		if (cancelled) return
+
+		// run loaders first, cache data by URL (so run() can pick it up)
+		const data = await this.#loadFor(hit.route, hit.params).catch(e => {
+			// If loaders fail, we still navigate to keep behavior predictable.
+			// Apps can show errors from the returned data.
+			return { __error: e }
+		})
+		this.#preloads.set(path, { data })
+
+		// change URL (this triggers our wrapped pushstate/replacestate; run() will consume cache)
+		history[(opts.replace ? 'replace' : 'push') + 'State']({}, null, url.href)
 	}
 
-	$.match = function (uri) {
+	/**
+	 * Shallow push — updates the URL/state but DOES NOT call handlers or loaders.
+	 * URL changes, content stays put until a real nav.
+	 */
+	pushState(url, state) {
+		const href = new URL(url || location.href, location.href).href
+		const st = Object.assign({}, state, { __navaid: { shallow: true } })
+		history.pushState(st, '', href)
+		// note: our event handler will skip run() when it sees shallow=true
+	}
+
+	/**
+	 * Shallow replace — same semantics as pushState but replaces current entry.
+	 */
+	replaceState(url, state) {
+		const href = new URL(url || location.href, location.href).href
+		const st = Object.assign({}, state, { __navaid: { shallow: true } })
+		history.replaceState(st, '', href)
+	}
+
+	/**
+	 * Manually preload loaders for a URL (e.g. to prime cache).
+	 * Dedupes concurrent preloads for the same path.
+	 */
+	preload(uri) {
+		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
+		const url = new URL(uri, location.href)
+		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+		if (!path) return Promise.resolve()
+		const hit = this.match(path)
+		if (!hit) return Promise.resolve()
+
+		if (this.#preloads.has(path)) {
+			const p = this.#preloads.get(path)
+			return p.promise || Promise.resolve(p.data)
+		}
+
+		const entry = {}
+		entry.promise = this.#loadFor(hit.route, hit.params).then(data => {
+			entry.data = data
+			delete entry.promise
+			return data
+		})
+		this.#preloads.set(path, entry)
+		return entry.promise
+	}
+
+	//
+	// Core matching
+	//
+	match(uri) {
 		let arr, obj
-		for (let i = 0; i < routes.length; i++) {
-			if ((arr = (obj = routes[i]).pattern.exec(uri))) {
+		for (let i = 0; i < this.#routes.length; i++) {
+			obj = this.#routes[i]
+			if ((arr = obj.pattern.exec(uri))) {
 				const params = {}
-				// string patterns -> named keys from regexparam
 				if (obj.keys?.length) {
 					for (let j = 0; j < obj.keys.length; ) {
 						params[obj.keys[j]] = arr[++j] || null
 					}
 				} else if (arr.groups) {
-					// RegExp with named groups
 					for (const k in arr.groups) params[k] = arr.groups[k]
 				}
+
+				// optional per-route matchers (e.g. enforce int ranges etc.)
+				const hooks = this.#hooksFor(obj.data)
+				const ok = this.#checkMatchers(hooks?.matchers, params)
+				if (!ok) continue
+
 				return { route: obj.data || null, params }
 			}
 		}
 		return null
 	}
 
-	function run() {
-		const uri = $.format(location.pathname)
-		if (!url) return
+	//
+	// Router driver
+	//
+	run(e) {
+		// skip when this was a shallow push/replace
+		if (e?.state?.__navaid?.shallow) return
 
-		uri = uri.match(/[^\?#]*/)[0]
-		curr = uri
-		const hit = match(uri)
+		let uri = this.format(location.pathname)
+		if (!uri) return
+		uri = uri.match(/[^?#]*/)[0]
+
+		const hit = this.match(uri)
+
 		if (hit) {
-			opts.onRoute?.(uri, hit.route, hit.params)
+			this.#current = { uri, route: hit.route, params: hit.params }
+
+			// Use any preloaded data for this URI (from goto() or hover preload)
+			const pre = this.#preloads.get(uri)
+			const loaded = pre?.data
+			if (pre) this.#preloads.delete(uri)
+
+			this.#opts.onRoute?.(uri, hit.route, hit.params, loaded) // back-compat + data
 			return
 		}
-		opts.on404?.(uri)
+		this.#opts.on404?.(uri)
 	}
 
-	$.listen = function () {
-		wrap('push')
-		wrap('replace')
+	//
+	// Lifecycle hooks
+	//
+	listen() {
+		this.#wrap('push')
+		this.#wrap('replace')
 
-		function run_wrapped() {
-			run()
+		const run_wrapped = ev => {
+			this.run(ev)
 		}
 
-		function click(e) {
+		// Click to navigate — load then change URL (SvelteKit-like)
+		this.#click = async e => {
+			if (e.defaultPrevented) return
+			if (e.button || e.which !== 1) return
+			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+
 			const el = e.target.closest('a')
 			const href = el?.getAttribute('href')
-			if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.button || e.defaultPrevented)
-				return
-			if (!href || el.target || el.download || el.host !== location.host || href[0] == '#')
-				return
-			if (href[0] != '/' || rgx.test(href)) {
+			if (!href) return
+			if (el.target || el.download) return
+			if (href[0] == '#') return
+			// External?
+			if (el.host !== location.host) return
+
+			if (href[0] != '/' || this.#rgx.test(href)) {
 				e.preventDefault()
-				$.route(href)
+				await this.goto(href, { replace: false })
 			}
 		}
 
 		addEventListener('popstate', run_wrapped)
 		addEventListener('replacestate', run_wrapped)
 		addEventListener('pushstate', run_wrapped)
-		addEventListener('click', click)
+		addEventListener('click', this.#click)
+		this.#run_wrapped = run_wrapped
 
-		$.unlisten = function () {
-			removeEventListener('popstate', run_wrapped)
-			removeEventListener('replacestate', run_wrapped)
-			removeEventListener('pushstate', run_wrapped)
-			removeEventListener('click', click)
+		const hoverDelay = this.#opts.preloadDelay ?? 20
+		let hoverTimer = null
+		const maybePreload = el => {
+			const a = el?.closest?.('a')
+			const href = a?.getAttribute?.('href')
+			if (!href || a.target || a.download || a.host !== location.host) return
+			if (!(href[0] != '/' || this.#rgx.test(href))) return
+			this.preload(href)
+		}
+		const mousemove = ev => {
+			clearTimeout(hoverTimer)
+			hoverTimer = setTimeout(() => maybePreload(ev.target), hoverDelay)
+		}
+		const tap = ev => {
+			if (ev.defaultPrevented) return
+			maybePreload(ev.composedPath ? ev.composedPath()[0] : ev.target)
+		}
+		if (this.#opts.preloadOnHover !== false) {
+			addEventListener('mousemove', mousemove)
+			addEventListener('touchstart', tap, { passive: true })
+			addEventListener('mousedown', tap)
+			this.#mousemove = mousemove
+			this.#tap = tap
 		}
 
-		run()
+		this.run()
 	}
 
-	return $
-}
+	unlisten() {
+		removeEventListener('popstate', this.#run_wrapped)
+		removeEventListener('replacestate', this.#run_wrapped)
+		removeEventListener('pushstate', this.#run_wrapped)
+		removeEventListener('click', this.#click)
 
-function wrap(type, fn) {
-	if (history[type]) return
-	history[type] = type
-	fn = history[(type += 'State')]
-	history[type] = function (uri) {
-		let ev = new Event(type.toLowerCase())
-		ev.uri = uri
-		fn.apply(this, arguments)
-		return dispatchEvent(ev)
+		if (this.#mousemove) removeEventListener('mousemove', this.#mousemove)
+		if (this.#tap) {
+			removeEventListener('touchstart', this.#tap, { passive: true })
+			removeEventListener('mousedown', this.#tap)
+		}
+	}
+
+	//
+	// Internals
+	//
+	#hooksFor(routeTuple) {
+		// routes[i] === [pattern, hooks?]
+		return routeTuple?.[1] || null
+	}
+
+	#checkMatchers(matchers, params) {
+		if (!matchers) return true
+		for (const k in matchers) {
+			const fn = matchers[k]
+			if (typeof fn !== 'function') continue
+			if (!fn(params[k])) return false
+		}
+		return true
+	}
+
+	async #loadFor(routeTuple, params) {
+		const hooks = this.#hooksFor(routeTuple)
+		if (!hooks?.loaders) return undefined
+		let res = hooks.loaders(params)
+		if (Array.isArray(res)) {
+			return Promise.all(res)
+		}
+		return res
+	}
+
+	#makeNavCtx({ to, type }) {
+		return {
+			type, // 'link' | 'goto' | etc.
+			from: { uri: this.#current.uri, params: this.#current.params ?? {} },
+			to,
+			cancelled: false,
+			cancel() {
+				this.cancelled = true
+			},
+		}
+	}
+
+	async #runBeforeNav(ctx, fromRouteTuple, toRouteTuple) {
+		const run = async hooks => {
+			if (!hooks?.beforeNavigate) return
+			const out = hooks.beforeNavigate(ctx)
+			const val = out && typeof out.then === 'function' ? await out : out
+			if (val === false || ctx.cancelled) return false
+		}
+		// current route 'leave'
+		await run(this.#hooksFor(fromRouteTuple))
+		if (ctx.cancelled) return true
+		// next route 'enter'
+		await run(this.#hooksFor(toRouteTuple))
+		return ctx.cancelled
+	}
+
+	// Wrap native history to dispatch custom events we can inspect (and carry state/url).
+	// Also used to bypass navigation during shallow routing entries
+	#wrap(type, fn) {
+		if (history[type]) return
+		history[type] = type
+		fn = history[(type += 'State')]
+		history[type] = function (state, title, url) {
+			const ev = new Event(type.toLowerCase())
+			ev.state = state
+			ev.url = url
+			fn.apply(this, arguments)
+			return dispatchEvent(ev)
+		}
 	}
 }
