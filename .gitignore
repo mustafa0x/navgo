@@ -4,3 +4,4 @@ node_modules
 *.lock
 *.log
 dist
+.mise.local.toml
