@@ -1,61 +1,77 @@
 {
-  "name": "navaid",
-  "version": "2.0.0",
-  "repository": "lukeed/navaid",
-  "description": "A navigation aid (aka, router) for the browser in 865 bytes~!",
-  "module": "dist/navaid.mjs",
-  "type": "module",
-  "exports": "./dist/navaid.mjs",
-  "types": "index.d.ts",
-  "license": "MIT",
-  "author": {
-    "name": "Luke Edwards",
-    "email": "luke.edwards05@gmail.com",
-    "url": "https://lukeed.com"
-  },
-  "engines": {
-    "node": ">= 20"
-  },
-  "scripts": {
-    "build": "node builder",
-    "pretest": "npm run build",
-    "test": "uvu test"
-  },
-  "files": [
-    "*.d.ts",
-    "dist"
-  ],
-  "keywords": [
-    "browser",
-    "client-side",
-    "router"
-  ],
-  "dependencies": {
-    "regexparam": "^3.0.0"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@playwright/test": "^1.55.1",
-    "@types/node": "^24.6.0",
-    "eslint": "^9.36.0",
-    "globals": "^16.4.0",
-    "gzip-size": "7.0.0",
-    "jiti": "^2.6.0",
-    "mk-dirs": "3.0.0",
-    "prettier": "^3.6.2",
-    "pretty-bytes": "7.1.0",
-    "terser": "5.44.0",
-    "typescript-eslint": "^8.45.0",
-    "uvu": "0.5.6"
-  },
-  "prettier": {
-    "semi": false,
-    "singleQuote": true,
-    "tabWidth": 4,
-    "printWidth": 100,
-    "quoteProps": "as-needed",
-    "bracketSpacing": true,
-    "arrowParens": "avoid",
-    "useTabs": true
-  }
+	"name": "navaid",
+	"version": "2.0.0",
+	"repository": "lukeed/navaid",
+	"description": "A navigation aid (aka, router) for the browser in 865 bytes~!",
+	"module": "dist/navaid.mjs",
+	"type": "module",
+	"exports": "./dist/navaid.mjs",
+	"types": "index.d.ts",
+	"license": "MIT",
+	"author": {
+		"name": "Luke Edwards",
+		"email": "luke.edwards05@gmail.com",
+		"url": "https://lukeed.com"
+	},
+	"engines": {
+		"node": ">= 20"
+	},
+	"scripts": {
+		"build": "node builder",
+		"pretest": "npm run build",
+		"test": "uvu test/uvu",
+		"test:e2e": "playwright test",
+		"test:all": "npm run build && uvu test && playwright test"
+	},
+	"files": [
+		"*.d.ts",
+		"dist"
+	],
+	"keywords": [
+		"browser",
+		"client-side",
+		"router"
+	],
+	"dependencies": {
+		"regexparam": "^3.0.0"
+	},
+	"devDependencies": {
+		"@eslint/js": "^9.36.0",
+		"@playwright/test": "^1.55.1",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"@tailwindcss/vite": "^4.1.13",
+		"@tsconfig/svelte": "^5.0.5",
+		"@types/node": "^24.6.0",
+		"eslint": "^9.36.0",
+		"eslint-plugin-svelte": "^3.12.4",
+		"globals": "^16.4.0",
+		"gzip-size": "7.0.0",
+		"jiti": "^2.6.0",
+		"lightningcss": "^1.30.2",
+		"mk-dirs": "3.0.0",
+		"prettier": "^3.6.2",
+		"pretty-bytes": "7.1.0",
+		"svelte": "^5.39.7",
+		"tailwindcss": "^4.1.13",
+		"terser": "5.44.0",
+		"typescript-eslint": "^8.45.0",
+		"uvu": "0.5.6",
+		"vite": "^7.1.7"
+	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"@tailwindcss/oxide",
+			"esbuild"
+		]
+	},
+	"prettier": {
+		"semi": false,
+		"singleQuote": true,
+		"tabWidth": 4,
+		"printWidth": 100,
+		"quoteProps": "as-needed",
+		"bracketSpacing": true,
+		"arrowParens": "avoid",
+		"useTabs": true
+	}
 }

@@ -5,3 +5,5 @@ node_modules
 *.log
 dist
 .mise.local.toml
+test-results
+AGENTS.md

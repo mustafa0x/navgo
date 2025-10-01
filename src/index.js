@@ -28,6 +28,7 @@ export default class Navaid {
 	#click
 	#mousemove
 	#tap
+	has_listened = false
 
 	static int(opts = {}) {
 		const { min = null, max = null } = opts
@@ -286,6 +287,7 @@ export default class Navaid {
 			this.#mousemove = mousemove
 			this.#tap = tap
 		}
+		this.has_listened = true
 
 		this.run()
 	}

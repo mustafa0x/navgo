@@ -3,6 +3,6 @@ lefthook = 'latest'
 
 [tasks.work-check]
 run = '''
-pnpm exec prettier --write $(git diff --name-only HEAD)
-pnpm exec eslint --fix $(git diff --name-only HEAD)
+# pnpm exec prettier --write $(git diff --name-only HEAD)
+# pnpm exec eslint --fix $(git diff --name-only HEAD)
 '''

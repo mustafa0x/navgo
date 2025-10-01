@@ -1,0 +1,63 @@
+/// <reference path="../../index.d.ts" />
+
+// Type-level smoke tests for the public API using the new class-based signature.
+// These are compile-only tests; they should typecheck without emitting JS.
+
+import Navaid, { type RouteTuple, type Options, type Params, type MatchResult } from 'navaid'
+
+// Custom route metadata type for generics flow
+type Meta = {
+	matchers?: Record<string, (value: string | null | undefined) => boolean>
+	loaders?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	beforeNavigate?: (ctx: any) => void | boolean | Promise<void | boolean>
+}
+
+const routes: Array<RouteTuple<Meta>> = [
+	['/', {}],
+	['users/:id', { matchers: { id: Navaid.int({ min: 1 }) } }],
+	[/^\/posts\/(?<slug>[^/]+)$/],
+]
+
+const opts: Options<Meta> = {
+	base: '/app',
+	preloadDelay: 10,
+	preloadOnHover: true,
+	on404(uri) {
+		const u: string = uri
+	},
+	onRoute(uri, matched, params, data) {
+		const u: string = uri
+		const m: RouteTuple<Meta> = matched
+		const p: Params = params
+		const d: unknown = data
+	},
+}
+
+// New class-based constructor
+const router = new Navaid<Meta>(routes, opts)
+
+// API surface checks
+const f1: string | false = router.format('/app/users/1')
+const f2: string | false = router.format('users/1')
+
+const m1: MatchResult<Meta> | null = router.match('/users/42')
+if (m1) {
+	const t: RouteTuple<Meta> = m1.route
+	const p: Params = m1.params
+}
+
+router.listen()
+router.unlisten?.()
+
+// Async-returning methods
+declare function expectsPromise<T>(p: Promise<T>): void
+expectsPromise(router.goto('/users/1'))
+expectsPromise(router.preload('/users/1'))
+
+// Shallow history helpers
+router.pushState('/app/foo', { x: 1 })
+router.replaceState('/app/foo', { x: 1 })
+
+// Static matcher helpers
+const isColor = Navaid.oneOf(['red', 'green'])
+const ok: boolean = isColor('red')
