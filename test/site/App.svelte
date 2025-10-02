@@ -1,27 +1,29 @@
-<nav>
-  <a href="/">Home</a>
-  <a href="/projects">Projects</a>
-  <a href="/contact">Contact</a>
-  <a href="/about">About</a>
-  <a href="/account">Account</a>
-</nav>
+<div class="min-h-screen bg-gray-50 text-gray-900 font-sans">
+  <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-gray-200">
+    <nav class="mx-auto max-w-3xl flex items-center justify-center gap-1 p-3">
+      <a href="/" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Home</a>
+      <a href="/projects" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/projects' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Projects</a>
+      <a href="/contact" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/contact' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Contact</a>
+      <a href="/about" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/about' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">About</a>
+      <a href="/account" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/account' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Account</a>
+    </nav>
+  </header>
 
-<div class="flex min-h-screen flex-col">
-    <main class="flex flex-1 flex-col">
-            {#if Component}
-                <Component params={route.params} />
-            {:else}
-              Home
-            {/if}
-            {#if is404}
-                <div
-                    class="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-2xl font-bold"
-                >
-                    <h1>Page not found</h1>
-                    <a class="text-blue-600" href="/">Home</a>
-                </div>
-            {/if}
-    </main>
+  <main class="mx-auto max-w-3xl p-6">
+    {#if Component}
+      <Component params={route.params} />
+    {:else}
+      <h1 class="text-2xl font-semibold mb-2">Home</h1>
+      <p class="opacity-80">Welcome. Use the navigation to try routes.</p>
+    {/if}
+
+    {#if is_404}
+      <div class="flex flex-col items-center justify-center gap-3 py-16 text-2xl font-bold">
+        <h1>Page not found</h1>
+        <a class="text-blue-700 hover:underline" href="/">Go home</a>
+      </div>
+    {/if}
+  </main>
 </div>
 
 <script module>
@@ -43,13 +45,14 @@ const routes = [
     ['/account', AccountRoute],
 ]
 let Component = $state()
-let is404 = $state(false)
+let is_404 = $state(false)
+const route = $state({path: location.pathname, params: null})
 
 const router = new navaid(routes, {
     base: '/',
     async on404(url) {
         console.log('404', url)
-        is404 = true
+        is_404 = true
         Component = null
         Object.assign(route, {path: url, params: null})
     },
@@ -57,11 +60,12 @@ const router = new navaid(routes, {
     // preloadOnHover: true,
     async onRoute(uri, matched, params, data) {
         console.log('onRoute', {uri, matched, params, data})
+        is_404 = false
         Component = matched[1]?.default || null
+        Object.assign(route, {path: uri, params})
     },
 })
 router.listen()
-const route = $state({path: location.pathname, params: null})
 
 // for (const [path, cmp_] of routes) {
 //     router.on(path, params => {
