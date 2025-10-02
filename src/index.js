@@ -100,7 +100,7 @@ export default class Navaid {
 	 * @param {{ replace?: boolean }} [opts]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri, opts = {}, navType = 'goto', evParam) {
+	async goto(uri, opts = {}, navType = 'goto', evParam = undefined) {
 		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]

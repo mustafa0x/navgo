@@ -69,7 +69,7 @@ import * as ArticleRoute from './routes/Article.svelte'
 
 
 // prettier-ignore
-/** @type {Array<[string, any]>} */
+/** @type {Array<[string|RegExp, any]>} */
 const routes = [
   ['/', null],
   ['/projects', ProjectsRoute],

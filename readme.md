@@ -84,7 +84,7 @@ Create a router instance by defining your routes up front and passing initializa
 
 #### routes
 
-Type: `Array<[pattern: string | RegExp, data?: any]>` · Default: `[]`
+Type: `Array<[pattern: string | RegExp, data?: any]>`
 
 Each route is a tuple whose first item is the pattern and whose optional second item is per‑route metadata and hooks (see “Route Hooks & Metadata”). Navaid returns this tuple back to you unchanged via `onRoute`.
 
