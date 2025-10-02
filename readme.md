@@ -39,6 +39,41 @@ router.run()
 router.listen()
 ```
 
+### Quickstart With Hooks
+
+```js
+import Navaid from 'navaid'
+
+const routes = [
+  [
+    '/admin',
+    {
+      // constrain params with built‑ins or your own
+      matchers: { /* id: Navaid.int({ min: 1 }) */ },
+      // load data before URL changes; result goes to onRoute(..., data)
+      loaders: (params) => fetch('/api/admin').then(r => r.json()),
+      // per‑route guard; cancel synchronously to block nav
+      beforeNavigate(nav) {
+        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
+          nav.cancel()
+        }
+      }
+    }
+  ],
+  ['/', {}]
+]
+
+const router = new Navaid(routes, {
+  base: '/app',
+  onRoute(uri, matched, params, data) {
+    console.log('route:', matched[0], 'params:', params, 'data:', data)
+  },
+  on404(uri) { console.warn('no match for', uri) }
+})
+
+router.listen()
+```
+
 ## API
 
 ### new Navaid(routes?, options?)
