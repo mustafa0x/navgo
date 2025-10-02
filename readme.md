@@ -134,6 +134,38 @@ Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) s
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
 ### preload(uri)
+### beforeNavigate(nav)
+Type: `(nav: BeforeNavigate) => void`
+
+Subscribe to navigation lifecycle events. Called once per navigation attempt with:
+
+- type: `'link' | 'goto' | 'popstate' | 'leave'`
+- from: `{ url: URL, params, route } | null`
+- to: `{ url: URL, params, route } | null`
+- willUnload: `boolean` — `true` when the page is unloading (e.g. external link, reload)
+- event?: `Event` — original browser event when available (click, popstate, beforeunload)
+- cancel(): `void` — cancel the navigation
+
+Behavior:
+
+- link/goto: calling `cancel()` prevents navigation before the URL changes.
+- popstate: calling `cancel()` reverts the history jump using `history.go(...)`.
+- leave: called during `beforeunload`; calling `cancel()` triggers the native “leave site?” prompt.
+
+Example:
+
+```js
+const router = new Navaid(routes, {
+  base: '/app',
+  beforeNavigate(nav) {
+    if (nav.type === 'link' && nav.to?.url.pathname.startsWith('/admin')) {
+      if (!confirm('Enter admin area?')) nav.cancel()
+    }
+  }
+})
+```
+
+### preload(uri)
 Returns: `Promise<unknown>`
 
 Preload a route’s `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.

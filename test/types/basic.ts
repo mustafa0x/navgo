@@ -9,7 +9,6 @@ import Navaid, { type RouteTuple, type Options, type Params, type MatchResult } 
 type Meta = {
 	matchers?: Record<string, (value: string | null | undefined) => boolean>
 	loaders?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
-	beforeNavigate?: (ctx: any) => void | boolean | Promise<void | boolean>
 }
 
 const routes: Array<RouteTuple<Meta>> = [

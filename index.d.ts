@@ -20,15 +20,23 @@ export interface Hooks {
 	matchers?: Record<string, (value: string | null | undefined) => boolean>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
 	loaders?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
-	/** Invoked on navigation. Return `false` or call `ctx.cancel()` to cancel. */
-	beforeNavigate?(ctx: NavigationContext): void | boolean | Promise<void | boolean>
 }
 
-export interface NavigationContext {
-	type: 'link' | 'goto' | string
-	from: { uri: string | null; params: Params }
-	to: { uri: string; params: Params }
+export interface NavigationTarget {
+	url: URL
+	params: Params
+	/** The matched route tuple from your original `routes` list; `null` when unmatched (e.g. external). */
+	route: RouteTuple | null
+}
+
+export interface BeforeNavigate {
+	type: 'link' | 'goto' | 'popstate' | 'leave'
+	from: NavigationTarget | null
+	to: NavigationTarget | null
+	willUnload: boolean
 	cancelled: boolean
+	/** The original browser event that initiated navigation, when available. */
+	event?: Event
 	cancel(): void
 }
 
@@ -79,6 +87,11 @@ export interface Options<T = unknown> {
 	 * @param data Any data returned from `loaders` for this navigation (if any)
 	 */
 	onRoute?(uri: string, matched: RouteTuple<T>, params: Params, data?: unknown): void
+	/**
+	 * Called before a navigation happens. Call `cancel()` to prevent it.
+	 * Modeled after SvelteKit's `beforeNavigate` semantics.
+	 */
+	beforeNavigate?(nav: BeforeNavigate): void
 }
 
 /** Navaid default export: class-based router. */

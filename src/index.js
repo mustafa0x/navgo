@@ -28,6 +28,7 @@ export default class Navaid {
 	#click
 	#mousemove
 	#tap
+	#idx
 	has_listened = false
 
 	static int(opts = {}) {
@@ -62,6 +63,7 @@ export default class Navaid {
 		this.#preloads = new Map()
 		// last matched route info
 		this.#current = { uri: null, route: null, params: {} }
+		this.#idx = 0
 
 		for (const r of routes_) {
 			const patOrRx = r[0]
@@ -95,7 +97,7 @@ export default class Navaid {
 	 * @param {{ replace?: boolean }} [opts]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri, opts = {}) {
+	async goto(uri, opts = {}, navType = 'goto') {
 		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
@@ -108,9 +110,15 @@ export default class Navaid {
 		}
 
 		// run beforeNavigate (leave on current, enter on next)
-		const ctx = this.#makeNavCtx({ to: { uri: path, params: hit.params }, type: 'link' })
-		const cancelled = await this.#runBeforeNav(ctx, this.#current.route, hit.route)
-		if (cancelled) return
+		// Global beforeNavigate semantics (SvelteKit-like)
+		if (this.#opts.beforeNavigate) {
+			const nav = this.#makeBeforeNav({
+				type: navType,
+				to: { url, params: hit.params, route: hit.route },
+			})
+			this.#opts.beforeNavigate(nav)
+			if (nav.cancelled) return
+		}
 
 		// run loaders first, cache data by URL (so run() can pick it up)
 		const data = await this.#loadFor(hit.route, hit.params).catch(e => {
@@ -121,7 +129,13 @@ export default class Navaid {
 		this.#preloads.set(path, { data })
 
 		// change URL (this triggers our wrapped pushstate/replacestate; run() will consume cache)
-		history[(opts.replace ? 'replace' : 'push') + 'State']({}, null, url.href)
+		const nextIdx = opts.replace ? this.#idx : this.#idx + 1
+		const prevState = history.state && typeof history.state == 'object' ? history.state : {}
+		const nextState = Object.assign({}, prevState, {
+			__navaid: Object.assign({}, prevState.__navaid, { idx: nextIdx }),
+		})
+		history[(opts.replace ? 'replace' : 'push') + 'State'](nextState, null, url.href)
+		this.#idx = nextIdx
 	}
 
 	/**
@@ -130,9 +144,12 @@ export default class Navaid {
 	 */
 	pushState(url, state) {
 		const href = new URL(url || location.href, location.href).href
-		const st = Object.assign({}, state, { __navaid: { shallow: true } })
+		const st = Object.assign({}, state, {
+			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx + 1 }),
+		})
 		history.pushState(st, '', href)
 		// note: our event handler will skip run() when it sees shallow=true
+		this.#idx = this.#idx + 1
 	}
 
 	/**
@@ -140,7 +157,9 @@ export default class Navaid {
 	 */
 	replaceState(url, state) {
 		const href = new URL(url || location.href, location.href).href
-		const st = Object.assign({}, state, { __navaid: { shallow: true } })
+		const st = Object.assign({}, state, {
+			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx }),
+		})
 		history.replaceState(st, '', href)
 	}
 
@@ -253,11 +272,33 @@ export default class Navaid {
 
 			if (href[0] != '/' || this.#rgx.test(href)) {
 				e.preventDefault()
-				await this.goto(href, { replace: false })
+				await this.goto(href, { replace: false }, 'link')
 			}
 		}
 
-		addEventListener('popstate', run_wrapped)
+		addEventListener('popstate', ev => {
+			if (this.#opts.beforeNavigate) {
+				const url = new URL(location.href)
+				const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+				const hit = path && this.match(path)
+				const nav = this.#makeBeforeNav({
+					type: 'popstate',
+					to: hit
+						? { url, params: hit.params, route: hit.route }
+						: { url, params: {}, route: null },
+				})
+				this.#opts.beforeNavigate(nav)
+				if (nav.cancelled) {
+					const newIdx = ev.state?.__navaid?.idx
+					if (typeof newIdx === 'number') {
+						const delta = newIdx - this.#idx
+						if (delta) history.go(-delta)
+					}
+					return
+				}
+			}
+			run_wrapped(ev)
+		})
 		addEventListener('replacestate', run_wrapped)
 		addEventListener('pushstate', run_wrapped)
 		addEventListener('click', this.#click)
@@ -286,6 +327,17 @@ export default class Navaid {
 			addEventListener('mousedown', tap)
 			this.#mousemove = mousemove
 			this.#tap = tap
+		}
+		// ensure current history state carries our index
+		const curIdx = history.state?.__navaid?.idx
+		if (typeof curIdx !== 'number') {
+			const prev = history.state && typeof history.state == 'object' ? history.state : {}
+			const nextState = Object.assign({}, prev, {
+				__navaid: Object.assign({}, prev.__navaid, { idx: this.#idx }),
+			})
+			history.replaceState(nextState, '', location.href)
+		} else {
+			this.#idx = curIdx
 		}
 		this.has_listened = true
 
@@ -333,31 +385,25 @@ export default class Navaid {
 		return res
 	}
 
-	#makeNavCtx({ to, type }) {
-		return {
-			type, // 'link' | 'goto' | etc.
-			from: { uri: this.#current.uri, params: this.#current.params ?? {} },
+	#makeBeforeNav({ type, to }) {
+		const from = this.#current?.uri
+			? {
+					url: new URL(this.#current.uri, location.origin),
+					params: this.#current.params || {},
+					route: this.#current.route,
+				}
+			: null
+		const nav = {
+			type, // 'link' | 'goto' | 'popstate' | 'leave'
+			from,
 			to,
+			willUnload: false,
 			cancelled: false,
 			cancel() {
 				this.cancelled = true
 			},
 		}
-	}
-
-	async #runBeforeNav(ctx, fromRouteTuple, toRouteTuple) {
-		const run = async hooks => {
-			if (!hooks?.beforeNavigate) return
-			const out = hooks.beforeNavigate(ctx)
-			const val = out && typeof out.then === 'function' ? await out : out
-			if (val === false || ctx.cancelled) return false
-		}
-		// current route 'leave'
-		await run(this.#hooksFor(fromRouteTuple))
-		if (ctx.cancelled) return true
-		// next route 'enter'
-		await run(this.#hooksFor(toRouteTuple))
-		return ctx.cancelled
+		return nav
 	}
 
 	// Wrap native history to dispatch custom events we can inspect (and carry state/url).

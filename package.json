@@ -16,13 +16,14 @@
 	"engines": {
 		"node": ">= 20"
 	},
-	"scripts": {
-		"build": "node builder",
-		"pretest": "npm run build",
-		"test": "uvu test/uvu",
-		"test:e2e": "playwright test",
-		"test:all": "npm run build && uvu test && playwright test"
-	},
+  "scripts": {
+    "build": "node builder",
+    "pretest": "npm run build",
+    "test": "uvu test/uvu",
+    "test:e2e": "playwright test",
+    "test:all": "npm run build && uvu test && playwright test",
+    "types": "pnpm --package=typescript@5.6.3 dlx tsc -p test/types"
+  },
 	"files": [
 		"*.d.ts",
 		"dist"

@@ -1,26 +1,22 @@
 import { suite } from 'uvu'
 import * as assert from 'uvu/assert'
-import navaid from '../../src/index.js'
+import Navaid from '../../src/index.js'
 
 global.history = {}
 
 const API = suite('exports')
 
 API('exports', () => {
-	assert.type(navaid, 'function', 'exports a function')
+	assert.type(Navaid, 'function', 'exports a class (constructor)')
 })
 
 API('new Navaid()', () => {
-	let foo = new navaid()
+	let foo = new Navaid()
 	assert.type(foo.format, 'function')
 	assert.type(foo.listen, 'function')
 })
 
-API('Navaid()', () => {
-	let bar = navaid()
-	assert.type(bar.format, 'function')
-	assert.type(bar.listen, 'function')
-})
+// removed old function-call API test
 
 API.run()
 
@@ -29,7 +25,7 @@ API.run()
 const format = suite('$.format')
 
 format('empty base', () => {
-	let foo = navaid()
+	let foo = new Navaid()
 	assert.is(foo.format(''), '')
 	assert.is(foo.format('/'), '/')
 	assert.is(foo.format('foo/bar/'), '/foo/bar')
@@ -39,7 +35,7 @@ format('empty base', () => {
 })
 
 format('base with leading slash', () => {
-	let bar = navaid([], { base: '/hello' })
+	let bar = new Navaid([], { base: '/hello' })
 	assert.is(bar.format('/hello/world'), '/world')
 	assert.is(bar.format('hello/world'), '/world')
 	assert.is(bar.format('/world'), false)
@@ -50,7 +46,7 @@ format('base with leading slash', () => {
 })
 
 format('base without leading slash', () => {
-	let baz = new navaid([], { base: 'hello' })
+	let baz = new Navaid([], { base: 'hello' })
 	assert.is(baz.format('/hello/world'), '/world')
 	assert.is(baz.format('hello/world'), '/world')
 	assert.is(baz.format('/hello.123'), false)
@@ -62,7 +58,7 @@ format('base without leading slash', () => {
 })
 
 format('base with trailing slash', () => {
-	let bat = navaid([], { base: 'hello/' })
+	let bat = new Navaid([], { base: 'hello/' })
 	assert.is(bat.format('/hello/world'), '/world')
 	assert.is(bat.format('hello/world'), '/world')
 	assert.is(bat.format('/hello.123'), false)
@@ -74,7 +70,7 @@ format('base with trailing slash', () => {
 })
 
 format('base with leading and trailing slash', () => {
-	let quz = new navaid([], { base: '/hello/' })
+	let quz = new Navaid([], { base: '/hello/' })
 	assert.is(quz.format('/hello/world'), '/world')
 	assert.is(quz.format('hello/world'), '/world')
 	assert.is(quz.format('/hello.123'), false)
@@ -86,7 +82,7 @@ format('base with leading and trailing slash', () => {
 })
 
 format('base = "/" only', () => {
-	let qut = navaid([], { base: '/' })
+	let qut = new Navaid([], { base: '/' })
 	assert.is(qut.format('/hello/world'), '/hello/world')
 	assert.is(qut.format('hello/world'), '/hello/world')
 	assert.is(qut.format('/world'), '/world')
@@ -94,7 +90,7 @@ format('base = "/" only', () => {
 })
 
 format('base with nested path', () => {
-	let qar = new navaid([], { base: '/hello/there' })
+	let qar = new Navaid([], { base: '/hello/there' })
 	assert.is(qar.format('hello/there/world/'), '/world')
 	assert.is(qar.format('/hello/there/world/'), '/world')
 	assert.is(qar.format('/hello/there/world?foo=bar'), '/world?foo=bar')
@@ -111,13 +107,13 @@ format.run()
 const match = suite('$.match')
 
 match('returns null when no route matches', () => {
-	const ctx = navaid([['/'], ['users/:name']])
+	const ctx = new Navaid([['/'], ['users/:name']])
 	const res = ctx.match('/nope')
 	assert.is(res, null)
 })
 
 match('string patterns with named params', () => {
-	const ctx = navaid([['users/:name'], ['/foo/books/:genre/:title?']])
+	const ctx = new Navaid([['users/:name'], ['/foo/books/:genre/:title?']])
 
 	let r1 = ctx.match('/users/Bob')
 	assert.ok(r1, 'matched users route')
@@ -131,7 +127,7 @@ match('string patterns with named params', () => {
 })
 
 match('wildcard captures as "*"', () => {
-	const ctx = navaid([['foo/bar/*']])
+	const ctx = new Navaid([['foo/bar/*']])
 	let res = ctx.match('/foo/bar/baz/bat')
 	assert.ok(res, 'matched wildcard route')
 	assert.is(res.route[0], 'foo/bar/*')
@@ -139,7 +135,7 @@ match('wildcard captures as "*"', () => {
 })
 
 match('RegExp routes with named groups', () => {
-	const ctx = navaid([[/^\/articles\/(?<year>[0-9]{4})$/]])
+	const ctx = new Navaid([[/^\/articles\/(?<year>[0-9]{4})$/]])
 	let res = ctx.match('/articles/2024')
 	assert.ok(res, 'matched regex route')
 	assert.ok(res.route[0] instanceof RegExp, 'route source is RegExp')
@@ -147,7 +143,7 @@ match('RegExp routes with named groups', () => {
 })
 
 match('RegExp alternation without named groups', () => {
-	const ctx = navaid([[/about\/(contact|team)/]])
+	const ctx = new Navaid([[/about\/(contact|team)/]])
 	let a = ctx.match('/about/contact')
 	let b = ctx.match('/about/team')
 	assert.ok(a && b, 'matched both alternation variants')
@@ -155,7 +151,7 @@ match('RegExp alternation without named groups', () => {
 })
 
 match('use with base via $.format', () => {
-	const ctx = navaid([['/'], ['users/:name']], { base: '/hello/world' })
+	const ctx = new Navaid([['/'], ['users/:name']], { base: '/hello/world' })
 
 	let formatted = ctx.format('/hello/world/users/Ada')
 	assert.is(formatted, '/users/Ada')
@@ -165,3 +161,87 @@ match('use with base via $.format', () => {
 })
 
 match.run()
+
+const nav = suite('beforeNavigate')
+
+function setupStubs(base = '/') {
+	const listeners = new Map()
+	global.addEventListener = (type, fn) => {
+		const arr = listeners.get(type) || []
+		arr.push(fn)
+		listeners.set(type, arr)
+	}
+	global.removeEventListener = (type, fn) => {
+		const arr = listeners.get(type) || []
+		const i = arr.indexOf(fn)
+		if (i >= 0) arr.splice(i, 1)
+		listeners.set(type, arr)
+	}
+	global.dispatchEvent = ev => {
+		const arr = listeners.get(ev.type) || []
+		for (const fn of arr) fn(ev)
+		return true
+	}
+	global.Event = class Event {
+		constructor(type) {
+			this.type = type
+		}
+	}
+
+	let href = `http://example.com${base}`
+	global.location = new URL(href)
+
+	const hist = {
+		state: null,
+		pushState(state, _title, url) {
+			this.state = state
+			href = url
+		},
+		replaceState(state, _title, url) {
+			this.state = state
+			href = url
+		},
+		go(n) {
+			hist._went = n
+		},
+		_went: 0,
+	}
+	global.history = hist
+	return hist
+}
+
+nav('goto; cancel prevents push', async () => {
+	const hist = setupStubs('/app/')
+	let called = 0
+	const r = new Navaid([['/test']], {
+		base: '/app',
+		beforeNavigate(nav) {
+			called++
+			if (nav.type === 'goto') nav.cancel()
+		},
+	})
+	await r.goto('/app/test')
+	assert.is(called > 0, true, 'beforeNavigate called')
+	assert.is(hist.state, null, 'history not changed when cancelled')
+})
+
+nav('popstate; cancel reverts with history.go', async () => {
+	const hist = setupStubs('/app/')
+	const r = new Navaid([], {
+		base: '/app',
+		beforeNavigate(nav) {
+			if (nav.type === 'popstate') nav.cancel()
+		},
+	})
+	r.listen()
+	// simulate an in-app shallow push to idx 1
+	r.pushState('/app/foo')
+	// pop back to idx 0
+	const ev = new Event('popstate')
+	ev.state = { __navaid: { idx: 0 } }
+	global.dispatchEvent(ev)
+	assert.is(hist._went, 1, 'history.go called to revert popstate')
+	r.unlisten()
+})
+
+nav.run()
