@@ -188,6 +188,9 @@ function setupStubs(base = '/') {
 		}
 	}
 
+	// stub RAF for jsdom-less environment
+	global.requestAnimationFrame = fn => setTimeout(fn, 0)
+
 	let href = `http://example.com${base}`
 	global.location = new URL(href)
 

@@ -30,6 +30,7 @@ export default class Navaid {
 	#tap
 	#idx
 	#beforeunload
+	#scroll
 	has_listened = false
 
 	static int(opts = {}) {
@@ -65,6 +66,7 @@ export default class Navaid {
 		// last matched route info
 		this.#current = { uri: null, route: null, params: {} }
 		this.#idx = 0
+		this.#scroll = new Map()
 
 		for (const r of routes_) {
 			const patOrRx = r[0]
@@ -122,6 +124,9 @@ export default class Navaid {
 			if (nav.cancelled) return
 		}
 
+		// save current scroll before changing the entry
+		this.#saveScroll()
+
 		// run loaders first, cache data by URL (so run() can pick it up)
 		const data = await this.#loadFor(hit.route, hit.params).catch(e => {
 			// If loaders fail, we still navigate to keep behavior predictable.
@@ -146,6 +151,8 @@ export default class Navaid {
 	 */
 	pushState(url, state) {
 		const href = new URL(url || location.href, location.href).href
+		// save scroll for current index before shallow change
+		this.#saveScroll()
 		const st = Object.assign({}, state, {
 			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx + 1 }),
 		})
@@ -159,6 +166,8 @@ export default class Navaid {
 	 */
 	replaceState(url, state) {
 		const href = new URL(url || location.href, location.href).href
+		// save scroll for current index before shallow change
+		this.#saveScroll()
 		const st = Object.assign({}, state, {
 			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx }),
 		})
@@ -242,9 +251,12 @@ export default class Navaid {
 			if (pre) this.#preloads.delete(uri)
 
 			this.#opts.onRoute?.(uri, hit.route, hit.params, loaded) // back-compat + data
+			// apply scroll after route commit
+			this.#applyScroll(e)
 			return
 		}
 		this.#opts.on404?.(uri)
+		this.#applyScroll(e)
 	}
 
 	//
@@ -253,6 +265,11 @@ export default class Navaid {
 	listen() {
 		this.#wrap('push')
 		this.#wrap('replace')
+
+		// manual scroll restoration — we manage it
+		if (typeof history.scrollRestoration === 'string') {
+			history.scrollRestoration = 'manual'
+		}
 
 		const run_wrapped = ev => {
 			this.run(ev)
@@ -428,6 +445,64 @@ export default class Navaid {
 			},
 		}
 		return nav
+	}
+
+	#saveScroll() {
+		const x =
+			typeof scrollX === 'number'
+				? scrollX
+				: typeof window !== 'undefined'
+					? window.scrollX || 0
+					: 0
+		const y =
+			typeof scrollY === 'number'
+				? scrollY
+				: typeof window !== 'undefined'
+					? window.scrollY || 0
+					: 0
+		this.#scroll.set(this.#idx, { x, y })
+	}
+
+	#applyScroll(e) {
+		const hash = location.hash
+		const evtype = e?.type
+		requestAnimationFrame(() => {
+			// 1) If there is a hash, prefer anchor scroll
+			if (hash && this.#scrollToHash(hash)) return
+			// 2) On back/forward, restore saved position if available
+			if (evtype === 'popstate') {
+				const idx = e?.state?.__navaid?.idx
+				const pos = typeof idx === 'number' ? this.#scroll.get(idx) : null
+				if (pos) {
+					if (typeof scrollTo === 'function') scrollTo(pos.x, pos.y)
+					return
+				}
+			}
+			// 3) Default: scroll to top for new navigations
+			if (typeof scrollTo === 'function') scrollTo(0, 0)
+		})
+	}
+
+	#scrollToHash(hash) {
+		if (!hash || hash === '#') return false
+		let id = ''
+		try {
+			id = decodeURIComponent(hash.slice(1))
+		} catch {
+			id = hash.slice(1)
+		}
+		let el = null
+		try {
+			const sel = CSS?.escape ? CSS.escape(id) : id
+			el = document.getElementById(id) || document.querySelector(`[name="${sel}"]`)
+		} catch {
+			el = document.getElementById(id)
+		}
+		if (el) {
+			if (typeof el.scrollIntoView === 'function') el.scrollIntoView()
+			return true
+		}
+		return false
 	}
 
 	// Wrap native history to dispatch custom events we can inspect (and carry state/url).
