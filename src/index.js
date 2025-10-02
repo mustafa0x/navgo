@@ -29,6 +29,7 @@ export default class Navaid {
 	#mousemove
 	#tap
 	#idx
+	#beforeunload
 	has_listened = false
 
 	static int(opts = {}) {
@@ -97,7 +98,7 @@ export default class Navaid {
 	 * @param {{ replace?: boolean }} [opts]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri, opts = {}, navType = 'goto') {
+	async goto(uri, opts = {}, navType = 'goto', evParam) {
 		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
@@ -115,6 +116,7 @@ export default class Navaid {
 			const nav = this.#makeBeforeNav({
 				type: navType,
 				to: { url, params: hit.params, route: hit.route },
+				event: evParam,
 			})
 			this.#opts.beforeNavigate(nav)
 			if (nav.cancelled) return
@@ -272,7 +274,7 @@ export default class Navaid {
 
 			if (href[0] != '/' || this.#rgx.test(href)) {
 				e.preventDefault()
-				await this.goto(href, { replace: false }, 'link')
+				await this.goto(href, { replace: false }, 'link', e)
 			}
 		}
 
@@ -286,6 +288,7 @@ export default class Navaid {
 					to: hit
 						? { url, params: hit.params, route: hit.route }
 						: { url, params: {}, route: null },
+					event: ev,
 				})
 				this.#opts.beforeNavigate(nav)
 				if (nav.cancelled) {
@@ -339,6 +342,25 @@ export default class Navaid {
 		} else {
 			this.#idx = curIdx
 		}
+		// beforeunload -> 'leave' event
+		if (this.#opts.beforeNavigate) {
+			const beforeunload = ev => {
+				const nav = this.#makeBeforeNav({
+					type: 'leave',
+					to: null,
+					willUnload: true,
+					event: ev,
+				})
+				this.#opts.beforeNavigate(nav)
+				if (nav.cancelled) {
+					ev.preventDefault()
+					ev.returnValue = ''
+				}
+			}
+			addEventListener('beforeunload', beforeunload)
+			this.#beforeunload = beforeunload
+		}
+
 		this.has_listened = true
 
 		this.run()
@@ -355,6 +377,7 @@ export default class Navaid {
 			removeEventListener('touchstart', this.#tap, { passive: true })
 			removeEventListener('mousedown', this.#tap)
 		}
+		if (this.#beforeunload) removeEventListener('beforeunload', this.#beforeunload)
 	}
 
 	//
@@ -385,7 +408,7 @@ export default class Navaid {
 		return res
 	}
 
-	#makeBeforeNav({ type, to }) {
+	#makeBeforeNav({ type, to, willUnload = false, event = undefined }) {
 		const from = this.#current?.uri
 			? {
 					url: new URL(this.#current.uri, location.origin),
@@ -397,8 +420,9 @@ export default class Navaid {
 			type, // 'link' | 'goto' | 'popstate' | 'leave'
 			from,
 			to,
-			willUnload: false,
+			willUnload,
 			cancelled: false,
+			event,
 			cancel() {
 				this.cancelled = true
 			},
