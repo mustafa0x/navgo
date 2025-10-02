@@ -6,6 +6,9 @@
       <a href="/contact" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/contact' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Contact</a>
       <a href="/about" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/about' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">About</a>
       <a href="/account" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/account' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Account</a>
+      <a href="/users/42" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path.startsWith('/users') ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">User 42</a>
+      <a href="/files/foo/bar" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path.startsWith('/files') ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Files</a>
+      <a href="/articles/2024" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path.startsWith('/articles') ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Articles</a>
     </nav>
   </header>
 
@@ -24,31 +27,64 @@
       </div>
     {/if}
   </main>
+
+  <aside class="mx-auto max-w-3xl p-6 pt-0">
+    <div class="grid gap-4 sm:grid-cols-2">
+      <section class="rounded-md border border-gray-200 bg-white p-4">
+        <h2 class="mb-2 font-semibold">Programmatic</h2>
+        <div class="flex flex-wrap gap-2">
+          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/projects')}>goto('/projects')</button>
+          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/users/7', { replace: true })}>goto('/users/7', {{'{'}}replace: true{{'}'}})</button>
+          <button class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700" onclick={() => router.preload('/projects')}>preload('/projects')</button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="rounded bg-gray-700 px-3 py-1.5 text-white hover:bg-black" onclick={() => router.pushState(`/?tab=info#top`)}>pushState('?tab=info')</button>
+          <button class="rounded bg-gray-700 px-3 py-1.5 text-white hover:bg-black" onclick={() => router.replaceState(`/?tab=overview`)}>replaceState('?tab=overview')</button>
+        </div>
+      </section>
+
+      <section class="rounded-md border border-gray-200 bg-white p-4">
+        <h2 class="mb-2 font-semibold">Debug</h2>
+        <div class="text-sm text-gray-700 space-y-1">
+          <div><span class="font-mono">path</span>: {route.path}</div>
+          <div><span class="font-mono">params</span>: <span class="font-mono">{JSON.stringify(route.params)}</span></div>
+          <div><span class="font-mono">hash</span>: {location.hash}</div>
+        </div>
+        <p class="mt-3 text-xs opacity-70">Hover the nav links to see preloading; click anchors on About to test scroll/anchors.</p>
+      </section>
+    </div>
+  </aside>
 </div>
 
 <script module>
-import navaid from 'navaid'
+import Navaid from 'navaid'
 
 import * as ProjectsRoute from './routes/Projects.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
 import * as AccountRoute from './routes/Account.svelte'
+import * as UsersRoute from './routes/Users.svelte'
+import * as FilesRoute from './routes/Files.svelte'
+import * as ArticleRoute from './routes/Article.svelte'
 
 
 // prettier-ignore
 /** @type {Array<[string, any]>} */
 const routes = [
-    ['/', null],
-    ['/projects', ProjectsRoute],
-    ['/contact', ContactRoute],
-    ['/about', AboutRoute],
-    ['/account', AccountRoute],
+  ['/', null],
+  ['/projects', ProjectsRoute],
+  ['/contact', ContactRoute],
+  ['/about', AboutRoute],
+  ['/account', AccountRoute],
+  ['/users/:id', UsersRoute],
+  ['/files/*', FilesRoute],
+  [/^\/articles\/(?<year>[0-9]{4})$/, ArticleRoute],
 ]
 let Component = $state()
 let is_404 = $state(false)
 const route = $state({path: location.pathname, params: null})
 
-const router = new navaid(routes, {
+const router = new Navaid(routes, {
     base: '/',
     async on404(url) {
         console.log('404', url)
