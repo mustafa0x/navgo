@@ -10,7 +10,7 @@
 <script module>
   // opt-in guard flag; toggled via component state and reflected on window for demo simplicity
   export function beforeNavigate(nav) {
-    if (!window.__account_protect) return
+    if (!window['__account_protect']) return
     if (nav.type === 'link' || nav.type === 'goto' || nav.type === 'popstate') {
       if (!confirm('You have unsaved changes. Leave this page?')) nav.cancel()
     }
@@ -19,5 +19,5 @@
 
 <script>
   let protect = $state(false)
-  $effect(() => { window.__account_protect = protect })
+  $effect(() => { window['__account_protect'] = protect })
 </script>

@@ -34,7 +34,7 @@
         <h2 class="mb-2 font-semibold">Programmatic</h2>
         <div class="flex flex-wrap gap-2">
           <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/projects')}>goto('/projects')</button>
-          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/users/7', { replace: true })}>goto('/users/7', {{'{'}}replace: true{{'}'}})</button>
+          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/users/7', { replace: true })}>goto('/users/7', &#123; replace: true &#125;)</button>
           <button class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700" onclick={() => router.preload('/projects')}>preload('/projects')</button>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
