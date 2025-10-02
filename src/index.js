@@ -112,15 +112,14 @@ export default class Navaid {
 			return
 		}
 
-		// run beforeNavigate (leave on current, enter on next)
-		// Global beforeNavigate semantics (SvelteKit-like)
-		if (this.#opts.beforeNavigate) {
+		// Route-level beforeNavigate on current (leave) and next (enter)
+		{
 			const nav = this.#makeBeforeNav({
 				type: navType,
 				to: { url, params: hit.params, route: hit.route },
 				event: evParam,
 			})
-			this.#opts.beforeNavigate(nav)
+			this.#runBeforeNav(nav, this.#current.route, hit.route)
 			if (nav.cancelled) return
 		}
 
@@ -296,26 +295,24 @@ export default class Navaid {
 		}
 
 		addEventListener('popstate', ev => {
-			if (this.#opts.beforeNavigate) {
-				const url = new URL(location.href)
-				const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
-				const hit = path && this.match(path)
-				const nav = this.#makeBeforeNav({
-					type: 'popstate',
-					to: hit
-						? { url, params: hit.params, route: hit.route }
-						: { url, params: {}, route: null },
-					event: ev,
-				})
-				this.#opts.beforeNavigate(nav)
-				if (nav.cancelled) {
-					const newIdx = ev.state?.__navaid?.idx
-					if (typeof newIdx === 'number') {
-						const delta = newIdx - this.#idx
-						if (delta) history.go(-delta)
-					}
-					return
+			const url = new URL(location.href)
+			const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+			const hit = path && this.match(path)
+			const nav = this.#makeBeforeNav({
+				type: 'popstate',
+				to: hit
+					? { url, params: hit.params, route: hit.route }
+					: { url, params: {}, route: null },
+				event: ev,
+			})
+			this.#runBeforeNav(nav, this.#current.route, hit?.route || null)
+			if (nav.cancelled) {
+				const newIdx = ev.state?.__navaid?.idx
+				if (typeof newIdx === 'number') {
+					const delta = newIdx - this.#idx
+					if (delta) history.go(-delta)
 				}
+				return
 			}
 			run_wrapped(ev)
 		})
@@ -359,24 +356,22 @@ export default class Navaid {
 		} else {
 			this.#idx = curIdx
 		}
-		// beforeunload -> 'leave' event
-		if (this.#opts.beforeNavigate) {
-			const beforeunload = ev => {
-				const nav = this.#makeBeforeNav({
-					type: 'leave',
-					to: null,
-					willUnload: true,
-					event: ev,
-				})
-				this.#opts.beforeNavigate(nav)
-				if (nav.cancelled) {
-					ev.preventDefault()
-					ev.returnValue = ''
-				}
+		// beforeunload -> 'leave' event (route-level)
+		const beforeunload = ev => {
+			const nav = this.#makeBeforeNav({
+				type: 'leave',
+				to: null,
+				willUnload: true,
+				event: ev,
+			})
+			this.#callRouteBefore(nav, this.#current.route)
+			if (nav.cancelled) {
+				ev.preventDefault()
+				ev.returnValue = ''
 			}
-			addEventListener('beforeunload', beforeunload)
-			this.#beforeunload = beforeunload
 		}
+		addEventListener('beforeunload', beforeunload)
+		this.#beforeunload = beforeunload
 
 		this.has_listened = true
 
@@ -445,6 +440,21 @@ export default class Navaid {
 			},
 		}
 		return nav
+	}
+
+	#runBeforeNav(nav, fromRouteTuple, toRouteTuple) {
+		this.#callRouteBefore(nav, fromRouteTuple)
+		if (nav.cancelled) return true
+		this.#callRouteBefore(nav, toRouteTuple)
+		return nav.cancelled
+	}
+
+	#callRouteBefore(nav, routeTuple) {
+		const hooks = this.#hooksFor(routeTuple)
+		const fn = hooks?.beforeNavigate
+		if (!fn) return
+		// Synchronous cancellation only; ignore returned promises
+		fn(nav)
 	}
 
 	#saveScroll() {

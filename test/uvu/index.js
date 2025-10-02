@@ -216,13 +216,22 @@ function setupStubs(base = '/') {
 nav('goto; cancel prevents push', async () => {
 	const hist = setupStubs('/app/')
 	let called = 0
-	const r = new Navaid([['/test']], {
-		base: '/app',
-		beforeNavigate(nav) {
-			called++
-			if (nav.type === 'goto') nav.cancel()
+	const r = new Navaid(
+		[
+			[
+				'/test',
+				{
+					beforeNavigate(nav) {
+						called++
+						if (nav.type === 'goto') nav.cancel()
+					},
+				},
+			],
+		],
+		{
+			base: '/app',
 		},
-	})
+	)
 	await r.goto('/app/test')
 	assert.is(called > 0, true, 'beforeNavigate called')
 	assert.is(hist.state, null, 'history not changed when cancelled')
@@ -230,12 +239,22 @@ nav('goto; cancel prevents push', async () => {
 
 nav('popstate; cancel reverts with history.go', async () => {
 	const hist = setupStubs('/app/')
-	const r = new Navaid([], {
-		base: '/app',
-		beforeNavigate(nav) {
-			if (nav.type === 'popstate') nav.cancel()
+	const r = new Navaid(
+		[
+			[
+				'/',
+				{
+					beforeNavigate(nav) {
+						if (nav.type === 'popstate') nav.cancel()
+					},
+				},
+			],
+			['/foo'],
+		],
+		{
+			base: '/app',
 		},
-	})
+	)
 	r.listen()
 	// simulate an in-app shallow push to idx 1
 	r.pushState('/app/foo')

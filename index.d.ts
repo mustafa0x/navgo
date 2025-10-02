@@ -20,6 +20,8 @@ export interface Hooks {
 	matchers?: Record<string, (value: string | null | undefined) => boolean>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
 	loaders?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Route-level navigation guard (called on both 'from' and 'to' routes). Call `cancel()` to prevent navigation. */
+	beforeNavigate?(nav: BeforeNavigate): void | boolean | Promise<void | boolean>
 }
 
 export interface NavigationTarget {
@@ -87,11 +89,6 @@ export interface Options<T = unknown> {
 	 * @param data Any data returned from `loaders` for this navigation (if any)
 	 */
 	onRoute?(uri: string, matched: RouteTuple<T>, params: Params, data?: unknown): void
-	/**
-	 * Called before a navigation happens. Call `cancel()` to prevent it.
-	 * Modeled after SvelteKit's `beforeNavigate` semantics.
-	 */
-	beforeNavigate?(nav: BeforeNavigate): void
 }
 
 /** Navaid default export: class-based router. */
