@@ -80,14 +80,13 @@ router.listen()
 
 Returns: `Router`
 
-Create a router instance by defining your routes up front and passing callbacks via `options`.
+Create a router instance by defining your routes up front and passing initialization `options`.
 
 #### routes
 
-Type: `Array<[pattern: string, data?: any]>`<br>
-Default: `[]`
+Type: `Array<[pattern: string | RegExp, data?: any]>` · Default: `[]`
 
-Each route is a tuple whose first item is the pattern string and whose second (optional) item is any data you want to associate (often a lazy import). The `data` is not used by Navaid itself; it’s returned to you via `onRoute`.
+Each route is a tuple whose first item is the pattern and whose optional second item is per‑route metadata and hooks (see “Route Hooks & Metadata”). Navaid returns this tuple back to you unchanged via `onRoute`.
 
 Supported pattern types:
 
@@ -98,23 +97,51 @@ Supported pattern types:
 - wildcards (`/users/*`)
 - RegExp patterns (with optional named groups)
 
-> Notes:
->
-> - Pattern strings are matched relative to the [`base`](#base) path.
-> - RegExp patterns are used as-is. If you use named capture groups (e.g. `(?<year>\d{4})`), those keys will appear in the `params` object. Unnamed groups are ignored.
+Notes:
 
-#### options
+- Pattern strings are matched relative to the [`base`](#base) path.
+- RegExp patterns are used as‑is. Named capture groups (e.g. `(?<year>\d{4})`) become `params` keys; unnamed groups are ignored.
 
-Type: `Object`
+### Options (initialization)
 
-- base: `String` (default `'/'`)
-    - The base pathname for your application. Navaid will accept it with or without leading/trailing slashes.
+- base: `string` (default `'/'`)
+  - App base pathname. With or without leading/trailing slashes is accepted.
+- preloadDelay: `number` (default `20`)
+  - Delay in ms before hover preloading triggers.
+- preloadOnHover: `boolean` (default `true`)
+  - When `false`, disables hover/touch preloading.
 - on404: `(uri: string) => void`
-    - Called when no route matches. Receives the formatted `uri`; see [`format`](#formaturi).
-- onRoute: `(uri: string, matched: [string, any?], params: Record<string, string|null>, data?: unknown) => void`
-    - Called when a route matches. `matched` is the original tuple from your `routes` list, `params` contains extracted values (including `'*'` for wildcards), and `data` is any value returned by your route's `loaders` (if defined). Optional parameters that aren’t present are `null`.
+  - Called when no route matches the formatted URI (only URIs under `base`).
+- onRoute: `(uri: string, matched: [string|RegExp, any?], params: Record<string,string|null|undefined>, data?: unknown) => void`
+  - Called after a successful match in `run()`. `data` is any value from `loaders`.
 
-> Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`. This allows multiple Navaid instances to coexist on the same page with different bases.
+Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
+
+### Route Hooks & Metadata (per‑route)
+
+Attach these to a route’s `data` object:
+
+- matchers?: `Record<string, (value: string|null|undefined) => boolean>`
+  - Validate params (e.g., `id: Navaid.int({ min: 1 })`). Any `false` result skips the route.
+- loaders?(params): `unknown | Promise | Array<unknown|Promise>`
+  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `onRoute`.
+- beforeNavigate?(nav): `(nav: BeforeNavigate) => void`
+  - Guard called once per navigation attempt on the current route (leave) and then the next route (enter). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto‑reverts the history jump.
+
+The `BeforeNavigate` object includes:
+
+```
+{
+  type: 'link' | 'goto' | 'popstate' | 'leave',
+  from: { url, params, route } | null,
+  to:   { url, params, route } | null,
+  willUnload: boolean,
+  event?: Event,
+  cancel(): void
+}
+```
+
+### Methods
 
 ### format(uri)
 
