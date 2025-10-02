@@ -141,38 +141,57 @@ Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) s
 
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
-### preload(uri)
+### Route Hooks
 
-### beforeNavigate(nav)
+Each route’s optional `data` object may include hooks recognized by the router:
 
-Type: `(nav: BeforeNavigate) => void`
+- `matchers`: constrain params for this pattern (skip match when a validator returns `false`).
+- `loaders(params)`: load data before navigation (value | Promise | Promise[]).
+- `beforeNavigate(nav)`: per-route navigation guard; call `nav.cancel()` to prevent navigation.
 
-Subscribe to navigation lifecycle events. Called once per navigation attempt with:
+beforeNavigate signature (abbrev):
 
-- type: `'link' | 'goto' | 'popstate' | 'leave'`
-- from: `{ url: URL, params, route } | null`
-- to: `{ url: URL, params, route } | null`
-- willUnload: `boolean` — `true` when the page is unloading (e.g. external link, reload)
-- event?: `Event` — original browser event when available (click, popstate, beforeunload)
-- cancel(): `void` — cancel the navigation
+```
+({
+  type: 'link' | 'goto' | 'popstate' | 'leave',
+  from: { url, params, route } | null,
+  to:   { url, params, route } | null,
+  willUnload: boolean,
+  event?: Event,
+  cancel(): void
+})
+```
 
-Behavior:
+Order & cancellation:
 
-- link/goto: calling `cancel()` prevents navigation before the URL changes.
-- popstate: calling `cancel()` reverts the history jump using `history.go(...)`.
-- leave: called during `beforeunload`; calling `cancel()` triggers the native “leave site?” prompt.
+- Router calls `beforeNavigate` on the current route (leave), then on the next route (enter).
+- Call `nav.cancel()` synchronously to cancel.
+  - link/goto: cancels before the URL changes.
+  - popstate: cancels and auto-reverts the history jump via `history.go(...)`.
+  - leave: only the current route participates; cancel triggers the browser’s native confirmation prompt.
+- Note: `goto()` fires hooks only when the target path matches a route; unmatched navigations fall through to `on404`.
 
 Example:
 
 ```js
-const router = new Navaid(routes, {
-	base: '/app',
-	beforeNavigate(nav) {
-		if (nav.type === 'link' && nav.to?.url.pathname.startsWith('/admin')) {
-			if (!confirm('Enter admin area?')) nav.cancel()
-		}
-	},
-})
+const routes = [
+  [
+    '/admin',
+    {
+      matchers: { /* ... */ },
+      loaders: (params) => fetch('/api/admin/stats').then(r => r.json()),
+      beforeNavigate(nav) {
+        if (nav.type === 'link' || nav.type === 'goto') {
+          if (!confirm('Enter admin area?')) nav.cancel()
+        }
+      }
+    }
+  ],
+  ['/', {}]
+]
+
+const router = new Navaid(routes, { base: '/app' })
+router.listen()
 ```
 
 ### preload(uri)
@@ -212,7 +231,7 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 - `popstate` — browser back/forward.
 - `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 
-Navaid passes the type to `beforeNavigate(nav)`.
+The router passes the type to your route-level `beforeNavigate(nav)` hook.
 
 ### Matching and Params
 
