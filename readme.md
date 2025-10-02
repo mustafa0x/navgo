@@ -201,6 +201,108 @@ Detach all listeners initialized by [`listen()`](#listen).
 
 > **Note:** This method is only available after `listen()` has been invoked.
 
+## Semantics
+
+This section explains, in detail, how navigation is processed: matching, hooks, data loading, shallow routing, and history behavior. The design takes cues from SvelteKit’s client router (see: kit/documentation/docs/30-advanced/10-advanced-routing.md and kit/documentation/docs/30-advanced/67-shallow-routing.md).
+
+### Navigation Types
+
+- `link` — user clicked an in-app `<a>` that matches `base`.
+- `goto` — programmatic navigation via `router.goto(...)`.
+- `popstate` — browser back/forward.
+- `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
+
+Navaid passes the type to `beforeNavigate(nav)`.
+
+### Matching and Params
+
+- A route is a `[pattern, data?]` tuple.
+- `pattern` can be a string (compiled with `regexparam`) or a `RegExp`.
+- Named params from string patterns populate `params` with `string` values; optional params that do not appear are `null`.
+- Wildcards use the `'*'` key.
+- RegExp named groups also populate `params`; omitted groups can be `undefined`.
+- If `data.matchers` is present, each `params[k]` is validated; any `false` result skips that route.
+
+### Data Flow
+
+For `link` and `goto` navigations that match a route:
+
+```
+[click <a>] or [router.goto()]
+    → beforeNavigate({ type })
+        → cancelled? yes → stop
+        → no → run loaders(params)  // may be value, Promise, or Promise[]
+            → cache data by formatted path
+            → history.push/replaceState(new URL)
+            → run()
+                → consume cached data (if any)
+                → onRoute(uri, matched, params, data)
+```
+
+- If a loader throws/rejects, navigation continues and `onRoute(..., { __error })` is delivered so UI can render an error state.
+- For `popstate`, no loaders run; `run()` executes using the current URL and any cache entry for that path.
+
+### Hook: beforeNavigate(nav)
+
+Signature (abbrev):
+
+```
+beforeNavigate({
+  type: 'link' | 'goto' | 'popstate' | 'leave',
+  from: { url, params, route } | null,
+  to:   { url, params, route } | null,
+  willUnload: boolean,
+  event?: Event,
+  cancel(): void
+})
+```
+
+Semantics:
+
+- Fires once per navigation attempt.
+- `cancel()` prevents navigation.
+  - For `link`/`goto`, it stops before URL change.
+  - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
+  - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
+
+Note: currently `beforeNavigate` for `goto()` runs only when the path matches a route; unmatched `goto` falls through to `on404` without the hook.
+
+### Shallow Routing
+
+Use `pushState(url, state?)` or `replaceState(url, state?)` to update the URL/state without re-running routing logic.
+
+```
+pushState/replaceState (shallow)
+    → dispatch 'pushstate'/'replacestate'
+        → run(e)
+            → e.state.__navaid.shallow === true → skip processing
+```
+
+This lets you reflect UI state in the URL while deferring route transitions until a future navigation.
+
+### History Index & popstate Cancellation
+
+To enable `popstate` cancellation, Navaid stores a monotonic `idx` in `history.state.__navaid.idx`. On `popstate`, a cancelled navigation computes the delta between the target and current `idx` and calls `history.go(-delta)` to return to the prior entry.
+
+### Method-by-Method Semantics
+
+- `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
+- `match(uri)` — returns `{ route, params } | null` using string/RegExp patterns and validators.
+- `goto(uri, { replace? })` — fires `beforeNavigate('goto')`, runs loaders, then pushes/replaces and calls `onRoute` via `run()`.
+- `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
+- `unlisten()` — removes listeners added by `listen()`.
+- `run(e?)` — processes the current `location.pathname`. Skips work when `e?.state?.__navaid?.shallow` is true.
+- `preload(uri)` — pre-executes a route’s `loaders` for a path and caches the result; concurrent calls are deduped.
+- `pushState(url?, state?)` — shallow push that updates the URL and `history.state` without route processing.
+- `replaceState(url?, state?)` — shallow replace that updates the URL and `history.state` without route processing.
+
+### Built-in Matchers
+
+- `Navaid.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
+- `Navaid.oneOf(iterable)` — `true` iff the value is in the provided set.
+
+Attach validators via a route tuple’s `data.matchers` to constrain matches.
+
 ## License
 
 MIT © [Luke Edwards](https://lukeed.com)
