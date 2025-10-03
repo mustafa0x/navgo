@@ -17,7 +17,6 @@
 		"node": ">= 20"
 	},
 	"scripts": {
-		"build": "node builder",
 		"pretest": "npm run build",
 		"test": "uvu test/uvu",
 		"test:e2e": "playwright test",
@@ -33,9 +32,6 @@
 		"client-side",
 		"router"
 	],
-	"dependencies": {
-		"regexparam": "^3.0.0"
-	},
 	"devDependencies": {
 		"@eslint/js": "^9.36.0",
 		"@playwright/test": "^1.55.1",
@@ -46,12 +42,10 @@
 		"eslint": "^9.36.0",
 		"eslint-plugin-svelte": "^3.12.4",
 		"globals": "^16.4.0",
-		"gzip-size": "7.0.0",
 		"jiti": "^2.6.0",
 		"lightningcss": "^1.30.2",
-		"mk-dirs": "3.0.0",
 		"prettier": "^3.6.2",
-		"pretty-bytes": "7.1.0",
+		"regexparam": "^3.0.0",
 		"svelte": "^5.39.7",
 		"tailwindcss": "^4.1.13",
 		"terser": "5.44.0",
