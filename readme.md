@@ -201,6 +201,13 @@ Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) s
 
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
+In addition, `listen()` wires preloading listeners (enabled by default) so route data can be fetched early:
+
+- `mousemove` (hover) — after a short delay, hovering an in-app link triggers `preload(href)`.
+- `touchstart` and `mousedown` (tap) — tapping or pressing on an in-app link also triggers `preload(href)`.
+
+Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preloadDelay` and `preloadOnHover` options.
+
 ### Route Hooks
 
 Each route’s optional `data` object may include hooks recognized by the router:
