@@ -101,20 +101,20 @@ export default class Navaid {
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		if (!path) return
 
-		const hit = this.match(path)
+		const hit = await this.match(path)
 		if (!hit) {
 			this.#opts.on404?.(path)
 			return
 		}
 
-		// Route-level beforeNavigate on current (leave) and next (enter)
+		// Route-level beforeNavigate on current (leave)
 		{
 			const nav = this.#makeBeforeNav({
 				type: navType,
 				to: { url, params: hit.params, route: hit.route },
 				event: evParam,
 			})
-			this.#callRouteBefore(nav, this.#current.route)
+			this.#current.route[1].beforeNavigate?.(nav)
 			if (nav.cancelled) return
 		}
 
@@ -122,7 +122,7 @@ export default class Navaid {
 		this.#saveScroll()
 
 		// run loaders first, cache data by URL (so run() can pick it up)
-		const data = await this.#loadFor(hit.route, hit.params).catch(e => {
+		const data = await this.#run_loaders(hit.route, hit.params).catch(e => {
 			// If loaders fail, we still navigate to keep behavior predictable.
 			// Apps can show errors from the returned data.
 			return { __error: e }
@@ -172,12 +172,12 @@ export default class Navaid {
 	 * Manually preload loaders for a URL (e.g. to prime cache).
 	 * Dedupes concurrent preloads for the same path.
 	 */
-	preload(uri) {
+	async preload(uri) {
 		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		if (!path) return Promise.resolve()
-		const hit = this.match(path)
+		const hit = await this.match(path)
 		if (!hit) return Promise.resolve()
 
 		if (this.#preloads.has(path)) {
@@ -186,7 +186,7 @@ export default class Navaid {
 		}
 
 		const entry = {}
-		entry.promise = this.#loadFor(hit.route, hit.params).then(data => {
+		entry.promise = this.#run_loaders(hit.route, hit.params).then(data => {
 			entry.data = data
 			delete entry.promise
 			return data
@@ -198,7 +198,7 @@ export default class Navaid {
 	//
 	// Core matching
 	//
-	match(uri) {
+	async match(uri) {
 		let arr, obj
 		for (let i = 0; i < this.#routes.length; i++) {
 			obj = this.#routes[i]
@@ -213,8 +213,10 @@ export default class Navaid {
 				}
 
 				// optional per-route param validators (e.g. enforce int ranges etc.)
-				const hooks = this.#hooksFor(obj.data)
-				const ok = this.#check_param_validators(hooks?.param_validators, params)
+				const hooks = obj.data?.[1]
+				const ok =
+					this.#check_param_validators(hooks?.param_validators, params) &&
+					(await hooks.validate?.(params))
 				if (!ok) continue
 
 				return { route: obj.data || null, params }
@@ -226,7 +228,7 @@ export default class Navaid {
 	//
 	// Router driver
 	//
-	run(e) {
+	async run(e) {
 		// skip when this was a shallow push/replace
 		if (e?.state?.__navaid?.shallow) return
 
@@ -234,7 +236,7 @@ export default class Navaid {
 		if (!uri) return
 		uri = uri.match(/[^?#]*/)[0]
 
-		const hit = this.match(uri)
+		const hit = await this.match(uri)
 
 		if (hit) {
 			this.#current = { uri, route: hit.route, params: hit.params }
@@ -289,26 +291,30 @@ export default class Navaid {
 			}
 		}
 
-		addEventListener('popstate', ev => {
+		addEventListener('popstate', async ev => {
+			// Save scroll of the entry we're leaving so it can be restored on forward
+			this.#saveScroll()
 			const url = new URL(location.href)
 			const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
-			const hit = path && this.match(path)
+			// Construct nav with unknown target first; call leave-guard synchronously
 			const nav = this.#makeBeforeNav({
 				type: 'popstate',
-				to: hit
-					? { url, params: hit.params, route: hit.route }
-					: { url, params: {}, route: null },
+				to: null,
 				event: ev,
 			})
-			this.#callRouteBefore(nav, this.#current.route)
+			this.#current.route[1].beforeNavigate?.(nav)
 			if (nav.cancelled) {
-				const newIdx = ev.state?.__navaid?.idx
-				if (typeof newIdx === 'number') {
-					const delta = newIdx - this.#idx
+				const new_idx = ev.state?.__navaid?.idx
+				if (typeof new_idx === 'number') {
+					const delta = new_idx - this.#idx
 					if (delta) history.go(-delta)
 				}
 				return
 			}
+			const hit = path && (await this.match(path))
+			nav.to = hit
+				? { url, params: hit.params, route: hit.route }
+				: { url, params: {}, route: null }
 			run_wrapped(ev)
 		})
 		addEventListener('replacestate', run_wrapped)
@@ -359,7 +365,7 @@ export default class Navaid {
 				willUnload: true,
 				event: ev,
 			})
-			this.#callRouteBefore(nav, this.#current.route)
+			this.#current.route[1].beforeNavigate?.(nav)
 			if (nav.cancelled) {
 				ev.preventDefault()
 				ev.returnValue = ''
@@ -388,11 +394,6 @@ export default class Navaid {
 	//
 	// Internals
 	//
-	#hooksFor(routeTuple) {
-		// routes[i] === [pattern, hooks?]
-		return routeTuple?.[1] || null
-	}
-
 	#check_param_validators(param_validators, params) {
 		if (!param_validators) return true
 		for (const k in param_validators) {
@@ -403,14 +404,9 @@ export default class Navaid {
 		return true
 	}
 
-	async #loadFor(routeTuple, params) {
-		const hooks = this.#hooksFor(routeTuple)
-		if (!hooks?.loaders) return undefined
-		let res = hooks.loaders(params)
-		if (Array.isArray(res)) {
-			return Promise.all(res)
-		}
-		return res
+	async #run_loaders(route, params) {
+		const ret_val = route[1].loaders?.(params)
+		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
 	#makeBeforeNav({ type, to, willUnload = false, event = undefined }) {
@@ -435,14 +431,6 @@ export default class Navaid {
 		return nav
 	}
 
-	#callRouteBefore(nav, routeTuple) {
-		const hooks = this.#hooksFor(routeTuple)
-		const fn = hooks?.beforeNavigate
-		if (!fn) return
-		// Synchronous cancellation only; ignore returned promises
-		fn(nav)
-	}
-
 	#saveScroll() {
 		const x =
 			typeof scrollX === 'number'
@@ -463,20 +451,20 @@ export default class Navaid {
 		const hash = location.hash
 		const evtype = e?.type
 		requestAnimationFrame(() => {
-			// 1) If there is a hash, prefer anchor scroll
-			if (hash && this.#scrollToHash(hash)) return
-			// 2) On back/forward, restore saved position if available
+			// 1) On back/forward, restore saved position if available
 			if (evtype === 'popstate') {
 				const idx = e?.state?.__navaid?.idx
-				const fallback_idx = typeof idx === 'number' ? idx : this.#idx - 1
-				const pos = this.#scroll.get(fallback_idx)
+				const targetIdx = typeof idx === 'number' ? idx : this.#idx - 1
+				// Update our current index to match the target of popstate
+				this.#idx = targetIdx
+				const pos = this.#scroll.get(targetIdx)
 				if (pos) {
 					if (typeof scrollTo === 'function') scrollTo(pos.x, pos.y)
-					if (typeof idx === 'number') this.#idx = idx
-					else this.#idx = fallback_idx
 					return
 				}
 			}
+			// 2) If there is a hash, prefer anchor scroll
+			if (hash && this.#scrollToHash(hash)) return
 			// 3) Default: scroll to top for new navigations
 			if (typeof scrollTo === 'function') scrollTo(0, 0)
 		})

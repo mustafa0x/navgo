@@ -106,68 +106,97 @@ format.run()
 
 const match = suite('$.match')
 
-match('returns null when no route matches', () => {
-	const ctx = new Navaid([['/'], ['users/:name']])
-	const res = ctx.match('/nope')
+match('returns null when no route matches', async () => {
+	const ctx = new Navaid([
+		['/', {}],
+		['users/:name', {}],
+	])
+	const res = await ctx.match('/nope')
 	assert.is(res, null)
 })
 
-match('string patterns with named params', () => {
-	const ctx = new Navaid([['users/:name'], ['/foo/books/:genre/:title?']])
+match('string patterns with named params', async () => {
+	const ctx = new Navaid([
+		['users/:name', {}],
+		['/foo/books/:genre/:title?', {}],
+	])
 
-	let r1 = ctx.match('/users/Bob')
+	let r1 = await ctx.match('/users/Bob')
 	assert.ok(r1, 'matched users route')
 	assert.is(r1.route[0], 'users/:name')
 	assert.equal(r1.params, { name: 'Bob' })
 
-	let r2 = ctx.match('/foo/books/kids/narnia')
+	let r2 = await ctx.match('/foo/books/kids/narnia')
 	assert.ok(r2, 'matched books route')
 	assert.is(r2.route[0], '/foo/books/:genre/:title?')
 	assert.equal(r2.params, { genre: 'kids', title: 'narnia' })
 })
 
-match('custom validate hook skips a route when false', () => {
+match('custom validate hook skips a route when false', async () => {
 	const r1 = ['users/:id', { validate: p => Number(p.id) > 5 }]
 	const r2 = ['users/:id', {}]
 	const ctx = new Navaid([r1, r2])
-	const res = ctx.match('/users/3')
+	const res = await ctx.match('/users/3')
 	if (!res) throw new Error('expected a match')
 	// should skip r1 because validate returned false, and match r2
 	if (res.route !== r2) throw new Error('validate(false) did not skip the route')
 })
 
-match('wildcard captures as "*"', () => {
-	const ctx = new Navaid([['foo/bar/*']])
-	let res = ctx.match('/foo/bar/baz/bat')
+match('wildcard captures as "*"', async () => {
+	const ctx = new Navaid([['foo/bar/*', {}]])
+	let res = await ctx.match('/foo/bar/baz/bat')
 	assert.ok(res, 'matched wildcard route')
 	assert.is(res.route[0], 'foo/bar/*')
 	assert.equal(res.params, { ['*']: 'baz/bat' })
 })
 
-match('RegExp routes with named groups', () => {
-	const ctx = new Navaid([[/^\/articles\/(?<year>[0-9]{4})$/]])
-	let res = ctx.match('/articles/2024')
+match('RegExp routes with named groups', async () => {
+	const ctx = new Navaid([[/^\/articles\/(?<year>[0-9]{4})$/, {}]])
+	let res = await ctx.match('/articles/2024')
 	assert.ok(res, 'matched regex route')
 	assert.ok(res.route[0] instanceof RegExp, 'route source is RegExp')
 	assert.equal(res.params, { year: '2024' })
 })
 
-match('RegExp alternation without named groups', () => {
-	const ctx = new Navaid([[/about\/(contact|team)/]])
-	let a = ctx.match('/about/contact')
-	let b = ctx.match('/about/team')
+match('RegExp alternation without named groups', async () => {
+	const ctx = new Navaid([[/about\/(contact|team)/, {}]])
+	let a = await ctx.match('/about/contact')
+	let b = await ctx.match('/about/team')
 	assert.ok(a && b, 'matched both alternation variants')
 	assert.is(Object.keys(a.params).length, 0, 'no params for unnamed groups')
 })
 
-match('use with base via $.format', () => {
-	const ctx = new Navaid([['/'], ['users/:name']], { base: '/hello/world' })
+match('use with base via $.format', async () => {
+	const ctx = new Navaid(
+		[
+			['/', {}],
+			['users/:name', {}],
+		],
+		{ base: '/hello/world' },
+	)
 
 	let formatted = ctx.format('/hello/world/users/Ada')
 	assert.is(formatted, '/users/Ada')
-	let res = ctx.match(formatted)
+	let res = await ctx.match(formatted)
 	assert.ok(res, 'matched after formatting')
 	assert.equal(res.params, { name: 'Ada' })
+})
+
+match('async validate is awaited', async () => {
+	const r1 = [
+		'users/:id',
+		{
+			validate: async p => {
+				await new Promise(r => setTimeout(r, 5))
+				return Number(p.id) > 5
+			},
+		},
+	]
+	const r2 = ['users/:id', {}]
+	const ctx = new Navaid([r1, r2])
+	const res = await ctx.match('/users/3')
+	if (!res) throw new Error('expected a match')
+	if (res.route !== r2) throw new Error('async validate(false) did not skip the route')
 })
 
 match.run()
@@ -229,49 +258,58 @@ nav('goto; cancel prevents push', async () => {
 	const r = new Navaid(
 		[
 			[
-				'/test',
+				'/',
 				{
+					// leave-only semantics: cancel when leaving '/'
 					beforeNavigate(nav) {
 						called++
 						if (nav.type === 'goto') nav.cancel()
 					},
 				},
 			],
-		],
-		{
-			base: '/app',
-		},
-	)
-	await r.goto('/app/test')
-	assert.is(called > 0, true, 'beforeNavigate called')
-	assert.is(hist.state, null, 'history not changed when cancelled')
-})
-
-nav('popstate; cancel reverts with history.go', async () => {
-	const hist = setupStubs('/app/')
-	const r = new Navaid(
-		[
-			[
-				'/',
-				{
-					beforeNavigate(nav) {
-						if (nav.type === 'popstate') nav.cancel()
-					},
-				},
-			],
-			['/foo'],
+			['/test', {}],
 		],
 		{
 			base: '/app',
 		},
 	)
 	r.listen()
+	await r.run()
+	await r.goto('/app/test')
+	assert.is(called > 0, true, 'beforeNavigate called')
+	assert.is(hist.state?.__navaid?.idx, 0, 'history index unchanged when cancelled')
+})
+
+nav('popstate; cancel reverts with history.go', async () => {
+	const hist = setupStubs('/app/')
+	let called = 0
+	const r = new Navaid(
+		[
+			[
+				'/',
+				{
+					beforeNavigate(nav) {
+						called++
+						if (nav.type === 'popstate') nav.cancel()
+					},
+				},
+			],
+			['/foo', {}],
+		],
+		{
+			base: '/app',
+		},
+	)
+	r.listen()
+	// ensure initial run completes so current route is set
+	await r.run()
 	// simulate an in-app shallow push to idx 1
 	r.pushState('/app/foo')
 	// pop back to idx 0
 	const ev = new Event('popstate')
 	ev.state = { __navaid: { idx: 0 } }
 	global.dispatchEvent(ev)
+	assert.is(called > 0, true, 'beforeNavigate called on popstate')
 	assert.is(hist._went, 1, 'history.go called to revert popstate')
 	r.unlisten()
 })

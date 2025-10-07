@@ -14,7 +14,7 @@ type Meta = {
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
 	['users/:id', { param_validators: { id: Navaid.validators.int({ min: 1 }) } }],
-	[/^\/posts\/(?<slug>[^/]+)$/],
+	[/^\/posts\/(?<slug>[^/]+)$/, {}],
 ]
 
 const opts: Options<Meta> = {
@@ -39,11 +39,7 @@ const router = new Navaid<Meta>(routes, opts)
 const f1: string | false = router.format('/app/users/1')
 const f2: string | false = router.format('users/1')
 
-const m1: MatchResult<Meta> | null = router.match('/users/42')
-if (m1) {
-	const t: RouteTuple<Meta> = m1.route
-	const p: Params = m1.params
-}
+const m1p: Promise<MatchResult<Meta> | null> = router.match('/users/42')
 
 router.listen()
 router.unlisten?.()

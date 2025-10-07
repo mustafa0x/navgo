@@ -45,7 +45,7 @@ export interface BeforeNavigate {
 }
 
 /** A route tuple: [pattern, data?]. The `data` may include {@link Hooks}. */
-export type RouteTuple<T = unknown> = [pattern: string | RegExp, data?: T]
+export type RouteTuple<T = unknown> = [pattern: string | RegExp, data: T]
 
 /** Result of calling `router.match(uri)` */
 export interface MatchResult<T = unknown> {

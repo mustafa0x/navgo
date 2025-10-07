@@ -11,11 +11,11 @@ import Navaid from 'navaid'
 
 // Define routes up front (strings or RegExp)
 const routes = [
-	['/' /* optional data */],
-	['/users/:username'],
-	['/books/*'],
-	[/articles\/(?<year>[0-9]{4})/],
-	[/privacy|privacy-policy/],
+	['/', {}],
+	['/users/:username', {}],
+	['/books/*', {}],
+	[/articles\/(?<year>[0-9]{4})/, {}],
+	[/privacy|privacy-policy/, {}],
   [
     '/admin',
     {
@@ -62,9 +62,9 @@ Returns: `Router`
 
 #### `routes`
 
-Type: `Array<[pattern: string | RegExp, data?: any]>`
+Type: `Array<[pattern: string | RegExp, data: any]>`
 
-Each route is a tuple whose first item is the pattern and whose optional second item is hooks (see “Route Hooks”). Navaid returns this tuple back to you unchanged via `onRoute`.
+Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). Pass `{}` when no hooks are needed. Navaid returns this tuple back to you unchanged via `onRoute`.
 
 Supported pattern types:
 
@@ -121,12 +121,11 @@ The `BeforeNavigate` object contains:
 
 #### Order & cancellation:
 
-- Router calls `beforeNavigate` on the current route (leave) only.
+- Router calls `beforeNavigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
   - For `link`/`goto`, it stops before URL change.
   - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
   - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
-- Note: `goto()` fires hooks only when the target path matches a route; unmatched navigations fall through to `on404`.
 
 Example:
 
