@@ -114,7 +114,7 @@ export default class Navaid {
 				to: { url, params: hit.params, route: hit.route },
 				event: evParam,
 			})
-			this.#current.route[1].beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeNavigate?.(nav)
 			if (nav.cancelled) return
 		}
 
@@ -212,7 +212,7 @@ export default class Navaid {
 					for (const k in arr.groups) params[k] = arr.groups[k]
 				}
 
-				// optional per-route param validators (e.g. enforce int ranges etc.)
+				// per-route validators and optional async validate()
 				const hooks = obj.data?.[1]
 				const ok =
 					this.#check_param_validators(hooks?.param_validators, params) &&
@@ -302,7 +302,7 @@ export default class Navaid {
 				to: null,
 				event: ev,
 			})
-			this.#current.route[1].beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeNavigate?.(nav)
 			if (nav.cancelled) {
 				const new_idx = ev.state?.__navaid?.idx
 				if (typeof new_idx === 'number') {
@@ -365,7 +365,7 @@ export default class Navaid {
 				willUnload: true,
 				event: ev,
 			})
-			this.#current.route[1].beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeNavigate?.(nav)
 			if (nav.cancelled) {
 				ev.preventDefault()
 				ev.returnValue = ''
