@@ -126,6 +126,16 @@ match('string patterns with named params', () => {
 	assert.equal(r2.params, { genre: 'kids', title: 'narnia' })
 })
 
+match('custom validate hook skips a route when false', () => {
+	const r1 = ['users/:id', { validate: p => Number(p.id) > 5 }]
+	const r2 = ['users/:id', {}]
+	const ctx = new Navaid([r1, r2])
+	const res = ctx.match('/users/3')
+	if (!res) throw new Error('expected a match')
+	// should skip r1 because validate returned false, and match r2
+	if (res.route !== r2) throw new Error('validate(false) did not skip the route')
+})
+
 match('wildcard captures as "*"', () => {
 	const ctx = new Navaid([['foo/bar/*']])
 	let res = ctx.match('/foo/bar/baz/bat')

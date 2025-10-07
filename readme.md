@@ -20,7 +20,7 @@ const routes = [
     '/admin',
     {
       // constrain params with built-ins or your own
-      param_validators: { /* id: Navaid.int({ min: 1 }) */ },
+      param_validators: { /* id: Navaid.validators.int({ min: 1 }) */ },
       // load data before URL changes; result goes to onRoute(..., data)
       loaders: (params) => fetch('/api/admin').then(r => r.json()),
       // per-route guard; cancel synchronously to block nav
@@ -98,11 +98,13 @@ Important: Navaid only processes routes that match your `base` path. `on404` wil
 ### Route Hooks
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
-  - Validate params (e.g., `id: Navaid.int({ min: 1 })`). Any `false` result skips the route.
+  - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
   - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `onRoute`.
+- validate?(params): `boolean | Promise<boolean>`
+  - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - beforeNavigate?(nav): `(nav: BeforeNavigate) => void`
-  - Guard called once per navigation attempt on the current route (leave) and then the next route (enter). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
+  - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
 The `BeforeNavigate` object contains:
 
@@ -119,7 +121,7 @@ The `BeforeNavigate` object contains:
 
 #### Order & cancellation:
 
-- Router calls `beforeNavigate` on the current route (leave), then on the next route (enter).
+- Router calls `beforeNavigate` on the current route (leave) only.
 - Call `nav.cancel()` synchronously to cancel.
   - For `link`/`goto`, it stops before URL change.
   - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
@@ -191,7 +193,7 @@ Type: `Object`
 
 ### run()
 
-Returns: `void`
+Returns: `Promise<void>`
 
 Processes the current `location.pathname`. This does not modify browser history nor emit History API events.
 
@@ -218,9 +220,10 @@ Preloading applies only to in-app anchors that match the configured [`base`](#ba
 
 ### preload(uri)
 
-Returns: `Promise<unknown>`
+Returns: `Promise<unknown | void>`
 
 Preload a route's `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
+Note: Resolves to `undefined` when the matched route has no `loaders`.
 
 ### pushState(url?, state?)
 
@@ -260,6 +263,7 @@ The router passes the type to your route-level `beforeNavigate(nav)` hook.
 - Wildcards use the `'*'` key.
 - RegExp named groups also populate `params`; omitted groups can be `undefined`.
 - If `data.param_validators` is present, each `params[k]` is validated; any `false` result skips that route.
+- If `data.validate(params)` returns or resolves to `false`, the route is also skipped.
 
 ### Data Flow
 
@@ -318,7 +322,7 @@ scroll flow
 ### Method-by-Method Semantics
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
-- `match(uri)` — returns `{ route, params } | null` using string/RegExp patterns and validators.
+- `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
 - `goto(uri, { replace? })` — fires `beforeNavigate('goto')`, saves scroll, runs loaders, then pushes/replaces and calls `onRoute` via `run()`.
 - `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `unlisten()` — removes listeners added by `listen()`.
@@ -329,7 +333,7 @@ scroll flow
 
 ### Built-in Validators
 
-- `Navaid.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
-- `Navaid.oneOf(iterable)` — `true` iff the value is in the provided set.
+- `Navaid.validators.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
+- `Navaid.validators.oneOf(iterable)` — `true` iff the value is in the provided set.
 
 Attach validators via a route tuple's `data.param_validators` to constrain matches.

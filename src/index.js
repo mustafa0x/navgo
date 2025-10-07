@@ -32,25 +32,21 @@ export default class Navaid {
 	#beforeunload
 	#scroll
 
-	static int(opts = {}) {
-		const { min = null, max = null } = opts
-		return v => {
-			if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
-			const n = Number(v)
-			if (min != null && n < min) return false
-			if (max != null && n > max) return false
-			return true
-		}
-	}
-
-	static oneOf(values) {
-		const set = new Set(values)
-		return v => set.has(v)
-	}
-
 	static validators = {
-		int: (...args) => this.int(...args),
-		oneOf: (...args) => this.oneOf(...args),
+		int(opts = {}) {
+			const { min = null, max = null } = opts
+			return v => {
+				if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
+				const n = Number(v)
+				if (min != null && n < min) return false
+				if (max != null && n > max) return false
+				return true
+			}
+		},
+		oneOf(values) {
+			const set = new Set(values)
+			return v => set.has(v)
+		},
 	}
 
 	constructor(routes_ = [], opts = {}) {
@@ -118,7 +114,7 @@ export default class Navaid {
 				to: { url, params: hit.params, route: hit.route },
 				event: evParam,
 			})
-			this.#runBeforeNav(nav, this.#current.route, hit.route)
+			this.#callRouteBefore(nav, this.#current.route)
 			if (nav.cancelled) return
 		}
 
@@ -304,7 +300,7 @@ export default class Navaid {
 					: { url, params: {}, route: null },
 				event: ev,
 			})
-			this.#runBeforeNav(nav, this.#current.route, hit?.route || null)
+			this.#callRouteBefore(nav, this.#current.route)
 			if (nav.cancelled) {
 				const newIdx = ev.state?.__navaid?.idx
 				if (typeof newIdx === 'number') {
@@ -437,13 +433,6 @@ export default class Navaid {
 			},
 		}
 		return nav
-	}
-
-	#runBeforeNav(nav, fromRouteTuple, toRouteTuple) {
-		this.#callRouteBefore(nav, fromRouteTuple)
-		if (nav.cancelled) return true
-		this.#callRouteBefore(nav, toRouteTuple)
-		return nav.cancelled
 	}
 
 	#callRouteBefore(nav, routeTuple) {

@@ -20,8 +20,10 @@ export interface Hooks {
 	param_validators?: Record<string, (value: string | null | undefined) => boolean>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
 	loaders?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
-	/** Route-level navigation guard (called on both 'from' and 'to' routes). Call `cancel()` to prevent navigation. */
-	beforeNavigate?(nav: BeforeNavigate): void | boolean | Promise<void | boolean>
+	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
+	validate?(params: Params): boolean | Promise<boolean>
+	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
+	beforeNavigate?(nav: BeforeNavigate): void
 }
 
 export interface NavigationTarget {
@@ -62,10 +64,10 @@ export interface Router<T = unknown> {
 	replaceState(url?: string | URL, state?: any): void
 	/** Manually preload loaders for a URL (deduped). */
 	preload(uri: string): Promise<unknown | void>
-	/** Try to match `uri`; returns route tuple and params or `null`. */
-	match(uri: string): MatchResult<T> | null
+	/** Try to match `uri`; returns route tuple and params or `null`. Supports async `validate`. */
+	match(uri: string): Promise<MatchResult<T> | null>
 	/** Process the current location (or call within listeners). */
-	run(e?: any): void
+	run(e?: any): Promise<void>
 	/** Attach history + click listeners and immediately process current location. */
 	listen(): void
 	/** Remove listeners installed by `listen()`. */
@@ -99,13 +101,11 @@ export default class Navaid<T = unknown> implements Router<T> {
 	pushState(url?: string | URL, state?: any): void
 	replaceState(url?: string | URL, state?: any): void
 	preload(uri: string): Promise<unknown | void>
-	match(uri: string): MatchResult<T> | null
-	run(e?: any): void
+	match(uri: string): Promise<MatchResult<T> | null>
+	run(e?: any): Promise<void>
 	listen(): void
 	unlisten(): void
 
-	/** Built-in validator helpers. */
-	static int: ValidatorHelpers['int']
-	static oneOf: ValidatorHelpers['oneOf']
-	static param_validators: ValidatorHelpers
+	/** Built-in validator helpers (namespaced). */
+	static validators: ValidatorHelpers
 }

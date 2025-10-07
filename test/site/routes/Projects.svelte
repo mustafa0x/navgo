@@ -2,7 +2,7 @@
 <p class="opacity-80">A placeholder list of projects.</p>
 
 <script module>
-export function loaders(params) {
+export function loaders() {
   return fetch(`https://dummyjson.com/products`).then(r => r.json())
 }
 </script>

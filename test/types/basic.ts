@@ -13,7 +13,7 @@ type Meta = {
 
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
-	['users/:id', { param_validators: { id: Navaid.int({ min: 1 }) } }],
+	['users/:id', { param_validators: { id: Navaid.validators.int({ min: 1 }) } }],
 	[/^\/posts\/(?<slug>[^/]+)$/],
 ]
 
@@ -58,5 +58,5 @@ router.pushState('/app/foo', { x: 1 })
 router.replaceState('/app/foo', { x: 1 })
 
 // Static validator helpers
-const isColor = Navaid.oneOf(['red', 'green'])
+const isColor = Navaid.validators.oneOf(['red', 'green'])
 const ok: boolean = isColor('red')
