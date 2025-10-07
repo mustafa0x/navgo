@@ -5,8 +5,8 @@
  */
 export type Params = Record<string, string | null | undefined>
 
-/** Built-in matcher helpers shape. */
-export interface MatcherHelpers {
+/** Built-in validator helpers shape. */
+export interface ValidatorHelpers {
 	int(opts?: {
 		min?: number | null
 		max?: number | null
@@ -16,8 +16,8 @@ export interface MatcherHelpers {
 
 /** Optional per-route hooks recognized by Navaid. */
 export interface Hooks {
-	/** Validate params with custom matchers. Return `false` to skip a match. */
-	matchers?: Record<string, (value: string | null | undefined) => boolean>
+	/** Validate params with custom per-param validators. Return `false` to skip a match. */
+	param_validators?: Record<string, (value: string | null | undefined) => boolean>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
 	loaders?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 	/** Route-level navigation guard (called on both 'from' and 'to' routes). Call `cancel()` to prevent navigation. */
@@ -104,8 +104,8 @@ export default class Navaid<T = unknown> implements Router<T> {
 	listen(): void
 	unlisten(): void
 
-	/** Built-in matcher helpers. */
-	static int: MatcherHelpers['int']
-	static oneOf: MatcherHelpers['oneOf']
-	static matchers: MatcherHelpers
+	/** Built-in validator helpers. */
+	static int: ValidatorHelpers['int']
+	static oneOf: ValidatorHelpers['oneOf']
+	static param_validators: ValidatorHelpers
 }

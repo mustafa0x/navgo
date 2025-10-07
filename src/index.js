@@ -4,13 +4,13 @@ import { parse } from 'regexparam'
  * Navaid with routing ergonomics:
  * - load-then-navigate (goto)
  * - per-route hooks: loaders(params): Promise|Promise[]; beforeNavigate(ctx)
- * - param matchers via hooks.matchers
+ * - param validators via hooks.param_validators
  * - shallow routing: pushState/replaceState that don't trigger route handlers
  * - preload on hover/tap
  *
  * Route shape examples:
  *   ['/users/:id', {
- *     matchers: { id: Navaid.matchers.int({ min: 1, max: 114 }) },
+ *     param_validators: { id: Navaid.validators.int({ min: 1, max: 114 }) },
  *     loaders(params) { return fetch(`/api/users/${params.id}`).then(r => r.json()) },
  *     beforeNavigate({ from, to, type, cancel }) {
  *       // return false or call cancel() to stop navigation
@@ -31,7 +31,6 @@ export default class Navaid {
 	#idx
 	#beforeunload
 	#scroll
-	has_listened = false
 
 	static int(opts = {}) {
 		const { min = null, max = null } = opts
@@ -49,7 +48,7 @@ export default class Navaid {
 		return v => set.has(v)
 	}
 
-	static matchers = {
+	static validators = {
 		int: (...args) => this.int(...args),
 		oneOf: (...args) => this.oneOf(...args),
 	}
@@ -217,9 +216,9 @@ export default class Navaid {
 					for (const k in arr.groups) params[k] = arr.groups[k]
 				}
 
-				// optional per-route matchers (e.g. enforce int ranges etc.)
+				// optional per-route param validators (e.g. enforce int ranges etc.)
 				const hooks = this.#hooksFor(obj.data)
-				const ok = this.#checkMatchers(hooks?.matchers, params)
+				const ok = this.#check_param_validators(hooks?.param_validators, params)
 				if (!ok) continue
 
 				return { route: obj.data || null, params }
@@ -357,7 +356,7 @@ export default class Navaid {
 			this.#idx = curIdx
 		}
 		// beforeunload -> 'leave' event (route-level)
-		const beforeunload = ev => {
+		function beforeunload(ev) {
 			const nav = this.#makeBeforeNav({
 				type: 'leave',
 				to: null,
@@ -372,8 +371,6 @@ export default class Navaid {
 		}
 		addEventListener('beforeunload', beforeunload)
 		this.#beforeunload = beforeunload
-
-		this.has_listened = true
 
 		this.run()
 	}
@@ -400,10 +397,10 @@ export default class Navaid {
 		return routeTuple?.[1] || null
 	}
 
-	#checkMatchers(matchers, params) {
-		if (!matchers) return true
-		for (const k in matchers) {
-			const fn = matchers[k]
+	#check_param_validators(param_validators, params) {
+		if (!param_validators) return true
+		for (const k in param_validators) {
+			const fn = param_validators[k]
 			if (typeof fn !== 'function') continue
 			if (!fn(params[k])) return false
 		}
@@ -482,9 +479,12 @@ export default class Navaid {
 			// 2) On back/forward, restore saved position if available
 			if (evtype === 'popstate') {
 				const idx = e?.state?.__navaid?.idx
-				const pos = typeof idx === 'number' ? this.#scroll.get(idx) : null
+				const fallback_idx = typeof idx === 'number' ? idx : this.#idx - 1
+				const pos = this.#scroll.get(fallback_idx)
 				if (pos) {
 					if (typeof scrollTo === 'function') scrollTo(pos.x, pos.y)
+					if (typeof idx === 'number') this.#idx = idx
+					else this.#idx = fallback_idx
 					return
 				}
 			}

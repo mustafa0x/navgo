@@ -7,13 +7,13 @@ import Navaid, { type RouteTuple, type Options, type Params, type MatchResult } 
 
 // Custom route metadata type for generics flow
 type Meta = {
-	matchers?: Record<string, (value: string | null | undefined) => boolean>
+	param_validators?: Record<string, (value: string | null | undefined) => boolean>
 	loaders?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 }
 
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
-	['users/:id', { matchers: { id: Navaid.int({ min: 1 }) } }],
+	['users/:id', { param_validators: { id: Navaid.int({ min: 1 }) } }],
 	[/^\/posts\/(?<slug>[^/]+)$/],
 ]
 
@@ -57,6 +57,6 @@ expectsPromise(router.preload('/users/1'))
 router.pushState('/app/foo', { x: 1 })
 router.replaceState('/app/foo', { x: 1 })
 
-// Static matcher helpers
+// Static validator helpers
 const isColor = Navaid.oneOf(['red', 'green'])
 const ok: boolean = isColor('red')

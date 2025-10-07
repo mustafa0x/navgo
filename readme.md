@@ -16,6 +16,21 @@ const routes = [
 	['/books/*'],
 	[/articles\/(?<year>[0-9]{4})/],
 	[/privacy|privacy-policy/],
+  [
+    '/admin',
+    {
+      // constrain params with built-ins or your own
+      param_validators: { /* id: Navaid.int({ min: 1 }) */ },
+      // load data before URL changes; result goes to onRoute(..., data)
+      loaders: (params) => fetch('/api/admin').then(r => r.json()),
+      // per-route guard; cancel synchronously to block nav
+      beforeNavigate(nav) {
+        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
+          nav.cancel()
+        }
+      }
+    }
+  ],
 ]
 
 // Create router with options + callbacks
@@ -34,43 +49,8 @@ const router = new Navaid(routes, {
 // Process current location
 router.run()
 
-// Long‑lived router: history + <a> bindings
+// Long-lived router: history + <a> bindings
 // Also immediately processes the current location
-router.listen()
-```
-
-### Quickstart With Hooks
-
-```js
-import Navaid from 'navaid'
-
-const routes = [
-  [
-    '/admin',
-    {
-      // constrain params with built‑ins or your own
-      matchers: { /* id: Navaid.int({ min: 1 }) */ },
-      // load data before URL changes; result goes to onRoute(..., data)
-      loaders: (params) => fetch('/api/admin').then(r => r.json()),
-      // per‑route guard; cancel synchronously to block nav
-      beforeNavigate(nav) {
-        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
-          nav.cancel()
-        }
-      }
-    }
-  ],
-  ['/', {}]
-]
-
-const router = new Navaid(routes, {
-  base: '/app',
-  onRoute(uri, matched, params, data) {
-    console.log('route:', matched[0], 'params:', params, 'data:', data)
-  },
-  on404(uri) { console.warn('no match for', uri) }
-})
-
 router.listen()
 ```
 
@@ -80,13 +60,11 @@ router.listen()
 
 Returns: `Router`
 
-Create a router instance by defining your routes up front and passing initialization `options`.
-
-#### routes
+#### `routes`
 
 Type: `Array<[pattern: string | RegExp, data?: any]>`
 
-Each route is a tuple whose first item is the pattern and whose optional second item is per‑route metadata and hooks (see “Route Hooks & Metadata”). Navaid returns this tuple back to you unchanged via `onRoute`.
+Each route is a tuple whose first item is the pattern and whose optional second item is hooks (see “Route Hooks”). Navaid returns this tuple back to you unchanged via `onRoute`.
 
 Supported pattern types:
 
@@ -100,37 +78,35 @@ Supported pattern types:
 Notes:
 
 - Pattern strings are matched relative to the [`base`](#base) path.
-- RegExp patterns are used as‑is. Named capture groups (e.g. `(?<year>\d{4})`) become `params` keys; unnamed groups are ignored.
+- RegExp patterns are used as-is. Named capture groups (e.g. `(?<year>\d{4})`) become `params` keys; unnamed groups are ignored.
 
-### Options (initialization)
+#### `options`
 
-- base: `string` (default `'/'`)
+- `base`: `string` (default `'/'`)
   - App base pathname. With or without leading/trailing slashes is accepted.
-- preloadDelay: `number` (default `20`)
-  - Delay in ms before hover preloading triggers.
-- preloadOnHover: `boolean` (default `true`)
-  - When `false`, disables hover/touch preloading.
-- on404: `(uri: string) => void`
+- `on404`: `(uri: string) => void`
   - Called when no route matches the formatted URI (only URIs under `base`).
-- onRoute: `(uri: string, matched: [string|RegExp, any?], params: Record<string,string|null|undefined>, data?: unknown) => void`
+- `onRoute`: `(uri: string, matched: [string|RegExp, any?], params: Record<string,string|null|undefined>, data?: unknown) => void`
   - Called after a successful match in `run()`. `data` is any value from `loaders`.
+- `preloadDelay`: `number` (default `20`)
+  - Delay in ms before hover preloading triggers.
+- `preloadOnHover`: `boolean` (default `true`)
+  - When `false`, disables hover/touch preloading.
 
 Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
 
-### Route Hooks & Metadata (per‑route)
+### Route Hooks
 
-Attach these to a route’s `data` object:
-
-- matchers?: `Record<string, (value: string|null|undefined) => boolean>`
+- param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
   - Validate params (e.g., `id: Navaid.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
   - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `onRoute`.
 - beforeNavigate?(nav): `(nav: BeforeNavigate) => void`
-  - Guard called once per navigation attempt on the current route (leave) and then the next route (enter). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto‑reverts the history jump.
+  - Guard called once per navigation attempt on the current route (leave) and then the next route (enter). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
-The `BeforeNavigate` object includes:
+The `BeforeNavigate` object contains:
 
-```
+```ts
 {
   type: 'link' | 'goto' | 'popstate' | 'leave',
   from: { url, params, route } | null,
@@ -139,6 +115,38 @@ The `BeforeNavigate` object includes:
   event?: Event,
   cancel(): void
 }
+```
+
+#### Order & cancellation:
+
+- Router calls `beforeNavigate` on the current route (leave), then on the next route (enter).
+- Call `nav.cancel()` synchronously to cancel.
+  - For `link`/`goto`, it stops before URL change.
+  - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
+  - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
+- Note: `goto()` fires hooks only when the target path matches a route; unmatched navigations fall through to `on404`.
+
+Example:
+
+```js
+const routes = [
+  [
+    '/admin',
+    {
+      param_validators: { /* ... */ },
+      loaders: (params) => fetch('/api/admin/stats').then(r => r.json()),
+      beforeNavigate(nav) {
+        if (nav.type === 'link' || nav.type === 'goto') {
+          if (!confirm('Enter admin area?')) nav.cancel()
+        }
+      }
+    }
+  ],
+  ['/', {}]
+]
+
+const router = new Navaid(routes, { base: '/app' })
+router.listen()
 ```
 
 ### Methods
@@ -208,64 +216,11 @@ In addition, `listen()` wires preloading listeners (enabled by default) so route
 
 Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preloadDelay` and `preloadOnHover` options.
 
-### Route Hooks
-
-Each route’s optional `data` object may include hooks recognized by the router:
-
-- `matchers`: constrain params for this pattern (skip match when a validator returns `false`).
-- `loaders(params)`: load data before navigation (value | Promise | Promise[]).
-- `beforeNavigate(nav)`: per-route navigation guard; call `nav.cancel()` to prevent navigation.
-
-beforeNavigate signature (abbrev):
-
-```
-({
-  type: 'link' | 'goto' | 'popstate' | 'leave',
-  from: { url, params, route } | null,
-  to:   { url, params, route } | null,
-  willUnload: boolean,
-  event?: Event,
-  cancel(): void
-})
-```
-
-Order & cancellation:
-
-- Router calls `beforeNavigate` on the current route (leave), then on the next route (enter).
-- Call `nav.cancel()` synchronously to cancel.
-  - link/goto: cancels before the URL changes.
-  - popstate: cancels and auto-reverts the history jump via `history.go(...)`.
-  - leave: only the current route participates; cancel triggers the browser’s native confirmation prompt.
-- Note: `goto()` fires hooks only when the target path matches a route; unmatched navigations fall through to `on404`.
-
-Example:
-
-```js
-const routes = [
-  [
-    '/admin',
-    {
-      matchers: { /* ... */ },
-      loaders: (params) => fetch('/api/admin/stats').then(r => r.json()),
-      beforeNavigate(nav) {
-        if (nav.type === 'link' || nav.type === 'goto') {
-          if (!confirm('Enter admin area?')) nav.cancel()
-        }
-      }
-    }
-  ],
-  ['/', {}]
-]
-
-const router = new Navaid(routes, { base: '/app' })
-router.listen()
-```
-
 ### preload(uri)
 
 Returns: `Promise<unknown>`
 
-Preload a route’s `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
+Preload a route's `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
 
 ### pushState(url?, state?)
 
@@ -285,7 +240,7 @@ Detach all listeners initialized by [`listen()`](#listen).
 
 ## Semantics
 
-This section explains, in detail, how navigation is processed: matching, hooks, data loading, shallow routing, history behavior, and scroll restoration. The design takes cues from SvelteKit’s client router (see: kit/documentation/docs/30-advanced/10-advanced-routing.md and kit/documentation/docs/30-advanced/67-shallow-routing.md).
+This section explains, in detail, how navigation is processed: matching, hooks, data loading, shallow routing, history behavior, and scroll restoration. The design takes cues from SvelteKit's client router (see: kit/documentation/docs/30-advanced/10-advanced-routing.md and kit/documentation/docs/30-advanced/67-shallow-routing.md).
 
 ### Navigation Types
 
@@ -293,6 +248,7 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 - `goto` — programmatic navigation via `router.goto(...)`.
 - `popstate` — browser back/forward.
 - `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
+- `pushState` (shallow)?
 
 The router passes the type to your route-level `beforeNavigate(nav)` hook.
 
@@ -303,7 +259,7 @@ The router passes the type to your route-level `beforeNavigate(nav)` hook.
 - Named params from string patterns populate `params` with `string` values; optional params that do not appear are `null`.
 - Wildcards use the `'*'` key.
 - RegExp named groups also populate `params`; omitted groups can be `undefined`.
-- If `data.matchers` is present, each `params[k]` is validated; any `false` result skips that route.
+- If `data.param_validators` is present, each `params[k]` is validated; any `false` result skips that route.
 
 ### Data Flow
 
@@ -323,31 +279,6 @@ For `link` and `goto` navigations that match a route:
 
 - If a loader throws/rejects, navigation continues and `onRoute(..., { __error })` is delivered so UI can render an error state.
 - For `popstate`, no loaders run; `run()` executes using the current URL and any cache entry for that path.
-
-### Hook: beforeNavigate(nav)
-
-Signature (abbrev):
-
-```
-beforeNavigate({
-  type: 'link' | 'goto' | 'popstate' | 'leave',
-  from: { url, params, route } | null,
-  to:   { url, params, route } | null,
-  willUnload: boolean,
-  event?: Event,
-  cancel(): void
-})
-```
-
-Semantics:
-
-- Fires once per navigation attempt.
-- `cancel()` prevents navigation.
-  - For `link`/`goto`, it stops before URL change.
-  - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
-  - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
-
-Note: currently `beforeNavigate` for `goto()` runs only when the path matches a route; unmatched `goto` falls through to `on404` without the hook.
 
 ### Shallow Routing
 
@@ -392,13 +323,13 @@ scroll flow
 - `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `unlisten()` — removes listeners added by `listen()`.
 - `run(e?)` — processes the current `location.pathname`. Skips work when `e?.state?.__navaid?.shallow` is true; applies scroll behavior described above.
-- `preload(uri)` — pre-executes a route’s `loaders` for a path and caches the result; concurrent calls are deduped.
+- `preload(uri)` — pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
 - `pushState(url?, state?)` — shallow push that updates the URL and `history.state` without route processing.
 - `replaceState(url?, state?)` — shallow replace that updates the URL and `history.state` without route processing.
 
-### Built-in Matchers
+### Built-in Validators
 
 - `Navaid.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
 - `Navaid.oneOf(iterable)` — `true` iff the value is in the provided set.
 
-Attach validators via a route tuple’s `data.matchers` to constrain matches.
+Attach validators via a route tuple's `data.param_validators` to constrain matches.
