@@ -19,11 +19,11 @@ import { parse } from 'regexparam'
  */
 export default class Navaid {
 	#opts
-	#routes
+	#routes = []
 	#base
 	#rgx
 	#preloads
-	#current
+	#current = { uri: null, route: null, params: {} } // last matched route info
 	#run_wrapped
 	#click
 	#mousemove
@@ -51,15 +51,12 @@ export default class Navaid {
 
 	constructor(routes_ = [], opts = {}) {
 		this.#opts = opts
-		this.#routes = []
 		this.#base = this.#normalize(this.#opts.base || '/')
 		this.#rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
 		// preload cache: href -> { promise, data, error }
 		this.#preloads = new Map()
-		// last matched route info
-		this.#current = { uri: null, route: null, params: {} }
 		this.#idx = 0
 		this.#scroll = new Map()
 
@@ -213,11 +210,15 @@ export default class Navaid {
 				}
 
 				// per-route validators and optional async validate()
-				const hooks = obj.data?.[1]
-				const ok =
-					this.#check_param_validators(hooks?.param_validators, params) &&
-					(await hooks.validate?.(params))
-				if (!ok) continue
+				const hooks = obj.data[1]
+				if (
+					hooks.param_validators &&
+					!this.#check_param_validators(hooks.param_validators, params)
+				)
+					continue
+				if (hooks.validate && !(await hooks.validate(params))) {
+					continue
+				}
 
 				return { route: obj.data || null, params }
 			}
