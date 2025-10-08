@@ -230,6 +230,14 @@ function setupStubs(base = '/') {
 	// stub RAF for jsdom-less environment
 	global.requestAnimationFrame = fn => setTimeout(fn, 0)
 
+	// mock scroll state/APIs for Node env (used by router)
+	global.scrollX = 0
+	global.scrollY = 0
+	global.scrollTo = (x = 0, y = 0) => {
+		global.scrollX = x
+		global.scrollY = y
+	}
+
 	let href = `http://example.com${base}`
 	global.location = new URL(href)
 
