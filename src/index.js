@@ -288,10 +288,7 @@ export default class Navaid {
 		this.#wrap('push')
 		this.#wrap('replace')
 
-		// manual scroll restoration — we manage it
-		if (typeof history.scrollRestoration === 'string') {
-			history.scrollRestoration = 'manual'
-		}
+		history.scrollRestoration = 'manual'
 
 		const run_wrapped = ev => {
 			this.run(ev)
@@ -341,6 +338,18 @@ export default class Navaid {
 			nav.to = hit
 				? { url, params: hit.params, route: hit.route }
 				: { url, params: {}, route: null }
+
+			// For consistent layout and scroll restoration, run loaders on popstate
+			if (hit) {
+				try {
+					const data = await this.#run_loaders(hit.route, hit.params)
+					const p = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+					if (p) this.#preloads.set(p, { data })
+				} catch (e) {
+					const p = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+					if (p) this.#preloads.set(p, { data: { __error: e } })
+				}
+			}
 			run_wrapped(ev)
 		})
 		addEventListener('replacestate', run_wrapped)
