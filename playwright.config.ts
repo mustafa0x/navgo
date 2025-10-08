@@ -2,11 +2,12 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: 'test/e2e',
-	timeout: 30_000,
+	timeout: 5000,
 	retries: process.env.CI ? 2 : 0,
 	use: {
 		headless: true,
 		baseURL: 'http://localhost:5173',
+		acceptDownloads: true,
 		trace: 'retain-on-failure',
 		launchOptions: {
 			executablePath: process.env.CHROME_HEADLESS_PATH || undefined,
