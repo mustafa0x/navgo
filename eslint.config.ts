@@ -15,7 +15,7 @@ export default defineConfig([
 		rules: { '@typescript-eslint/no-explicit-any': 'off' },
 	},
 	{
-		files: ['playwright.config.*', 'test/server.js', 'test/uvu/**/*.js', 'eslint.config.*'],
+		files: ['playwright.config.*', 'test/server.js', 'index.test.js', 'eslint.config.*'],
 		languageOptions: { globals: { ...globals.es2021, ...globals.node } },
 	},
 	{
