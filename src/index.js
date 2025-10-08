@@ -1,30 +1,13 @@
 import { parse } from 'regexparam'
 
-/**
- * Navaid with routing ergonomics:
- * - load-then-navigate (goto)
- * - per-route hooks: loaders(params): Promise|Promise[]; beforeNavigate(ctx)
- * - param validators via hooks.param_validators
- * - shallow routing: pushState/replaceState that don't trigger route handlers
- * - preload on hover/tap
- *
- * Route shape examples:
- *   ['/users/:id', {
- *     param_validators: { id: Navaid.validators.int({ min: 1, max: 114 }) },
- *     loaders(params) { return fetch(`/api/users/${params.id}`).then(r => r.json()) },
- *     beforeNavigate({ from, to, type, cancel }) {
- *       // return false or call cancel() to stop navigation
- *     }
- *   }]
- */
 export default class Navaid {
 	#opts
 	#routes = []
-	#base
-	#rgx
+	#base = '/'
+	#base_rgx
 	#preloads
 	#current = { uri: null, route: null, params: {} } // last matched route info
-	#run_wrapped
+	#onpopstate
 	#click
 	#mousemove
 	#tap
@@ -49,10 +32,10 @@ export default class Navaid {
 		},
 	}
 
-	constructor(routes_ = [], opts = {}) {
+	constructor(routes = [], opts = {}) {
 		this.#opts = opts
 		this.#base = this.#normalize(this.#opts.base || '/')
-		this.#rgx =
+		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
 		// preload cache: href -> { promise, data, error }
@@ -60,7 +43,7 @@ export default class Navaid {
 		this.#idx = 0
 		this.#scroll = new Map()
 
-		for (const r of routes_) {
+		for (const r of routes) {
 			const patOrRx = r[0]
 			let pat
 			if (patOrRx instanceof RegExp) {
@@ -83,7 +66,7 @@ export default class Navaid {
 	format(uri) {
 		if (!uri) return uri
 		uri = this.#normalize(uri)
-		return this.#rgx.test(uri) && uri.replace(this.#rgx, '/')
+		return this.#base_rgx.test(uri) && uri.replace(this.#base_rgx, '/')
 	}
 
 	/**
@@ -93,7 +76,7 @@ export default class Navaid {
 	 * @returns {Promise<void>}
 	 */
 	async goto(uri, opts = {}, navType = 'goto', evParam = undefined) {
-		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
+		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		if (!path) return
@@ -120,11 +103,16 @@ export default class Navaid {
 		this.#saveScroll()
 
 		// run loaders first, cache data by URL (so run() can pick it up)
-		const data = await this.#run_loaders(hit.route, hit.params).catch(e => {
-			// If loaders fail, we still navigate to keep behavior predictable.
-			// Apps can show errors from the returned data.
-			return { __error: e }
-		})
+		const pre = this.#preloads.get(path)
+		const data =
+			pre.data ||
+			(await (
+				pre.promise ||
+				this.#run_loaders(hit.route, hit.params).then(d => {
+					this.#preloads.set(path, { data: d })
+					return d
+				})
+			).catch(e => ({ __error: e })))
 		this.#preloads.set(path, { data })
 
 		// change URL (this triggers our wrapped pushstate/replacestate; run() will consume cache)
@@ -135,6 +123,8 @@ export default class Navaid {
 		})
 		history[(opts.replace ? 'replace' : 'push') + 'State'](nextState, null, url.href)
 		this.#idx = nextIdx
+		// run immediately so afterNavigate fires without relying on the dispatched event
+		await this.run({ state: { __navaid: { type: navType } } })
 	}
 
 	/**
@@ -171,10 +161,12 @@ export default class Navaid {
 	 * Dedupes concurrent preloads for the same path.
 	 */
 	async preload(uri) {
-		if (uri[0] == '/' && !this.#rgx.test(uri)) uri = this.#base + uri
+		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		if (!path) return Promise.resolve()
+		// Do not preload if we're already at this path
+		if (path === this.#current?.uri) return Promise.resolve()
 		const hit = await this.match(path)
 		if (!hit) return Promise.resolve()
 
@@ -285,36 +277,16 @@ export default class Navaid {
 	// Lifecycle hooks
 	//
 	listen() {
-		this.#wrap('push')
-		this.#wrap('replace')
-
 		history.scrollRestoration = 'manual'
 
-		const run_wrapped = ev => {
-			this.run(ev)
-		}
-
-		// Click to navigate — load then change URL (SvelteKit-like)
 		this.#click = async e => {
-			if (e.defaultPrevented) return
-			if (e.button || e.which !== 1) return
-			if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-
-			const el = e.target.closest('a')
-			const href = el?.getAttribute('href')
-			if (!href) return
-			if (el.target || el.download) return
-			if (href[0] == '#') return
-			// External?
-			if (el.host !== location.host) return
-
-			if (href[0] != '/' || this.#rgx.test(href)) {
-				e.preventDefault()
-				await this.goto(href, { replace: false }, 'link', e)
-			}
+			const info = this.#linkFromEvent(e, true)
+			if (!info) return
+			e.preventDefault()
+			await this.goto(info.href, { replace: false }, 'link', e)
 		}
 
-		addEventListener('popstate', async ev => {
+		this.#onpopstate = async ev => {
 			// Save scroll of the entry we're leaving so it can be restored on forward
 			this.#saveScroll()
 			const url = new URL(location.href)
@@ -350,30 +322,23 @@ export default class Navaid {
 					if (p) this.#preloads.set(p, { data: { __error: e } })
 				}
 			}
-			run_wrapped(ev)
-		})
-		addEventListener('replacestate', run_wrapped)
-		addEventListener('pushstate', run_wrapped)
+			this.run(ev)
+		}
+		addEventListener('popstate', this.#onpopstate)
 		addEventListener('click', this.#click)
-		this.#run_wrapped = run_wrapped
 
 		const hoverDelay = this.#opts.preloadDelay ?? 20
 		let hoverTimer = null
-		const maybePreload = el => {
-			const a = el?.closest?.('a')
-			const href = a?.getAttribute?.('href')
-			if (!href || a.target || a.download || a.host !== location.host) return
-			if (!(href[0] != '/' || this.#rgx.test(href))) return
-			this.preload(href)
+		const maybePreload = ev => {
+			const info = this.#linkFromEvent(ev, ev.type === 'mousedown')
+			if (!info) return
+			this.preload(info.href)
 		}
 		const mousemove = ev => {
 			clearTimeout(hoverTimer)
-			hoverTimer = setTimeout(() => maybePreload(ev.target), hoverDelay)
+			hoverTimer = setTimeout(() => maybePreload(ev), hoverDelay)
 		}
-		const tap = ev => {
-			if (ev.defaultPrevented) return
-			maybePreload(ev.composedPath ? ev.composedPath()[0] : ev.target)
-		}
+		const tap = ev => maybePreload(ev)
 		if (this.#opts.preloadOnHover !== false) {
 			addEventListener('mousemove', mousemove)
 			addEventListener('touchstart', tap, { passive: true })
@@ -393,7 +358,7 @@ export default class Navaid {
 			this.#idx = curIdx
 		}
 		// beforeunload -> 'leave' event (route-level)
-		function beforeunload(ev) {
+		const beforeunload = ev => {
 			const nav = this.#makeBeforeNav({
 				type: 'leave',
 				to: null,
@@ -407,16 +372,14 @@ export default class Navaid {
 			}
 			this.#opts.beforeNavigate?.(nav)
 		}
-		addEventListener('beforeunload', beforeunload)
-		this.#beforeunload = beforeunload
+		this.#beforeunload = ev => beforeunload(ev)
+		addEventListener('beforeunload', this.#beforeunload)
 
 		this.run()
 	}
 
 	unlisten() {
-		removeEventListener('popstate', this.#run_wrapped)
-		removeEventListener('replacestate', this.#run_wrapped)
-		removeEventListener('pushstate', this.#run_wrapped)
+		removeEventListener('popstate', this.#onpopstate)
 		removeEventListener('click', this.#click)
 
 		if (this.#mousemove) removeEventListener('mousemove', this.#mousemove)
@@ -424,12 +387,36 @@ export default class Navaid {
 			removeEventListener('touchstart', this.#tap, { passive: true })
 			removeEventListener('mousedown', this.#tap)
 		}
-		if (this.#beforeunload) removeEventListener('beforeunload', this.#beforeunload)
+		removeEventListener('beforeunload', this.#beforeunload)
 	}
 
 	//
 	// Internals
 	//
+	#linkFromEvent(e, checkButton = false) {
+		if (
+			!e ||
+			e.defaultPrevented ||
+			e.metaKey ||
+			e.ctrlKey ||
+			e.shiftKey ||
+			e.altKey ||
+			(checkButton && e.button)
+		)
+			return null
+		const el = e.composedPath()[0]
+		const a = el?.closest?.('a')
+		const href = a?.getAttribute?.('href')
+		return href &&
+			!a?.target &&
+			!a?.download &&
+			href[0] != '#' &&
+			a?.host === location.host &&
+			(href[0] != '/' || this.#base_rgx.test(href))
+			? { a, href }
+			: null
+	}
+
 	#check_param_validators(param_validators, params) {
 		if (!param_validators) return true
 		for (const k in param_validators) {
@@ -467,19 +454,7 @@ export default class Navaid {
 	}
 
 	#saveScroll() {
-		const x =
-			typeof scrollX === 'number'
-				? scrollX
-				: typeof window !== 'undefined'
-					? window.scrollX || 0
-					: 0
-		const y =
-			typeof scrollY === 'number'
-				? scrollY
-				: typeof window !== 'undefined'
-					? window.scrollY || 0
-					: 0
-		this.#scroll.set(this.#idx, { x, y })
+		this.#scroll.set(this.#idx, { x: scrollX, y: scrollY })
 	}
 
 	#applyScroll(e) {
@@ -506,39 +481,14 @@ export default class Navaid {
 	}
 
 	#scrollToHash(hash) {
-		if (!hash || hash === '#') return false
-		let id = ''
+		let id = hash.slice(1)
+		if (!id) return false
 		try {
-			id = decodeURIComponent(hash.slice(1))
-		} catch {
-			id = hash.slice(1)
-		}
-		let el = null
-		try {
-			const sel = CSS?.escape ? CSS.escape(id) : id
-			el = document.getElementById(id) || document.querySelector(`[name="${sel}"]`)
-		} catch {
-			el = document.getElementById(id)
-		}
-		if (el) {
-			el.scrollIntoView?.()
-			return true
-		}
-		return false
-	}
-
-	// Wrap native history to dispatch custom events we can inspect (and carry state/url).
-	// Also used to bypass navigation during shallow routing entries
-	#wrap(type, fn) {
-		if (history[type]) return
-		history[type] = type
-		fn = history[(type += 'State')]
-		history[type] = function (state, title, url) {
-			const ev = new Event(type.toLowerCase())
-			ev.state = state
-			ev.url = url
-			fn.apply(this, arguments)
-			return dispatchEvent(ev)
-		}
+			id = decodeURIComponent(hash)
+		} catch {}
+		const el =
+			document.getElementById(id) || document.querySelector(`[name="${CSS.escape(id)}"]`)
+		el?.scrollIntoView()
+		return !!el
 	}
 }
