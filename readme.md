@@ -121,6 +121,7 @@ The `BeforeNavigate` object contains:
   from: { url, params, route } | null,
   to:   { url, params, route } | null,
   willUnload: boolean,
+  cancelled: boolean,
   event?: Event,
   cancel(): void
 }
@@ -223,6 +224,13 @@ In addition, `listen()` wires preloading listeners (enabled by default) so route
 - `touchstart` and `mousedown` (tap) — tapping or pressing on an in-app link also triggers `preload(href)`.
 
 Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preloadDelay` and `preloadOnHover` options.
+
+Notes:
+- `preload(uri)` is a no-op when `uri` formats to the current route's path (already loaded).
+
+### Scroll persistence
+
+On `beforeunload`, the current scroll position is saved to `sessionStorage` and restored on the next load of the same URL (e.g., refresh or tab restore).
 
 ### preload(uri)
 

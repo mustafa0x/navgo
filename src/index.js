@@ -354,6 +354,14 @@ export default class Navaid {
 		}
 		// beforeunload -> 'leave' event (route-level)
 		const before_unload = ev => {
+			// persist scroll for refresh / session restore
+			try {
+				sessionStorage.setItem(
+					`__navaid_scroll:${location.href}`,
+					JSON.stringify({ x: scrollX, y: scrollY }),
+				)
+			} catch {}
+
 			const nav = this.#make_nav({
 				type: 'leave',
 				to: null,
@@ -459,6 +467,17 @@ export default class Navaid {
 		const hash = location.hash
 		const ev_type = e?.type
 		requestAnimationFrame(() => {
+			// 0) If this is an initial run (not popstate), prefer restoring
+			// last-known position from sessionStorage (e.g., after refresh/tab restore)
+			if (!ev_type) {
+				try {
+					const k = `__navaid_scroll:${location.href}`
+					const { x, y } = JSON.parse(sessionStorage.getItem(k))
+					sessionStorage.removeItem(k)
+					scrollTo(x, y)
+					return
+				} catch {}
+			}
 			// 1) On back/forward, restore saved position if available
 			if (ev_type === 'popstate') {
 				const idx = e?.state?.__navaid?.idx

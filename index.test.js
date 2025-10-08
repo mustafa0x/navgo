@@ -3,6 +3,68 @@ import Navaid from './src/index.js'
 
 global.history = {}
 
+// Shared test stubs for browser-ish globals
+function setupStubs(base = '/') {
+	const listeners = new Map()
+	global.addEventListener = (type, fn) => {
+		const arr = listeners.get(type) || []
+		arr.push(fn)
+		listeners.set(type, arr)
+	}
+	global.removeEventListener = (type, fn) => {
+		const arr = listeners.get(type) || []
+		const i = arr.indexOf(fn)
+		if (i >= 0) arr.splice(i, 1)
+		listeners.set(type, arr)
+	}
+	global.dispatchEvent = ev => {
+		const arr = listeners.get(ev.type) || []
+		for (const fn of arr) fn(ev)
+		return true
+	}
+	global.Event = class Event {
+		constructor(type) {
+			this.type = type
+		}
+	}
+	// stub RAF for jsdom-less environment
+	global.requestAnimationFrame = fn => setTimeout(fn, 0)
+	// mock scroll state/APIs for Node env (used by router)
+	global.scrollX = 0
+	global.scrollY = 0
+	global.scrollTo = (x = 0, y = 0) => {
+		global.scrollX = x
+		global.scrollY = y
+	}
+	// simple sessionStorage stub
+	const sess = new Map()
+	global.sessionStorage = {
+		getItem: k => (sess.has(k) ? sess.get(k) : null),
+		setItem: (k, v) => sess.set(k, String(v)),
+		removeItem: k => sess.delete(k),
+		clear: () => sess.clear(),
+	}
+	let href = `http://example.com${base}`
+	global.location = new URL(href)
+	const hist = {
+		state: null,
+		pushState(state, _title, url) {
+			this.state = state
+			href = url
+		},
+		replaceState(state, _title, url) {
+			this.state = state
+			href = url
+		},
+		go(n) {
+			hist._went = n
+		},
+		_went: 0,
+	}
+	global.history = hist
+	return hist
+}
+
 describe('exports', () => {
 	it('exports', () => {
 		expect(typeof Navaid).toBe('function')
@@ -193,63 +255,6 @@ describe('$.match', () => {
 })
 
 describe('beforeRouteLeave', () => {
-	function setupStubs(base = '/') {
-		const listeners = new Map()
-		global.addEventListener = (type, fn) => {
-			const arr = listeners.get(type) || []
-			arr.push(fn)
-			listeners.set(type, arr)
-		}
-		global.removeEventListener = (type, fn) => {
-			const arr = listeners.get(type) || []
-			const i = arr.indexOf(fn)
-			if (i >= 0) arr.splice(i, 1)
-			listeners.set(type, arr)
-		}
-		global.dispatchEvent = ev => {
-			const arr = listeners.get(ev.type) || []
-			for (const fn of arr) fn(ev)
-			return true
-		}
-		global.Event = class Event {
-			constructor(type) {
-				this.type = type
-			}
-		}
-
-		// stub RAF for jsdom-less environment
-		global.requestAnimationFrame = fn => setTimeout(fn, 0)
-
-		// mock scroll state/APIs for Node env (used by router)
-		global.scrollX = 0
-		global.scrollY = 0
-		global.scrollTo = (x = 0, y = 0) => {
-			global.scrollX = x
-			global.scrollY = y
-		}
-
-		let href = `http://example.com${base}`
-		global.location = new URL(href)
-
-		const hist = {
-			state: null,
-			pushState(state, _title, url) {
-				this.state = state
-				href = url
-			},
-			replaceState(state, _title, url) {
-				this.state = state
-				href = url
-			},
-			go(n) {
-				hist._went = n
-			},
-			_went: 0,
-		}
-		global.history = hist
-		return hist
-	}
-
 	it('goto; cancel prevents push', async () => {
 		const hist = setupStubs('/app/')
 		let called = 0
@@ -309,6 +314,191 @@ describe('beforeRouteLeave', () => {
 		global.dispatchEvent(ev)
 		expect(called > 0).toBe(true)
 		expect(hist._went).toBe(1)
+		r.unlisten()
+	})
+})
+
+describe('preload behavior', () => {
+	function makeRouterWithLoaders() {
+		const calls = { root: 0, foo: 0 }
+		const routes = [
+			[
+				'/',
+				{
+					loaders() {
+						calls.root++
+						return { route: 'root' }
+					},
+				},
+			],
+			[
+				'/foo',
+				{
+					loaders() {
+						calls.foo++
+						return { route: 'foo' }
+					},
+				},
+			],
+		]
+		const navs = []
+		const router = new Navaid(routes, {
+			base: '/app',
+			afterNavigate(nav) {
+				navs.push(nav)
+			},
+		})
+		return { router, calls, navs }
+	}
+
+	it('skips preloading current route and dedupes others', async () => {
+		setupStubs('/app/')
+		const { router, calls, navs } = makeRouterWithLoaders()
+		router.listen()
+		await router.run()
+
+		await router.preload('/app/')
+		expect(calls.root).toBe(0)
+
+		const p1 = router.preload('/app/foo')
+		const p2 = router.preload('/app/foo')
+		await Promise.all([p1, p2])
+		expect(calls.foo).toBe(1)
+
+		await router.goto('/app/foo')
+		expect(calls.foo).toBe(1)
+		// afterNavigate received completion nav for goto
+		expect(navs.at(-1)?.type).toBe('goto')
+		router.unlisten()
+	})
+})
+
+describe('scroll restore persistence', () => {
+	it('stores position on beforeunload and restores on next run', async () => {
+		// const hist = setupStubs('/app/foo')
+		const r1 = new Navaid([['/foo', {}]], { base: '/app' })
+		r1.listen()
+		await r1.run()
+		// move scroll
+		global.scrollTo(10, 200)
+		// trigger beforeunload
+		const ev = { type: 'beforeunload', preventDefault() {}, returnValue: undefined }
+		global.dispatchEvent(ev)
+		const key = `__navaid_scroll:${global.location.href}`
+		expect(global.sessionStorage.getItem(key)).toBeTruthy()
+		r1.unlisten()
+
+		// new router instance simulating a refresh
+		const r2 = new Navaid([['/foo', {}]], { base: '/app' })
+		r2.listen()
+		await r2.run()
+		expect(global.scrollX).toBe(10)
+		expect(global.scrollY).toBe(200)
+		r2.unlisten()
+	})
+})
+
+describe('leave (beforeunload)', () => {
+	it('cancels leave by setting returnValue and preventing default', async () => {
+		setupStubs('/app/leave')
+		let called = 0
+		const r = new Navaid(
+			[
+				[
+					'/leave',
+					{
+						beforeRouteLeave(nav) {
+							called++
+							if (nav.type === 'leave') nav.cancel()
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		r.listen()
+		await r.run()
+
+		const ev = {
+			type: 'beforeunload',
+			prevented: false,
+			preventDefault() {
+				this.prevented = true
+			},
+		}
+		global.dispatchEvent(ev)
+		expect(called > 0).toBe(true)
+		expect(ev.prevented).toBe(true)
+		expect(ev.returnValue).toBe('')
+		r.unlisten()
+	})
+})
+
+describe('link interception', () => {
+	it('intercepts internal anchor clicks and calls goto', async () => {
+		const hist = setupStubs('/app/')
+		const r = new Navaid(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{ base: '/app' },
+		)
+		r.listen()
+		await r.run()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '/app/foo' : null),
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		// allow the async click handler to complete
+		await new Promise(r => setTimeout(r, 0))
+		expect(prevented).toBe(true)
+		expect(hist.state?.__navaid?.idx).toBe(1)
+		r.unlisten()
+	})
+
+	it('ignores clicks with modifier keys', async () => {
+		const hist = setupStubs('/app/')
+		const r = new Navaid(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{ base: '/app' },
+		)
+		r.listen()
+		await r.run()
+
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '/app/foo' : null),
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			metaKey: true,
+			defaultPrevented: false,
+			preventDefault() {},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
 		r.unlisten()
 	})
 })
