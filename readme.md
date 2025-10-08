@@ -16,21 +16,23 @@ const routes = [
 	['/books/*', {}],
 	[/articles\/(?<year>[0-9]{4})/, {}],
 	[/privacy|privacy-policy/, {}],
-  [
-    '/admin',
-    {
-      // constrain params with built-ins or your own
-      param_validators: { /* id: Navaid.validators.int({ min: 1 }) */ },
-      // load data before URL changes; result goes to afterNavigate(...)
-      loaders: (params) => fetch('/api/admin').then(r => r.json()),
-      // per-route guard; cancel synchronously to block nav
-      beforeRouteLeave(nav) {
-        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
-          nav.cancel()
-        }
-      }
-    }
-  ],
+	[
+		'/admin',
+		{
+			// constrain params with built-ins or your own
+			param_validators: {
+				/* id: Navaid.validators.int({ min: 1 }) */
+			},
+			// load data before URL changes; result goes to afterNavigate(...)
+			loaders: params => fetch('/api/admin').then(r => r.json()),
+			// per-route guard; cancel synchronously to block nav
+			beforeRouteLeave(nav) {
+				if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
+					nav.cancel()
+				}
+			},
+		},
+	],
 ]
 
 // Create router with options + callbacks
@@ -86,30 +88,30 @@ Notes:
 #### `options`
 
 - `base`: `string` (default `'/'`)
-  - App base pathname. With or without leading/trailing slashes is accepted.
+    - App base pathname. With or without leading/trailing slashes is accepted.
 - `on404`: `(uri: string) => void`
-  - Called when no route matches the formatted URI (only URIs under `base`).
+    - Called when no route matches the formatted URI (only URIs under `base`).
 - `beforeNavigate`: `(nav: BeforeNavigate) => void`
-  - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
+    - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `afterNavigate`: `(nav: BeforeNavigate) => void`
-  - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+    - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `preloadDelay`: `number` (default `20`)
-  - Delay in ms before hover preloading triggers.
+    - Delay in ms before hover preloading triggers.
 - `preloadOnHover`: `boolean` (default `true`)
-  - When `false`, disables hover/touch preloading.
+    - When `false`, disables hover/touch preloading.
 
 Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
 
 ### Route Hooks
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
-  - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
+    - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `afterNavigate`.
+    - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `afterNavigate`.
 - validate?(params): `boolean | Promise<boolean>`
-  - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
+    - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - beforeRouteLeave?(nav): `(nav: BeforeNavigate) => void`
-  - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
+    - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
 The `BeforeNavigate` object contains:
 
@@ -128,27 +130,29 @@ The `BeforeNavigate` object contains:
 
 - Router calls `beforeNavigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
-  - For `link`/`goto`, it stops before URL change.
-  - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
-  - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
+    - For `link`/`goto`, it stops before URL change.
+    - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
+    - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
 
 Example:
 
 ```js
 const routes = [
-  [
-    '/admin',
-    {
-      param_validators: { /* ... */ },
-      loaders: (params) => fetch('/api/admin/stats').then(r => r.json()),
-      beforeRouteLeave(nav) {
-        if (nav.type === 'link' || nav.type === 'goto') {
-          if (!confirm('Enter admin area?')) nav.cancel()
-        }
-      }
-    }
-  ],
-  ['/', {}]
+	[
+		'/admin',
+		{
+			param_validators: {
+				/* ... */
+			},
+			loaders: params => fetch('/api/admin/stats').then(r => r.json()),
+			beforeRouteLeave(nav) {
+				if (nav.type === 'link' || nav.type === 'goto') {
+					if (!confirm('Enter admin area?')) nav.cancel()
+				}
+			},
+		},
+	],
+	['/', {}],
 ]
 
 const router = new Navaid(routes, { base: '/app' })
@@ -205,11 +209,9 @@ Processes the current `location.pathname`. This does not modify browser history 
 
 Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
 
-These are the (global) events that Navaid creates and/or responds to:
+Events:
 
-- popstate
-- replacestate
-- pushstate
+- Responds to: `popstate` only. No synthetic events are emitted.
 
 Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
@@ -287,7 +289,7 @@ For `link` and `goto` navigations that match a route:
 ```
 
 - If a loader throws/rejects, navigation continues and `afterNavigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
-- For `popstate`, no loaders run; `run()` executes using the current URL and any cache entry for that path.
+- For `popstate`, loaders run before `run()` so content matches the target entry; this improves scroll restoration. Errors are delivered via `afterNavigate` with `nav.to.data = { __error }`.
 
 ### Shallow Routing
 
@@ -295,9 +297,8 @@ Use `pushState(url, state?)` or `replaceState(url, state?)` to update the URL/st
 
 ```
 pushState/replaceState (shallow)
-    → dispatch 'pushstate'/'replacestate'
-        → run(e)
-            → e.state.__navaid.shallow === true → skip processing
+    → updates history.state and URL
+    → router does not process routing on shallow operations
 ```
 
 This lets you reflect UI state in the URL while deferring route transitions until a future navigation.
@@ -312,8 +313,8 @@ Navaid manages scroll manually (sets `history.scrollRestoration = 'manual'`) and
 
 - Saves the current scroll position for the active history index.
 - On `link`/`goto` (after route commit):
-  - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
-  - Otherwise, scroll to the top `(0, 0)`.
+    - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
+    - Otherwise, scroll to the top `(0, 0)`.
 - On `popstate`: restore the saved position for the target history index; if not found but there is a `#hash`, scroll to the anchor instead.
 - Shallow `pushState`/`replaceState` never adjust scroll (routing is skipped).
 

@@ -1,24 +1,54 @@
 <!doctype html>
 <html>
-	<meta charset="utf-8" />
-	<meta
-		name="viewport"
-		content="width=device-width,viewport-fit=cover,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1"
-	/>
-	<meta name="description" content="" />
-	<link
-		rel="icon"
-		href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧪</text></svg>"
-	/>
-	<title>Navaid Test</title>
-	<style>
-		@import 'tailwindcss';
-	</style>
-	<script type="module">
-		import { mount } from 'svelte'
-		import App from './App.svelte'
-		mount(App, { target: document.body })
-	</script>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width,viewport-fit=cover,user-scalable=no,initial-scale=1,maximum-scale=1,minimum-scale=1"
+  />
+  <meta name="description" content="" />
+  <link
+    rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧪</text></svg>"
+  />
+  <title>Navaid Test</title>
+  <style>
+    @import 'tailwindcss';
+    /* request-indicator */
+    @keyframes elastic-indicator {
+      0% {
+        left: 0;
+        right: 100%;
+      }
+      55% {
+        left: 0;
+        right: 0;
+      }
+      100% {
+        left: 100%;
+        right: 0;
+      }
+    }
+    .request-indicator {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 5px;
+      z-index: 10;
+    }
+    .request-indicator.active:before {
+      content: '';
+      position: absolute;
+      height: 100%;
+      background-color: #e3f2fd;
+      animation: elastic-indicator 2s infinite;
+    }
+  </style>
+  <script type="module">
+    import {mount} from 'svelte'
+    import App from './App.svelte'
+    mount(App, {target: document.body})
+  </script>
 
-	<body></body>
+  <body></body>
 </html>
