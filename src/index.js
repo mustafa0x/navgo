@@ -89,7 +89,7 @@ export default class Navaid {
 
 		// Route-level beforeRouteLeave on current (leave)
 		{
-			const nav = this.#make_before_nav({
+			const nav = this.#make_nav({
 				type: nav_type,
 				to: { url, params: hit.params, route: hit.route },
 				event: ev_param,
@@ -242,7 +242,7 @@ export default class Navaid {
 			if (pre) this.#preloads.delete(uri)
 
 			// Build a completion nav using the previous route as `from`
-			const nav = {
+			const nav = this.#make_nav({
 				type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
 				from: prev?.uri
 					? {
@@ -257,13 +257,8 @@ export default class Navaid {
 					route: hit.route,
 					data: loaded,
 				},
-				willUnload: false,
-				cancelled: false,
 				event: e,
-				cancel() {
-					this.cancelled = true
-				},
-			}
+			})
 			this.#opts.afterNavigate?.(nav)
 			// apply scroll after route commit
 			this.#apply_scroll(e)
@@ -292,7 +287,7 @@ export default class Navaid {
 			const url = new URL(location.href)
 			const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 			// Construct nav with unknown target first; call leave-guard synchronously
-			const nav = this.#make_before_nav({
+			const nav = this.#make_nav({
 				type: 'popstate',
 				to: null,
 				event: ev,
@@ -359,7 +354,7 @@ export default class Navaid {
 		}
 		// beforeunload -> 'leave' event (route-level)
 		const before_unload = ev => {
-			const nav = this.#make_before_nav({
+			const nav = this.#make_nav({
 				type: 'leave',
 				to: null,
 				willUnload: true,
@@ -432,17 +427,20 @@ export default class Navaid {
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
-	#make_before_nav({ type, to, willUnload = false, event = undefined }) {
-		const from = this.#current?.uri
-			? {
-					url: new URL(this.#current.uri, location.origin),
-					params: this.#current.params || {},
-					route: this.#current.route,
-				}
-			: null
+	#make_nav({ type, from = undefined, to = undefined, willUnload = false, event = undefined }) {
+		const from_obj =
+			from !== undefined
+				? from
+				: this.#current?.uri
+					? {
+							url: new URL(this.#current.uri, location.origin),
+							params: this.#current.params || {},
+							route: this.#current.route,
+						}
+					: null
 		return {
 			type, // 'link' | 'goto' | 'popstate' | 'leave'
-			from,
+			from: from_obj,
 			to,
 			willUnload,
 			cancelled: false,
