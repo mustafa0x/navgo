@@ -23,7 +23,7 @@ export interface Hooks {
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
-	beforeNavigate?(nav: BeforeNavigate): void
+	beforeRouteLeave?(nav: BeforeNavigate): void
 }
 
 export interface NavigationTarget {
@@ -31,6 +31,8 @@ export interface NavigationTarget {
 	params: Params
 	/** The matched route tuple from your original `routes` list; `null` when unmatched (e.g. external). */
 	route: RouteTuple | null
+	/** Optional data from route loaders when available. */
+	data?: unknown
 }
 
 export interface BeforeNavigate {
@@ -74,7 +76,7 @@ export interface Router<T = unknown> {
 	unlisten(): void
 }
 
-export interface Options<T = unknown> {
+export interface Options {
 	/** App base path. Default '/' */
 	base?: string
 	/** Delay before hover preloading in milliseconds. Default 20. */
@@ -83,19 +85,15 @@ export interface Options<T = unknown> {
 	preloadOnHover?: boolean
 	/** Called when no route matches. Receives formatted URI. */
 	on404?(uri: string): void
-	/**
-	 * Called when a route matches.
-	 * @param uri The formatted, matched URI
-	 * @param matched The matched route tuple from your original `routes` list
-	 * @param params The extracted params (including '*' for wildcards)
-	 * @param data Any data returned from `loaders` for this navigation (if any)
-	 */
-	onRoute?(uri: string, matched: RouteTuple<T>, params: Params, data?: unknown): void
+	/** Global hook fired after per-route `beforeRouteLeave`, before loaders/history change. Can cancel. */
+	beforeNavigate?(nav: BeforeNavigate): void
+	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
+	afterNavigate?(nav: BeforeNavigate): void
 }
 
 /** Navaid default export: class-based router. */
 export default class Navaid<T = unknown> implements Router<T> {
-	constructor(routes?: Array<RouteTuple<T>>, opts?: Options<T>)
+	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
 	format(uri: string): string | false
 	goto(uri: string, opts?: { replace?: boolean }): Promise<void>
 	pushState(url?: string | URL, state?: any): void

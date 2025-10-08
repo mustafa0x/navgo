@@ -12,7 +12,7 @@
   <a href="/about#top" class="text-blue-700 hover:underline">/about#top</a>
   <a href="/about#" class="text-blue-700 hover:underline">/about#</a>
   <a href="/about" class="text-blue-700 hover:underline">/about</a>
-  <a href="/projects" class="text-blue-700 hover:underline">/projects</a>
+  <a href="/products" class="text-blue-700 hover:underline">/products</a>
 </nav>
 
 {#each [2,3,4] as n}

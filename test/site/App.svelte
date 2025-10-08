@@ -2,7 +2,7 @@
   <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-gray-200">
     <nav class="mx-auto max-w-3xl flex items-center justify-center gap-1 p-3">
       <a href="/" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Home</a>
-      <a href="/projects" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/projects' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Projects</a>
+      <a href="/products" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/products' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Products</a>
       <a href="/contact" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/contact' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Contact</a>
       <a href="/about" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/about' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">About</a>
       <a href="/account" class="px-3 py-1.5 rounded-md hover:bg-gray-100 {route.path === '/account' ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}">Account</a>
@@ -14,7 +14,7 @@
 
   <main class="mx-auto max-w-3xl p-6">
     {#if Component}
-      <Component params={route.params} />
+      <Component params={route.params} data={route_data} />
     {:else}
       <h1 class="text-2xl font-semibold mb-2">Home</h1>
       <p class="opacity-80">Welcome. Use the navigation to try routes.</p>
@@ -33,9 +33,9 @@
       <section class="rounded-md border border-gray-200 bg-white p-4">
         <h2 class="mb-2 font-semibold">Programmatic</h2>
         <div class="flex flex-wrap gap-2">
-          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/projects')}>goto('/projects')</button>
+          <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/products')}>goto('/products')</button>
           <button class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700" onclick={() => router.goto('/users/7', { replace: true })}>goto('/users/7', &#123; replace: true &#125;)</button>
-          <button class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700" onclick={() => router.preload('/projects')}>preload('/projects')</button>
+          <button class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700" onclick={() => router.preload('/products')}>preload('/products')</button>
         </div>
         <div class="mt-3 flex flex-wrap gap-2">
           <button class="rounded bg-gray-700 px-3 py-1.5 text-white hover:bg-black" onclick={() => router.pushState(`/?tab=info#top`)}>pushState('?tab=info')</button>
@@ -59,7 +59,7 @@
 <script module>
 import Navaid from 'navaid'
 
-import * as ProjectsRoute from './routes/Projects.svelte'
+import * as ProductsRoute from './routes/Products.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
 import * as AccountRoute from './routes/Account.svelte'
@@ -72,7 +72,7 @@ import * as ArticleRoute from './routes/Article.svelte'
 /** @type {Array<[string|RegExp, any]>} */
 const routes = [
   ['/', {}],
-  ['/projects', ProjectsRoute],
+  ['/products', ProductsRoute],
   ['/contact', ContactRoute],
   ['/about', AboutRoute],
   ['/account', AccountRoute],
@@ -83,6 +83,7 @@ const routes = [
 let Component = $state()
 let is_404 = $state(false)
 const route = $state({path: location.pathname, params: null})
+let route_data = $state(null)
 
 const router = new Navaid(routes, {
     base: '/',
@@ -91,17 +92,25 @@ const router = new Navaid(routes, {
         is_404 = true
         Component = null
         Object.assign(route, {path: url, params: null})
+        route_data = null
     },
     // preloadDelay: 20,
     // preloadOnHover: true,
-    async onRoute(uri, matched, params, data) {
-        console.log('onRoute', {uri, matched, params, data})
+    beforeNavigate(nav) {
+        // show a global loading indicator hook — demo logs only
+        console.log('beforeNavigate', nav.type, 'to', nav.to?.url.pathname)
+    },
+    async afterNavigate(nav) {
+        console.log('afterNavigate', nav)
         is_404 = false
-        Component = matched[1]?.default || null
-        Object.assign(route, {path: uri, params})
+        const uri = router.format(nav.to.url.pathname)
+        Component = nav.to.route?.[1]?.default || null
+        Object.assign(route, {path: uri, params: nav.to.params})
+        route_data = nav.to.data ?? null
     },
 })
 router.listen()
+window['router'] = router
 
 // for (const [path, cmp_] of routes) {
 //     router.on(path, params => {
@@ -130,6 +139,9 @@ router.listen()
 </script>
 
 <script>
-import {setContext} from 'svelte'
+import {onDestroy, setContext} from 'svelte'
 setContext('router', router)
+onDestroy(() => {
+  router.unlisten()
+})
 </script>

@@ -201,7 +201,7 @@ match('async validate is awaited', async () => {
 
 match.run()
 
-const nav = suite('beforeNavigate')
+const nav = suite('beforeRouteLeave')
 
 function setupStubs(base = '/') {
 	const listeners = new Map()
@@ -261,7 +261,7 @@ nav('goto; cancel prevents push', async () => {
 				'/',
 				{
 					// leave-only semantics: cancel when leaving '/'
-					beforeNavigate(nav) {
+					beforeRouteLeave(nav) {
 						called++
 						if (nav.type === 'goto') nav.cancel()
 					},
@@ -276,7 +276,7 @@ nav('goto; cancel prevents push', async () => {
 	r.listen()
 	await r.run()
 	await r.goto('/app/test')
-	assert.is(called > 0, true, 'beforeNavigate called')
+	assert.is(called > 0, true, 'beforeRouteLeave called')
 	assert.is(hist.state?.__navaid?.idx, 0, 'history index unchanged when cancelled')
 })
 
@@ -288,7 +288,7 @@ nav('popstate; cancel reverts with history.go', async () => {
 			[
 				'/',
 				{
-					beforeNavigate(nav) {
+					beforeRouteLeave(nav) {
 						called++
 						if (nav.type === 'popstate') nav.cancel()
 					},
@@ -309,7 +309,7 @@ nav('popstate; cancel reverts with history.go', async () => {
 	const ev = new Event('popstate')
 	ev.state = { __navaid: { idx: 0 } }
 	global.dispatchEvent(ev)
-	assert.is(called > 0, true, 'beforeNavigate called on popstate')
+	assert.is(called > 0, true, 'beforeRouteLeave called on popstate')
 	assert.is(hist._went, 1, 'history.go called to revert popstate')
 	r.unlisten()
 })

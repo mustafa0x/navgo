@@ -104,15 +104,16 @@ export default class Navaid {
 			return
 		}
 
-		// Route-level beforeNavigate on current (leave)
+		// Route-level beforeRouteLeave on current (leave)
 		{
 			const nav = this.#makeBeforeNav({
 				type: navType,
 				to: { url, params: hit.params, route: hit.route },
 				event: evParam,
 			})
-			this.#current?.route?.[1]?.beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
 			if (nav.cancelled) return
+			this.#opts.beforeNavigate?.(nav)
 		}
 
 		// save current scroll before changing the entry
@@ -130,7 +131,7 @@ export default class Navaid {
 		const nextIdx = opts.replace ? this.#idx : this.#idx + 1
 		const prevState = history.state && typeof history.state == 'object' ? history.state : {}
 		const nextState = Object.assign({}, prevState, {
-			__navaid: Object.assign({}, prevState.__navaid, { idx: nextIdx }),
+			__navaid: Object.assign({}, prevState.__navaid, { idx: nextIdx, type: navType }),
 		})
 		history[(opts.replace ? 'replace' : 'push') + 'State'](nextState, null, url.href)
 		this.#idx = nextIdx
@@ -240,6 +241,7 @@ export default class Navaid {
 		const hit = await this.match(uri)
 
 		if (hit) {
+			const prev = this.#current
 			this.#current = { uri, route: hit.route, params: hit.params }
 
 			// Use any preloaded data for this URI (from goto() or hover preload)
@@ -247,7 +249,30 @@ export default class Navaid {
 			const loaded = pre?.data
 			if (pre) this.#preloads.delete(uri)
 
-			this.#opts.onRoute?.(uri, hit.route, hit.params, loaded) // back-compat + data
+			// Build a completion nav using the previous route as `from`
+			const nav = {
+				type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
+				from: prev?.uri
+					? {
+							url: new URL(prev.uri, location.origin),
+							params: prev.params || {},
+							route: prev.route,
+						}
+					: null,
+				to: {
+					url: new URL(location.href),
+					params: hit.params,
+					route: hit.route,
+					data: loaded,
+				},
+				willUnload: false,
+				cancelled: false,
+				event: e,
+				cancel() {
+					this.cancelled = true
+				},
+			}
+			this.#opts.afterNavigate?.(nav)
 			// apply scroll after route commit
 			this.#applyScroll(e)
 			return
@@ -303,7 +328,7 @@ export default class Navaid {
 				to: null,
 				event: ev,
 			})
-			this.#current?.route?.[1]?.beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
 			if (nav.cancelled) {
 				const new_idx = ev.state?.__navaid?.idx
 				if (typeof new_idx === 'number') {
@@ -366,11 +391,12 @@ export default class Navaid {
 				willUnload: true,
 				event: ev,
 			})
-			this.#current?.route?.[1]?.beforeNavigate?.(nav)
+			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
 			if (nav.cancelled) {
 				ev.preventDefault()
 				ev.returnValue = ''
 			}
+			this.#opts.beforeNavigate?.(nav)
 		}
 		addEventListener('beforeunload', beforeunload)
 		this.#beforeunload = beforeunload
@@ -418,7 +444,7 @@ export default class Navaid {
 					route: this.#current.route,
 				}
 			: null
-		const nav = {
+		return {
 			type, // 'link' | 'goto' | 'popstate' | 'leave'
 			from,
 			to,
@@ -429,7 +455,6 @@ export default class Navaid {
 				this.cancelled = true
 			},
 		}
-		return nav
 	}
 
 	#saveScroll() {
@@ -487,7 +512,7 @@ export default class Navaid {
 			el = document.getElementById(id)
 		}
 		if (el) {
-			if (typeof el.scrollIntoView === 'function') el.scrollIntoView()
+			el.scrollIntoView?.()
 			return true
 		}
 		return false

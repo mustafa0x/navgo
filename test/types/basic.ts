@@ -17,18 +17,22 @@ const routes: Array<RouteTuple<Meta>> = [
 	[/^\/posts\/(?<slug>[^/]+)$/, {}],
 ]
 
-const opts: Options<Meta> = {
+const opts: Options = {
 	base: '/app',
 	preloadDelay: 10,
 	preloadOnHover: true,
 	on404(uri) {
 		const u: string = uri
 	},
-	onRoute(uri, matched, params, data) {
-		const u: string = uri
-		const m: RouteTuple<Meta> = matched
-		const p: Params = params
-		const d: unknown = data
+	beforeNavigate(nav) {
+		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
+	},
+	afterNavigate(nav) {
+		const to = nav.to!
+		const u: string = to.url.pathname
+		const m: RouteTuple<Meta> = to.route as RouteTuple<Meta>
+		const p: Params = to.params
+		const d: unknown = to.data
 	},
 }
 

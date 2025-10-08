@@ -21,10 +21,10 @@ const routes = [
     {
       // constrain params with built-ins or your own
       param_validators: { /* id: Navaid.validators.int({ min: 1 }) */ },
-      // load data before URL changes; result goes to onRoute(..., data)
+      // load data before URL changes; result goes to afterNavigate(...)
       loaders: (params) => fetch('/api/admin').then(r => r.json()),
       // per-route guard; cancel synchronously to block nav
-      beforeNavigate(nav) {
+      beforeRouteLeave(nav) {
         if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
           nav.cancel()
         }
@@ -39,10 +39,13 @@ const router = new Navaid(routes, {
 	on404(uri) {
 		console.log('404 for', uri)
 	},
-	onRoute(uri, matched, params, data) {
-		// `matched` is the tuple from your `routes` list
-		// e.g. ['/users/:username'] or a RegExp
-		console.log('matched:', matched[0], 'uri:', uri, 'params:', params, 'data:', data)
+	beforeNavigate(nav) {
+		// app-level hook before loaders/URL update; may cancel
+		console.log('beforeNavigate', nav.type, '→', nav.to?.url.pathname)
+	},
+	afterNavigate(nav) {
+		// called after routing completes; nav.to.data holds loader result
+		console.log('afterNavigate', nav.to?.url.pathname, nav.to?.data)
 	},
 })
 
@@ -86,8 +89,10 @@ Notes:
   - App base pathname. With or without leading/trailing slashes is accepted.
 - `on404`: `(uri: string) => void`
   - Called when no route matches the formatted URI (only URIs under `base`).
-- `onRoute`: `(uri: string, matched: [string|RegExp, any?], params: Record<string,string|null|undefined>, data?: unknown) => void`
-  - Called after a successful match in `run()`. `data` is any value from `loaders`.
+- `beforeNavigate`: `(nav: BeforeNavigate) => void`
+  - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
+- `afterNavigate`: `(nav: BeforeNavigate) => void`
+  - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `preloadDelay`: `number` (default `20`)
   - Delay in ms before hover preloading triggers.
 - `preloadOnHover`: `boolean` (default `true`)
@@ -100,10 +105,10 @@ Important: Navaid only processes routes that match your `base` path. `on404` wil
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
   - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `onRoute`.
+  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `afterNavigate`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
-- beforeNavigate?(nav): `(nav: BeforeNavigate) => void`
+- beforeRouteLeave?(nav): `(nav: BeforeNavigate) => void`
   - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
 The `BeforeNavigate` object contains:
@@ -136,7 +141,7 @@ const routes = [
     {
       param_validators: { /* ... */ },
       loaders: (params) => fetch('/api/admin/stats').then(r => r.json()),
-      beforeNavigate(nav) {
+      beforeRouteLeave(nav) {
         if (nav.type === 'link' || nav.type === 'goto') {
           if (!confirm('Enter admin area?')) nav.cancel()
         }
@@ -175,7 +180,7 @@ The path to format.
 
 Returns: `Promise<void>`
 
-Runs any matching route `loaders` before updating the URL and emitting `onRoute`. Use `replace: true` to replace the current history entry.
+Runs any matching route `loaders` before updating the URL and then updates history. Route processing triggers `afterNavigate`. Use `replace: true` to replace the current history entry.
 
 #### uri
 
@@ -206,7 +211,7 @@ These are the (global) events that Navaid creates and/or responds to:
 - replacestate
 - pushstate
 
-Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (eg; <kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
+Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
@@ -252,7 +257,7 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 - `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 - `pushState` (shallow)?
 
-The router passes the type to your route-level `beforeNavigate(nav)` hook.
+The router passes the type to your route-level `beforeRouteLeave(nav)` hook.
 
 ### Matching and Params
 
@@ -270,17 +275,18 @@ For `link` and `goto` navigations that match a route:
 
 ```
 [click <a>] or [router.goto()]
-    → beforeNavigate({ type })
-        → cancelled? yes → stop
-        → no → run loaders(params)  // may be value, Promise, or Promise[]
+        → beforeRouteLeave({ type })  // per-route guard
+        → beforeNavigate(nav)         // app-level start
+            → cancelled? yes → stop
+            → no → run loaders(params)  // may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → run()
                 → consume cached data (if any)
-                → onRoute(uri, matched, params, data)
+                → afterNavigate(nav)
 ```
 
-- If a loader throws/rejects, navigation continues and `onRoute(..., { __error })` is delivered so UI can render an error state.
+- If a loader throws/rejects, navigation continues and `afterNavigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
 - For `popstate`, no loaders run; `run()` executes using the current URL and any cache entry for that path.
 
 ### Shallow Routing
@@ -322,7 +328,7 @@ scroll flow
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` — fires `beforeNavigate('goto')`, saves scroll, runs loaders, then pushes/replaces and calls `onRoute` via `run()`.
+- `goto(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `beforeNavigate`, saves scroll, runs loaders, pushes/replaces, and completes via `run()`/`afterNavigate`.
 - `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `unlisten()` — removes listeners added by `listen()`.
 - `run(e?)` — processes the current `location.pathname`. Skips work when `e?.state?.__navaid?.shallow` is true; applies scroll behavior described above.
