@@ -105,9 +105,9 @@ export default class Navaid {
 		// run loaders first, cache data by URL (so run() can pick it up)
 		const pre = this.#preloads.get(path)
 		const data =
-			pre.data ||
+			pre?.data ||
 			(await (
-				pre.promise ||
+				pre?.promise ||
 				this.#run_loaders(hit.route, hit.params).then(d => {
 					this.#preloads.set(path, { data: d })
 					return d
