@@ -7,12 +7,12 @@ export default class Navaid {
 	#base_rgx
 	#preloads
 	#current = { uri: null, route: null, params: {} } // last matched route info
-	#onpopstate
+	#on_popstate
 	#click
-	#mousemove
+	#mouse_move
 	#tap
 	#idx
-	#beforeunload
+	#before_unload
 	#scroll
 
 	static validators = {
@@ -75,7 +75,7 @@ export default class Navaid {
 	 * @param {{ replace?: boolean }} [opts]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri, opts = {}, navType = 'goto', evParam = undefined) {
+	async goto(uri, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
@@ -89,10 +89,10 @@ export default class Navaid {
 
 		// Route-level beforeRouteLeave on current (leave)
 		{
-			const nav = this.#makeBeforeNav({
-				type: navType,
+			const nav = this.#make_before_nav({
+				type: nav_type,
 				to: { url, params: hit.params, route: hit.route },
-				event: evParam,
+				event: ev_param,
 			})
 			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
 			if (nav.cancelled) return
@@ -100,7 +100,7 @@ export default class Navaid {
 		}
 
 		// save current scroll before changing the entry
-		this.#saveScroll()
+		this.#save_scroll()
 
 		// run loaders first, cache data by URL (so run() can pick it up)
 		const pre = this.#preloads.get(path)
@@ -116,15 +116,15 @@ export default class Navaid {
 		this.#preloads.set(path, { data })
 
 		// change URL (this triggers our wrapped pushstate/replacestate; run() will consume cache)
-		const nextIdx = opts.replace ? this.#idx : this.#idx + 1
-		const prevState = history.state && typeof history.state == 'object' ? history.state : {}
-		const nextState = Object.assign({}, prevState, {
-			__navaid: Object.assign({}, prevState.__navaid, { idx: nextIdx, type: navType }),
+		const next_idx = opts.replace ? this.#idx : this.#idx + 1
+		const prev_state = history.state && typeof history.state == 'object' ? history.state : {}
+		const next_state = Object.assign({}, prev_state, {
+			__navaid: Object.assign({}, prev_state.__navaid, { idx: next_idx, type: nav_type }),
 		})
-		history[(opts.replace ? 'replace' : 'push') + 'State'](nextState, null, url.href)
-		this.#idx = nextIdx
+		history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
+		this.#idx = next_idx
 		// run immediately so afterNavigate fires without relying on the dispatched event
-		await this.run({ state: { __navaid: { type: navType } } })
+		await this.run({ state: { __navaid: { type: nav_type } } })
 	}
 
 	/**
@@ -134,7 +134,7 @@ export default class Navaid {
 	pushState(url, state) {
 		const href = new URL(url || location.href, location.href).href
 		// save scroll for current index before shallow change
-		this.#saveScroll()
+		this.#save_scroll()
 		const st = Object.assign({}, state, {
 			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx + 1 }),
 		})
@@ -149,7 +149,7 @@ export default class Navaid {
 	replaceState(url, state) {
 		const href = new URL(url || location.href, location.href).href
 		// save scroll for current index before shallow change
-		this.#saveScroll()
+		this.#save_scroll()
 		const st = Object.assign({}, state, {
 			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#idx }),
 		})
@@ -266,11 +266,11 @@ export default class Navaid {
 			}
 			this.#opts.afterNavigate?.(nav)
 			// apply scroll after route commit
-			this.#applyScroll(e)
+			this.#apply_scroll(e)
 			return
 		}
 		this.#opts.on404?.(uri)
-		this.#applyScroll(e)
+		this.#apply_scroll(e)
 	}
 
 	//
@@ -280,19 +280,19 @@ export default class Navaid {
 		history.scrollRestoration = 'manual'
 
 		this.#click = async e => {
-			const info = this.#linkFromEvent(e, true)
+			const info = this.#link_from_event(e, true)
 			if (!info) return
 			e.preventDefault()
 			await this.goto(info.href, { replace: false }, 'link', e)
 		}
 
-		this.#onpopstate = async ev => {
+		this.#on_popstate = async ev => {
 			// Save scroll of the entry we're leaving so it can be restored on forward
-			this.#saveScroll()
+			this.#save_scroll()
 			const url = new URL(location.href)
 			const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 			// Construct nav with unknown target first; call leave-guard synchronously
-			const nav = this.#makeBeforeNav({
+			const nav = this.#make_before_nav({
 				type: 'popstate',
 				to: null,
 				event: ev,
@@ -324,42 +324,42 @@ export default class Navaid {
 			}
 			this.run(ev)
 		}
-		addEventListener('popstate', this.#onpopstate)
+		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
 
-		const hoverDelay = this.#opts.preloadDelay ?? 20
-		let hoverTimer = null
-		const maybePreload = ev => {
-			const info = this.#linkFromEvent(ev, ev.type === 'mousedown')
+		const hover_delay = this.#opts.preloadDelay ?? 20
+		let hover_timer = null
+		const maybe_preload = ev => {
+			const info = this.#link_from_event(ev, ev.type === 'mousedown')
 			if (!info) return
 			this.preload(info.href)
 		}
-		const mousemove = ev => {
-			clearTimeout(hoverTimer)
-			hoverTimer = setTimeout(() => maybePreload(ev), hoverDelay)
+		const mouse_move = ev => {
+			clearTimeout(hover_timer)
+			hover_timer = setTimeout(() => maybe_preload(ev), hover_delay)
 		}
-		const tap = ev => maybePreload(ev)
+		const tap = ev => maybe_preload(ev)
 		if (this.#opts.preloadOnHover !== false) {
-			addEventListener('mousemove', mousemove)
+			addEventListener('mousemove', mouse_move)
 			addEventListener('touchstart', tap, { passive: true })
 			addEventListener('mousedown', tap)
-			this.#mousemove = mousemove
+			this.#mouse_move = mouse_move
 			this.#tap = tap
 		}
 		// ensure current history state carries our index
-		const curIdx = history.state?.__navaid?.idx
-		if (typeof curIdx !== 'number') {
+		const cur_idx = history.state?.__navaid?.idx
+		if (typeof cur_idx !== 'number') {
 			const prev = history.state && typeof history.state == 'object' ? history.state : {}
 			const nextState = Object.assign({}, prev, {
 				__navaid: Object.assign({}, prev.__navaid, { idx: this.#idx }),
 			})
 			history.replaceState(nextState, '', location.href)
 		} else {
-			this.#idx = curIdx
+			this.#idx = cur_idx
 		}
 		// beforeunload -> 'leave' event (route-level)
-		const beforeunload = ev => {
-			const nav = this.#makeBeforeNav({
+		const before_unload = ev => {
+			const nav = this.#make_before_nav({
 				type: 'leave',
 				to: null,
 				willUnload: true,
@@ -372,28 +372,28 @@ export default class Navaid {
 			}
 			this.#opts.beforeNavigate?.(nav)
 		}
-		this.#beforeunload = ev => beforeunload(ev)
-		addEventListener('beforeunload', this.#beforeunload)
+		this.#before_unload = ev => before_unload(ev)
+		addEventListener('beforeunload', this.#before_unload)
 
 		this.run()
 	}
 
 	unlisten() {
-		removeEventListener('popstate', this.#onpopstate)
+		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
 
-		if (this.#mousemove) removeEventListener('mousemove', this.#mousemove)
+		if (this.#mouse_move) removeEventListener('mousemove', this.#mouse_move)
 		if (this.#tap) {
 			removeEventListener('touchstart', this.#tap, { passive: true })
 			removeEventListener('mousedown', this.#tap)
 		}
-		removeEventListener('beforeunload', this.#beforeunload)
+		removeEventListener('beforeunload', this.#before_unload)
 	}
 
 	//
 	// Internals
 	//
-	#linkFromEvent(e, checkButton = false) {
+	#link_from_event(e, check_button = false) {
 		if (
 			!e ||
 			e.defaultPrevented ||
@@ -401,7 +401,7 @@ export default class Navaid {
 			e.ctrlKey ||
 			e.shiftKey ||
 			e.altKey ||
-			(checkButton && e.button)
+			(check_button && e.button)
 		)
 			return null
 		const el = e.composedPath()[0]
@@ -432,7 +432,7 @@ export default class Navaid {
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
-	#makeBeforeNav({ type, to, willUnload = false, event = undefined }) {
+	#make_before_nav({ type, to, willUnload = false, event = undefined }) {
 		const from = this.#current?.uri
 			? {
 					url: new URL(this.#current.uri, location.origin),
@@ -453,34 +453,34 @@ export default class Navaid {
 		}
 	}
 
-	#saveScroll() {
+	#save_scroll() {
 		this.#scroll.set(this.#idx, { x: scrollX, y: scrollY })
 	}
 
-	#applyScroll(e) {
+	#apply_scroll(e) {
 		const hash = location.hash
-		const evtype = e?.type
+		const ev_type = e?.type
 		requestAnimationFrame(() => {
 			// 1) On back/forward, restore saved position if available
-			if (evtype === 'popstate') {
+			if (ev_type === 'popstate') {
 				const idx = e?.state?.__navaid?.idx
-				const targetIdx = typeof idx === 'number' ? idx : this.#idx - 1
+				const target_idx = typeof idx === 'number' ? idx : this.#idx - 1
 				// Update our current index to match the target of popstate
-				this.#idx = targetIdx
-				const pos = this.#scroll.get(targetIdx)
+				this.#idx = target_idx
+				const pos = this.#scroll.get(target_idx)
 				if (pos) {
 					if (typeof scrollTo === 'function') scrollTo(pos.x, pos.y)
 					return
 				}
 			}
 			// 2) If there is a hash, prefer anchor scroll
-			if (hash && this.#scrollToHash(hash)) return
+			if (hash && this.#scroll_to_hash(hash)) return
 			// 3) Default: scroll to top for new navigations
 			if (typeof scrollTo === 'function') scrollTo(0, 0)
 		})
 	}
 
-	#scrollToHash(hash) {
+	#scroll_to_hash(hash) {
 		let id = hash.slice(1)
 		if (!id) return false
 		try {
