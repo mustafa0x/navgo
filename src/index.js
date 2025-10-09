@@ -75,50 +75,51 @@ export default class Navaid {
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri, opts = {}, nav_type = 'goto', ev_param = undefined) {
-		const is_popstate = nav_type === 'popstate'
-		if (is_popstate) this.#save_scroll()
-
+	async goto(uri = location.pathname, opts = {}, nav_type = 'goto', ev_param = undefined) {
+		uri = uri || location.pathname
 		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
 		const url = new URL(uri, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		if (!path) return
 
-		// Route-level guard MUST run synchronously before any awaits
-		if (is_popstate) {
-			const nav = this.#make_nav({ type: 'popstate', to: null, event: ev_param })
-			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
-			if (nav.cancelled) {
+		const is_popstate = nav_type === 'popstate'
+		const nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
+
+		//
+		// beforeRouteLeave
+		//
+		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
+		if (nav.cancelled) {
+			// use history.go to cancel the nav, and jump back to where we are
+			if (is_popstate) {
 				const new_idx = ev_param?.state?.__navaid?.idx
 				if (new_idx != null) {
 					const delta = new_idx - this.#route_idx
 					if (delta) history.go(-delta)
 				}
-				return
 			}
-		}
-
-		// For link/goto, run guard before async work too (nav.to will be filled by run())
-		if (!is_popstate) {
-			const nav = this.#make_nav({
-				type: nav_type,
-				to: { url, params: {}, route: null },
-				event: ev_param,
-			})
-			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
-			if (nav.cancelled) return
-			this.#opts.beforeNavigate?.(nav)
-			this.#save_scroll()
-		}
-
-		const hit = await this.match(path)
-		if (!hit) {
-			this.#opts.on404?.(path)
-			if (is_popstate) this.#apply_scroll(ev_param)
 			return
 		}
 
-		// run loaders first, cache data by URL (so run() can pick it up)
+		//
+		// #
+		//
+		this.#opts.beforeNavigate?.(nav)
+		this.#save_scroll()
+
+		//
+		// match
+		//
+		const hit = await this.match(path)
+		if (!hit) {
+			this.#opts.on404?.(path)
+			this.#apply_scroll(ev_param)
+			return
+		}
+
+		//
+		// loaders
+		//
 		const pre = this.#preloads.get(path)
 		const data =
 			pre?.data ??
@@ -127,7 +128,9 @@ export default class Navaid {
 			})))
 		this.#preloads.set(path, { data })
 
+		//
 		// change URL (not needed for popstate - browser already did it)
+		//
 		if (!is_popstate) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
@@ -139,36 +142,17 @@ export default class Navaid {
 			this.#route_idx = next_idx
 		}
 
-		await this.run({ state: { __navaid: { type: nav_type } } })
-	}
-
-	//
-	// Router driver
-	//
-	async run(e) {
-		// skip when this was a shallow push/replace
-		if (e?.state?.__navaid?.shallow) return
-
-		const uri = this.format(location.pathname)?.match(/[^?#]*/)?.[0]
-		if (!uri) return
-
-		const hit = await this.match(uri)
-		if (!hit) {
-			this.#opts.on404?.(uri)
-			this.#apply_scroll(e)
-			return
-		}
-
 		const prev = this.#current
 		this.#current = { uri, route: hit.route, params: hit.params }
 
 		// Use any preloaded data for this URI (from goto() or hover preload)
-		const pre = this.#preloads.get(uri)
-		const loaded = pre?.data
+		// const pre = this.#preloads.get(uri)
+		// const loaded = pre?.data
 		if (pre) this.#preloads.delete(uri)
 
 		// Build a completion nav using the previous route as `from`
-		const nav = this.#make_nav({
+		const e = { state: { __navaid: { type: nav_type } } }
+		const nav1 = this.#make_nav({
 			type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
 			from: prev?.uri
 				? {
@@ -181,11 +165,11 @@ export default class Navaid {
 				url: new URL(location.href),
 				params: hit.params,
 				route: hit.route,
-				data: loaded,
+				data,
 			},
 			event: e,
 		})
-		this.#opts.afterNavigate?.(nav)
+		this.#opts.afterNavigate?.(nav1)
 		this.#apply_scroll(e)
 	}
 
@@ -295,7 +279,7 @@ export default class Navaid {
 	}
 
 	#on_popstate = ev => {
-		// unify via goto; it will handle leave-guards, preloads, and scroll
+		if (ev?.state?.__navaid?.shallow) return
 		this.goto(location.href, { replace: true }, 'popstate', ev)
 	}
 
@@ -360,7 +344,7 @@ export default class Navaid {
 			this.#route_idx = cur_idx
 		}
 
-		this.run()
+		this.goto()
 	}
 
 	unlisten() {
