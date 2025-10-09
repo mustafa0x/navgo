@@ -63,6 +63,7 @@ export default class Navaid {
 		}
 	}
 
+	/** @type {ValidatorHelpers} */
 	static validators = {
 		int(opts = {}) {
 			const { min = null, max = null } = opts
@@ -80,6 +81,7 @@ export default class Navaid {
 		},
 	}
 
+	/** @param {RouteTuple[]} [routes] @param {Options} [opts] */
 	constructor(routes = [], opts) {
 		this.#opts = { ...this.#opts, ...opts }
 		this.#base = this.#normalize(this.#opts.base || '/')
@@ -101,6 +103,7 @@ export default class Navaid {
 	#normalize(uri) {
 		return '/' + (uri || '').replace(/^\/|\/$/g, '')
 	}
+	/** @param {string} uri @returns {string|false} */
 	format(uri) {
 		if (!uri) return uri
 		uri = this.#normalize(uri)
@@ -116,7 +119,7 @@ export default class Navaid {
 	/**
 	 * Programmatic navigation that runs loaders before changing URL.
 	 * Also used by popstate to unify the flow.
-	 * @param {string} uri
+	 * @param {string} [uri]
 	 * @param {{ replace?: boolean }} [opts]
 	 * @param {'goto'|'link'|'popstate'} [nav_type]
 	 * @param {Event} [ev_param]
@@ -228,9 +231,11 @@ export default class Navaid {
 		// Popstate handler checks state.__navaid.shallow and skips router processing
 		this.#route_idx = idx
 	}
+	/** @param {string|URL} [url] @param {any} [state] */
 	pushState(url, state) {
 		this.#commit_shallow(url, state, false)
 	}
+	/** @param {string|URL} [url] @param {any} [state] */
 	replaceState(url, state) {
 		this.#commit_shallow(url, state, true)
 	}
@@ -239,6 +244,7 @@ export default class Navaid {
 	 * Manually preload loaders for a URL (e.g. to prime cache).
 	 * Dedupes concurrent preloads for the same path.
 	 */
+	/** @param {string} uri @returns {Promise<unknown|void>} */
 	async preload(uri) {
 		const info = this.#resolve_url_and_path(uri)
 		if (!info) return Promise.resolve()
@@ -266,6 +272,7 @@ export default class Navaid {
 	//
 	// Core matching
 	//
+	/** @param {string} uri @returns {Promise<MatchResult|null>} */
 	async match(uri) {
 		let arr, obj
 		for (let i = 0; i < this.#routes.length; i++) {
@@ -297,6 +304,7 @@ export default class Navaid {
 	//
 	// Lifecycle hooks
 	//
+	/** Attach history + click listeners and process current location. */
 	listen() {
 		history.scrollRestoration = 'manual'
 
@@ -325,6 +333,7 @@ export default class Navaid {
 		return this.goto()
 	}
 
+	/** Remove listeners installed by listen(). */
 	unlisten() {
 		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
@@ -444,3 +453,8 @@ export default class Navaid {
 		return !!el
 	}
 }
+
+/** @typedef {import('navaid').Options} Options */
+/** @typedef {import('navaid').RouteTuple} RouteTuple */
+/** @typedef {import('navaid').MatchResult} MatchResult */
+/** @typedef {import('navaid').ValidatorHelpers} ValidatorHelpers */
