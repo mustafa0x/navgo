@@ -17,6 +17,7 @@ export default class Navaid {
 	#current = { uri: null, route: null, params: {} } // last matched route info
 	#route_idx = 0
 	#scroll = new Map()
+	#hash_navigating = false
 
 	//
 	// Event listeners
@@ -24,19 +25,61 @@ export default class Navaid {
 	#click = e => {
 		console.debug('[navaid:event:click]', { type: e?.type, target: e?.target })
 		const info = this.#link_from_event(e, true)
-		if (!info) {
-			console.debug('[navaid:event:click]', 'ignored')
+		if (!info) return
+
+		const url = new URL(info.href, location.href)
+		const same_path =
+			this.format(url.pathname) === (this.#current?.uri || this.format(location.pathname))
+		const has_hash = info.href.includes('#') || url.hash !== ''
+
+		// Hash-only navigation on same path: let browser handle, but track index
+		if (has_hash && same_path) {
+			const cur_hash = location.href.split('#')[1]
+			const next_hash = url.href.split('#')[1] ?? ''
+			if (cur_hash === next_hash) {
+				// same hash: just scroll without history churn
+				e.preventDefault()
+				if (next_hash === '' || (next_hash === 'top' && !document.getElementById('top'))) {
+					scrollTo({ top: 0 })
+				} else {
+					this.#scroll_to_hash('#' + next_hash)
+				}
+				console.debug('[navaid:hash]', 'same-hash scroll')
+				return
+			}
+
+			// different hash on same path — let browser update URL + scroll
+			this.#hash_navigating = true
+			this.#save_scroll()
+			console.debug('[navaid:hash]', 'navigate', { href: url.href })
 			return
 		}
+
 		e.preventDefault()
 		console.debug('[navaid:link]', 'intercept', { href: info.href })
 		this.goto(info.href, { replace: false }, 'link', e)
 	}
+
 	#on_popstate = ev => {
 		if (ev?.state?.__navaid?.shallow) return
+		if (this.#hash_navigating) return
 		console.debug('[navaid:event:popstate]', { idx: ev?.state?.__navaid?.idx })
 		this.goto(location.href, { replace: true }, 'popstate', ev)
 	}
+	#on_hashchange = () => {
+		// if hashchange originated from a click we tracked, bump our index and persist it
+		if (!this.#hash_navigating) return
+		this.#hash_navigating = false
+		const prev = history.state && typeof history.state == 'object' ? history.state : {}
+		const next_idx = this.#route_idx + 1
+		const next_state = Object.assign({}, prev, {
+			__navaid: Object.assign({}, prev.__navaid, { idx: next_idx }),
+		})
+		history.replaceState(next_state, '', location.href)
+		this.#route_idx = next_idx
+		console.debug('[navaid:event:hashchange]', { idx: next_idx, href: location.href })
+	}
+
 	#hover_timer = null
 	#maybe_preload = ev => {
 		const info = this.#link_from_event(ev, ev.type === 'mousedown')
@@ -50,6 +93,7 @@ export default class Navaid {
 		this.#hover_timer = setTimeout(() => this.#maybe_preload(ev), this.#opts.preload_delay)
 	}
 	#tap = ev => this.#maybe_preload(ev)
+
 	#before_unload = ev => {
 		// persist scroll for refresh / session restore
 		try {
@@ -395,6 +439,7 @@ export default class Navaid {
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
 		addEventListener('beforeunload', this.#before_unload)
+		addEventListener('hashchange', this.#on_hashchange)
 
 		if (this.#opts.preload_on_hover) {
 			addEventListener('mousemove', this.#mouse_move)
@@ -431,6 +476,7 @@ export default class Navaid {
 		removeEventListener('touchstart', this.#tap)
 		removeEventListener('mousedown', this.#tap)
 		removeEventListener('beforeunload', this.#before_unload)
+		removeEventListener('hashchange', this.#on_hashchange)
 		console.debug('[navaid:listen]', 'detached listeners')
 	}
 
@@ -446,7 +492,6 @@ export default class Navaid {
 		return href &&
 			!a.target &&
 			!a.download &&
-			href[0] != '#' &&
 			a.host === location.host &&
 			(href[0] != '/' || this.#base_rgx.test(href))
 			? { a, href }
