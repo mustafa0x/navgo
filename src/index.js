@@ -11,14 +11,57 @@ export default class Navaid {
 	}
 	#routes = []
 	#base = '/'
-	#base_rgx
+	#base_rgx = /^\/+/
 	// preload cache: href -> { promise, data, error }
 	#preloads = new Map()
 	#current = { uri: null, route: null, params: {} } // last matched route info
-	#mouse_move
-	#tap
 	#route_idx = 0
 	#scroll = new Map()
+
+	//
+	// Event listeners
+	//
+	#click = e => {
+		const info = this.#link_from_event(e, true)
+		if (!info) return
+		e.preventDefault()
+		this.goto(info.href, { replace: false }, 'link', e)
+	}
+	#on_popstate = ev => {
+		if (ev?.state?.__navaid?.shallow) return
+		this.goto(location.href, { replace: true }, 'popstate', ev)
+	}
+	#hover_timer = null
+	#maybe_preload = ev => {
+		const info = this.#link_from_event(ev, ev.type === 'mousedown')
+		if (info) this.preload(info.href)
+	}
+	#mouse_move = ev => {
+		clearTimeout(this.#hover_timer)
+		this.#hover_timer = setTimeout(() => this.#maybe_preload(ev), this.#opts.preload_delay)
+	}
+	#tap = ev => this.#maybe_preload(ev)
+	#before_unload = ev => {
+		// persist scroll for refresh / session restore
+		try {
+			sessionStorage.setItem(
+				`__navaid_scroll:${location.href}`,
+				JSON.stringify({ x: scrollX, y: scrollY }),
+			)
+		} catch {}
+
+		const nav = this.#make_nav({
+			type: 'leave',
+			to: null,
+			willUnload: true,
+			event: ev,
+		})
+		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
+		if (nav.cancelled) {
+			ev.preventDefault()
+			ev.returnValue = ''
+		}
+	}
 
 	static validators = {
 		int(opts = {}) {
@@ -145,7 +188,7 @@ export default class Navaid {
 		}
 
 		const prev = this.#current
-		this.#current = { uri, route: hit.route, params: hit.params }
+		this.#current = { uri: path, route: hit.route, params: hit.params }
 
 		// Use any preloaded data for this path (from goto() or hover preload)
 		if (pre) this.#preloads.delete(path)
@@ -177,32 +220,23 @@ export default class Navaid {
 	 * Shallow push — updates the URL/state but DOES NOT call handlers or loaders.
 	 * URL changes, content stays put until a real nav.
 	 */
-	pushState(url, state) {
+	#commit_shallow(url, state, replace) {
 		const href = new URL(url || location.href, location.href).href
 		// save scroll for current index before shallow change
 		this.#save_scroll()
+		const idx = this.#route_idx + (replace ? 0 : 1)
 		const st = Object.assign({}, state, {
-			__navaid: Object.assign({}, state?.__navaid, {
-				shallow: true,
-				idx: this.#route_idx + 1,
-			}),
+			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx }),
 		})
-		history.pushState(st, '', href)
+		history[(replace ? 'replace' : 'push') + 'State'](st, '', href)
 		// Popstate handler checks state.__navaid.shallow and skips router processing
-		this.#route_idx = this.#route_idx + 1
+		this.#route_idx = idx
 	}
-
-	/**
-	 * Shallow replace — same semantics as pushState but replaces current entry.
-	 */
+	pushState(url, state) {
+		this.#commit_shallow(url, state, false)
+	}
 	replaceState(url, state) {
-		const href = new URL(url || location.href, location.href).href
-		// save scroll for current index before shallow change
-		this.#save_scroll()
-		const st = Object.assign({}, state, {
-			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx: this.#route_idx }),
-		})
-		history.replaceState(st, '', href)
+		this.#commit_shallow(url, state, true)
 	}
 
 	/**
@@ -240,69 +274,28 @@ export default class Navaid {
 		let arr, obj
 		for (let i = 0; i < this.#routes.length; i++) {
 			obj = this.#routes[i]
-			if ((arr = obj.pattern.exec(uri))) {
-				const params = {}
-				if (obj.keys?.length) {
-					for (let j = 0; j < obj.keys.length; ) {
-						params[obj.keys[j]] = arr[++j] || null
-					}
-				} else if (arr.groups) {
-					for (const k in arr.groups) params[k] = arr.groups[k]
+			if (!(arr = obj.pattern.exec(uri))) continue
+			const params = {}
+			if (obj.keys?.length) {
+				for (let j = 0; j < obj.keys.length; ) {
+					params[obj.keys[j]] = arr[++j] || null
 				}
-
-				// per-route validators and optional async validate()
-				const hooks = obj.data[1]
-				if (
-					hooks.param_validators &&
-					!this.#check_param_validators(hooks.param_validators, params)
-				)
-					continue
-				if (hooks.validate && !(await hooks.validate(params))) {
-					continue
-				}
-
-				return { route: obj.data || null, params }
+			} else if (arr.groups) {
+				for (const k in arr.groups) params[k] = arr.groups[k]
 			}
+
+			// per-route validators and optional async validate()
+			const hooks = obj.data[1]
+			if (
+				hooks.param_validators &&
+				!this.#check_param_validators(hooks.param_validators, params)
+			)
+				continue
+			if (hooks.validate && !(await hooks.validate(params))) continue
+
+			return { route: obj.data || null, params }
 		}
 		return null
-	}
-
-	//
-	// Event listeners
-	//
-	#click = e => {
-		const info = this.#link_from_event(e, true)
-		if (!info) return
-		e.preventDefault()
-		this.goto(info.href, { replace: false }, 'link', e)
-	}
-
-	#on_popstate = ev => {
-		if (ev?.state?.__navaid?.shallow) return
-		this.goto(location.href, { replace: true }, 'popstate', ev)
-	}
-
-	#before_unload = ev => {
-		// persist scroll for refresh / session restore
-		try {
-			sessionStorage.setItem(
-				`__navaid_scroll:${location.href}`,
-				JSON.stringify({ x: scrollX, y: scrollY }),
-			)
-		} catch {}
-
-		const nav = this.#make_nav({
-			type: 'leave',
-			to: null,
-			willUnload: true,
-			event: ev,
-		})
-		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
-		if (nav.cancelled) {
-			ev.preventDefault()
-			ev.returnValue = ''
-		}
-		this.#opts.before_navigate?.(nav)
 	}
 
 	//
@@ -315,16 +308,6 @@ export default class Navaid {
 		addEventListener('click', this.#click)
 		addEventListener('beforeunload', this.#before_unload)
 
-		let hover_timer = null
-		const maybe_preload = ev => {
-			const info = this.#link_from_event(ev, ev.type === 'mousedown')
-			if (info) this.preload(info.href)
-		}
-		this.#mouse_move = ev => {
-			clearTimeout(hover_timer)
-			hover_timer = setTimeout(() => maybe_preload(ev), this.#opts.preload_delay)
-		}
-		this.#tap = ev => maybe_preload(ev)
 		if (this.#opts.preload_on_hover) {
 			addEventListener('mousemove', this.#mouse_move)
 			addEventListener('touchstart', this.#tap, { passive: true })
@@ -359,23 +342,16 @@ export default class Navaid {
 	// Internals
 	//
 	#link_from_event(e, check_button = false) {
-		if (
-			!e ||
-			e.defaultPrevented ||
-			e.metaKey ||
-			e.ctrlKey ||
-			e.shiftKey ||
-			e.altKey ||
-			(check_button && e.button)
-		)
+		// prettier-ignore
+		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button))
 			return null
 		const a = e.composedPath()[0]?.closest?.('a')
 		const href = a?.getAttribute?.('href')
 		return href &&
-			!a?.target &&
-			!a?.download &&
+			!a.target &&
+			!a.download &&
 			href[0] != '#' &&
-			a?.host === location.host &&
+			a.host === location.host &&
 			(href[0] != '/' || this.#base_rgx.test(href))
 			? { a, href }
 			: null
