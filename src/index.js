@@ -341,7 +341,7 @@ export default class Navaid {
 		// prettier-ignore
 		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button))
 			return null
-		const a = e.composedPath()[0]?.closest?.('a')
+		const a = (e.composedPath()[0] || e.target)?.closest?.('a')
 		const href = a?.getAttribute?.('href')
 		return href &&
 			!a.target &&
