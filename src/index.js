@@ -85,43 +85,84 @@ export default class Navaid {
 		}
 
 		// Route-level beforeRouteLeave on current (leave)
-		{
-			const nav = this.#make_nav({
-				type: nav_type,
-				to: { url, params: hit.params, route: hit.route },
-				event: ev_param,
-			})
-			this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
-			if (nav.cancelled) return
-			this.#opts.beforeNavigate?.(nav)
-		}
+		const nav = this.#make_nav({
+			type: nav_type,
+			to: { url, params: hit.params, route: hit.route },
+			event: ev_param,
+		})
+		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
+		if (nav.cancelled) return
 
-		// save current scroll before changing the entry
+		this.#opts.beforeNavigate?.(nav)
+
 		this.#save_scroll()
 
 		// run loaders first, cache data by URL (so run() can pick it up)
 		const pre = this.#preloads.get(path)
 		const data =
-			pre?.data ||
-			(await (
-				pre?.promise ||
-				this.#run_loaders(hit.route, hit.params).then(d => {
-					this.#preloads.set(path, { data: d })
-					return d
-				})
-			).catch(e => ({ __error: e })))
+			pre?.data ??
+			(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
+				__error: e,
+			})))
 		this.#preloads.set(path, { data })
 
-		// change URL (this triggers our wrapped pushstate/replacestate; run() will consume cache)
-		const next_idx = opts.replace ? this.#route_idx : this.#route_idx + 1
+		// change URL
+		const next_idx = this.#route_idx + (opts.replace ? 1 : 0)
 		const prev_state = history.state && typeof history.state == 'object' ? history.state : {}
 		const next_state = Object.assign({}, prev_state, {
 			__navaid: Object.assign({}, prev_state.__navaid, { idx: next_idx, type: nav_type }),
 		})
 		history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
 		this.#route_idx = next_idx
-		// run immediately so afterNavigate fires without relying on the dispatched event
+
 		await this.run({ state: { __navaid: { type: nav_type } } })
+	}
+
+	//
+	// Router driver
+	//
+	async run(e) {
+		// skip when this was a shallow push/replace
+		if (e?.state?.__navaid?.shallow) return
+
+		const uri = this.format(location.pathname)?.match(/[^?#]*/)[0]
+		if (!uri) return
+
+		const hit = await this.match(uri)
+		if (!hit) {
+			this.#opts.on404?.(uri)
+			this.#apply_scroll(e)
+			return
+		}
+
+		const prev = this.#current
+		this.#current = { uri, route: hit.route, params: hit.params }
+
+		// Use any preloaded data for this URI (from goto() or hover preload)
+		const pre = this.#preloads.get(uri)
+		const loaded = pre?.data
+		if (pre) this.#preloads.delete(uri)
+
+		// Build a completion nav using the previous route as `from`
+		const nav = this.#make_nav({
+			type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
+			from: prev?.uri
+				? {
+						url: new URL(prev.uri, location.origin),
+						params: prev.params || {},
+						route: prev.route,
+					}
+				: null,
+			to: {
+				url: new URL(location.href),
+				params: hit.params,
+				route: hit.route,
+				data: loaded,
+			},
+			event: e,
+		})
+		this.#opts.afterNavigate?.(nav)
+		this.#apply_scroll(e)
 	}
 
 	/**
@@ -220,56 +261,7 @@ export default class Navaid {
 	}
 
 	//
-	// Router driver
-	//
-	async run(e) {
-		// skip when this was a shallow push/replace
-		if (e?.state?.__navaid?.shallow) return
-
-		let uri = this.format(location.pathname)
-		if (!uri) return
-		uri = uri.match(/[^?#]*/)[0]
-
-		const hit = await this.match(uri)
-
-		if (hit) {
-			const prev = this.#current
-			this.#current = { uri, route: hit.route, params: hit.params }
-
-			// Use any preloaded data for this URI (from goto() or hover preload)
-			const pre = this.#preloads.get(uri)
-			const loaded = pre?.data
-			if (pre) this.#preloads.delete(uri)
-
-			// Build a completion nav using the previous route as `from`
-			const nav = this.#make_nav({
-				type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
-				from: prev?.uri
-					? {
-							url: new URL(prev.uri, location.origin),
-							params: prev.params || {},
-							route: prev.route,
-						}
-					: null,
-				to: {
-					url: new URL(location.href),
-					params: hit.params,
-					route: hit.route,
-					data: loaded,
-				},
-				event: e,
-			})
-			this.#opts.afterNavigate?.(nav)
-			// apply scroll after route commit
-			this.#apply_scroll(e)
-			return
-		}
-		this.#opts.on404?.(uri)
-		this.#apply_scroll(e)
-	}
-
-	//
-	// Lifecycle hooks
+	// Event listeners
 	//
 	#click = e => {
 		const info = this.#link_from_event(e, true)
@@ -341,6 +333,9 @@ export default class Navaid {
 		}
 		this.#opts.beforeNavigate?.(nav)
 	}
+	//
+	// Lifecycle hooks
+	//
 	listen() {
 		history.scrollRestoration = 'manual'
 
