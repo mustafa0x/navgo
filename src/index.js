@@ -1,16 +1,24 @@
 import { parse } from 'regexparam'
 
 export default class Navaid {
-	#opts
+	#opts = {
+		base: '/',
+		preload_delay: 20,
+		preload_on_hover: true,
+		on_404: undefined,
+		before_navigate: undefined,
+		after_navigate: undefined,
+	}
 	#routes = []
 	#base = '/'
 	#base_rgx
-	#preloads
+	// preload cache: href -> { promise, data, error }
+	#preloads = new Map()
 	#current = { uri: null, route: null, params: {} } // last matched route info
 	#mouse_move
 	#tap
-	#route_idx
-	#scroll
+	#route_idx = 0
+	#scroll = new Map()
 
 	static validators = {
 		int(opts = {}) {
@@ -29,28 +37,19 @@ export default class Navaid {
 		},
 	}
 
-	constructor(routes = [], opts = { preload_delay: 20, preload_on_hover: true }) {
-		this.#opts = opts
+	constructor(routes = [], opts) {
+		this.#opts = { ...this.#opts, ...opts }
 		this.#base = this.#normalize(this.#opts.base || '/')
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
-		// preload cache: href -> { promise, data, error }
-		this.#preloads = new Map()
-		this.#route_idx = 0
-		this.#scroll = new Map()
-
-		for (const r of routes) {
-			const patOrRx = r[0]
-			let pat
-			if (patOrRx instanceof RegExp) {
-				pat = { pattern: patOrRx, keys: null }
-			} else {
-				pat = parse(patOrRx)
-			}
+		this.#routes = routes.map(r => {
+			const pat_or_rx = r[0]
+			const pat =
+				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
 			pat.data = r // keep original tuple: [pattern, hooks, ...]
-			this.#routes.push(pat)
-		}
+			return pat
+		})
 	}
 
 	//
@@ -59,11 +58,16 @@ export default class Navaid {
 	#normalize(uri) {
 		return '/' + (uri || '').replace(/^\/|\/$/g, '')
 	}
-
 	format(uri) {
 		if (!uri) return uri
 		uri = this.#normalize(uri)
 		return this.#base_rgx.test(uri) && uri.replace(this.#base_rgx, '/')
+	}
+	#resolve_url_and_path(uri) {
+		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
+		const url = new URL(uri, location.href)
+		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+		return path ? { url, path } : null
 	}
 
 	/**
@@ -76,11 +80,9 @@ export default class Navaid {
 	 * @returns {Promise<void>}
 	 */
 	async goto(uri = location.pathname, opts = {}, nav_type = 'goto', ev_param = undefined) {
-		uri = uri || location.pathname
-		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
-		const url = new URL(uri, location.href)
-		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
-		if (!path) return
+		const info = this.#resolve_url_and_path(uri)
+		if (!info) return
+		const { url, path } = info
 
 		const is_popstate = nav_type === 'popstate'
 		const nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
@@ -104,7 +106,7 @@ export default class Navaid {
 		//
 		// #
 		//
-		this.#opts.beforeNavigate?.(nav)
+		this.#opts.before_navigate?.(nav)
 		this.#save_scroll()
 
 		//
@@ -112,7 +114,7 @@ export default class Navaid {
 		//
 		const hit = await this.match(path)
 		if (!hit) {
-			this.#opts.on404?.(path)
+			this.#opts.on_404?.(path)
 			this.#apply_scroll(ev_param)
 			return
 		}
@@ -167,7 +169,7 @@ export default class Navaid {
 			},
 			event: e,
 		})
-		this.#opts.afterNavigate?.(nav1)
+		this.#opts.after_navigate?.(nav1)
 		this.#apply_scroll(e)
 	}
 
@@ -186,7 +188,7 @@ export default class Navaid {
 			}),
 		})
 		history.pushState(st, '', href)
-		// note: our event handler will skip run() when it sees shallow=true
+		// Popstate handler checks state.__navaid.shallow and skips router processing
 		this.#route_idx = this.#route_idx + 1
 	}
 
@@ -208,10 +210,9 @@ export default class Navaid {
 	 * Dedupes concurrent preloads for the same path.
 	 */
 	async preload(uri) {
-		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
-		const url = new URL(uri, location.href)
-		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
-		if (!path) return Promise.resolve()
+		const info = this.#resolve_url_and_path(uri)
+		if (!info) return Promise.resolve()
+		const { path } = info
 		// Do not preload if we're already at this path
 		if (path === this.#current?.uri) return Promise.resolve()
 		const hit = await this.match(path)
@@ -301,7 +302,7 @@ export default class Navaid {
 			ev.preventDefault()
 			ev.returnValue = ''
 		}
-		this.#opts.beforeNavigate?.(nav)
+		this.#opts.before_navigate?.(nav)
 	}
 
 	//

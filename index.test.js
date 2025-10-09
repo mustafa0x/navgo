@@ -344,7 +344,7 @@ describe('preload behavior', () => {
 		const navs = []
 		const router = new Navaid(routes, {
 			base: '/app',
-			afterNavigate(nav) {
+			after_navigate(nav) {
 				navs.push(nav)
 			},
 		})

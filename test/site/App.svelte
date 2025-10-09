@@ -153,21 +153,21 @@ let route_data = $state(null)
 
 const router = new Navaid(routes, {
     base: '/',
-    async on404(url) {
+    async on_404(url) {
         console.log('404', url)
         is_404 = true
         Component = null
         Object.assign(route, {path: url, params: null})
         route_data = null
     },
-    // preloadDelay: 20,
-    // preloadOnHover: true,
-    beforeNavigate(nav) {
+    // preload_delay: 20,
+    // preload_on_hover: true,
+    before_navigate(nav) {
         // show a global loading indicator hook — demo logs only
         console.log('beforeNavigate', nav.type, 'to', nav.to?.url.pathname)
         IS_FETCHING.set(true)
     },
-    async afterNavigate(nav) {
+    async after_navigate(nav) {
         console.log('afterNavigate', nav)
         is_404 = false
         const uri = router.format(nav.to.url.pathname)

@@ -23,7 +23,7 @@ const routes = [
 			param_validators: {
 				/* id: Navaid.validators.int({ min: 1 }) */
 			},
-			// load data before URL changes; result goes to afterNavigate(...)
+                // load data before URL changes; result goes to after_navigate(...)
 			loaders: params => fetch('/api/admin').then(r => r.json()),
 			// per-route guard; cancel synchronously to block nav
 			beforeRouteLeave(nav) {
@@ -37,18 +37,18 @@ const routes = [
 
 // Create router with options + callbacks
 const router = new Navaid(routes, {
-	base: '/',
-	on404(uri) {
-		console.log('404 for', uri)
-	},
-	beforeNavigate(nav) {
-		// app-level hook before loaders/URL update; may cancel
-		console.log('beforeNavigate', nav.type, '→', nav.to?.url.pathname)
-	},
-	afterNavigate(nav) {
-		// called after routing completes; nav.to.data holds loader result
-		console.log('afterNavigate', nav.to?.url.pathname, nav.to?.data)
-	},
+    base: '/',
+    on_404(uri) {
+        console.log('404 for', uri)
+    },
+    before_navigate(nav) {
+        // app-level hook before loaders/URL update; may cancel
+        console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
+    },
+    after_navigate(nav) {
+        // called after routing completes; nav.to.data holds loader result
+        console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
+    },
 })
 
 // Process current location
@@ -89,25 +89,25 @@ Notes:
 
 - `base`: `string` (default `'/'`)
     - App base pathname. With or without leading/trailing slashes is accepted.
-- `on404`: `(uri: string) => void`
+- `on_404`: `(uri: string) => void`
     - Called when no route matches the formatted URI (only URIs under `base`).
-- `beforeNavigate`: `(nav: Navigation) => void`
+- `before_navigate`: `(nav: Navigation) => void`
     - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
-- `afterNavigate`: `(nav: Navigation) => void`
+- `after_navigate`: `(nav: Navigation) => void`
     - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
-- `preloadDelay`: `number` (default `20`)
+- `preload_delay`: `number` (default `20`)
     - Delay in ms before hover preloading triggers.
-- `preloadOnHover`: `boolean` (default `true`)
+- `preload_on_hover`: `boolean` (default `true`)
     - When `false`, disables hover/touch preloading.
 
-Important: Navaid only processes routes that match your `base` path. `on404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
+Important: Navaid only processes routes that match your `base` path. `on_404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
 
 ### Route Hooks
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
     - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
-    - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `afterNavigate`.
+    - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
     - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - beforeRouteLeave?(nav): `(nav: Navigation) => void`
@@ -129,7 +129,7 @@ The `Navigation` object contains:
 
 #### Order & cancellation:
 
-- Router calls `beforeNavigate` on the current route (leave).
+- Router calls `before_navigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
     - For `link`/`goto`, it stops before URL change.
     - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
@@ -185,7 +185,7 @@ The path to format.
 
 Returns: `Promise<void>`
 
-Runs any matching route `loaders` before updating the URL and then updates history. Route processing triggers `afterNavigate`. Use `replace: true` to replace the current history entry.
+Runs any matching route `loaders` before updating the URL and then updates history. Route processing triggers `after_navigate`. Use `replace: true` to replace the current history entry.
 
 #### uri
 
@@ -223,7 +223,7 @@ In addition, `listen()` wires preloading listeners (enabled by default) so route
 - `mousemove` (hover) — after a short delay, hovering an in-app link triggers `preload(href)`.
 - `touchstart` and `mousedown` (tap) — tapping or pressing on an in-app link also triggers `preload(href)`.
 
-Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preloadDelay` and `preloadOnHover` options.
+Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preload_delay` and `preload_on_hover` options.
 
 Notes:
 - `preload(uri)` is a no-op when `uri` formats to the current route's path (already loaded).
@@ -286,18 +286,18 @@ For `link` and `goto` navigations that match a route:
 ```
 [click <a>] or [router.goto()]
         → beforeRouteLeave({ type })  // per-route guard
-        → beforeNavigate(nav)         // app-level start
+        → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
             → no → run loaders(params)  // may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → run()
                 → consume cached data (if any)
-                → afterNavigate(nav)
+                → after_navigate(nav)
 ```
 
-- If a loader throws/rejects, navigation continues and `afterNavigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
-- For `popstate`, loaders run before `run()` so content matches the target entry; this improves scroll restoration. Errors are delivered via `afterNavigate` with `nav.to.data = { __error }`.
+- If a loader throws/rejects, navigation continues and `after_navigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
+- For `popstate`, loaders run before completion so content matches the target entry; this improves scroll restoration. Errors are delivered via `after_navigate` with `nav.to.data = { __error }`.
 
 ### Shallow Routing
 
@@ -337,7 +337,7 @@ scroll flow
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `beforeNavigate`, saves scroll, runs loaders, pushes/replaces, and completes via `run()`/`afterNavigate`.
+- `goto(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
 - `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `unlisten()` — removes listeners added by `listen()`.
 - `run(e?)` — processes the current `location.pathname`. Skips work when `e?.state?.__navaid?.shallow` is true; applies scroll behavior described above.

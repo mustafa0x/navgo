@@ -19,15 +19,15 @@ const routes: Array<RouteTuple<Meta>> = [
 
 const opts: Options = {
 	base: '/app',
-	preloadDelay: 10,
-	preloadOnHover: true,
-	on404(uri) {
+	preload_delay: 10,
+	preload_on_hover: true,
+	on_404(uri) {
 		const u: string = uri
 	},
-	beforeNavigate(nav) {
+	before_navigate(nav) {
 		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
 	},
-	afterNavigate(nav) {
+	after_navigate(nav) {
 		const to = nav.to!
 		const u: string = to.url.pathname
 		const m: RouteTuple<Meta> = to.route as RouteTuple<Meta>

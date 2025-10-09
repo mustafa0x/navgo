@@ -78,15 +78,15 @@ export interface Options {
 	/** App base path. Default '/' */
 	base?: string
 	/** Delay before hover preloading in milliseconds. Default 20. */
-	preloadDelay?: number
+	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
-	preloadOnHover?: boolean
+	preload_on_hover?: boolean
 	/** Called when no route matches. Receives formatted URI. */
-	on404?(uri: string): void
+	on_404?(uri: string): void
 	/** Global hook fired after per-route `beforeRouteLeave`, before loaders/history change. Can cancel. */
-	beforeNavigate?(nav: Navigation): void
+	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
-	afterNavigate?(nav: Navigation): void
+	after_navigate?(nav: Navigation): void
 }
 
 /** Navaid default export: class-based router. */
