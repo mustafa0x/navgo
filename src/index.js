@@ -107,7 +107,7 @@ export default class Navaid {
 		this.#preloads.set(path, { data })
 
 		// change URL
-		const next_idx = this.#route_idx + (opts.replace ? 1 : 0)
+		const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 		const prev_state = history.state && typeof history.state == 'object' ? history.state : {}
 		const next_state = Object.assign({}, prev_state, {
 			__navaid: Object.assign({}, prev_state.__navaid, { idx: next_idx, type: nav_type }),
