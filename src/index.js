@@ -348,12 +348,9 @@ export default class Navaid {
 	unlisten() {
 		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
-
-		if (this.#mouse_move) removeEventListener('mousemove', this.#mouse_move)
-		if (this.#tap) {
-			removeEventListener('touchstart', this.#tap, { passive: true })
-			removeEventListener('mousedown', this.#tap)
-		}
+		removeEventListener('mousemove', this.#mouse_move)
+		removeEventListener('touchstart', this.#tap)
+		removeEventListener('mousedown', this.#tap)
 		removeEventListener('beforeunload', this.#before_unload)
 	}
 
