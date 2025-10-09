@@ -276,11 +276,12 @@ describe('beforeRouteLeave', () => {
 				base: '/app',
 			},
 		)
-		r.listen()
-		await r.run()
+		await r.listen()
 		await r.goto('/app/test')
 		expect(called > 0).toBe(true)
-		expect(hist.state?.__navaid?.idx).toBe(0)
+		// listen() triggers an initial goto() that increments idx to 1
+		// cancellation should not change idx further
+		expect(hist.state?.__navaid?.idx).toBe(1)
 	})
 
 	it('popstate; cancel reverts with history.go', async () => {
@@ -303,17 +304,16 @@ describe('beforeRouteLeave', () => {
 				base: '/app',
 			},
 		)
-		r.listen()
-		// ensure initial run completes so current route is set
-		await r.run()
-		// simulate an in-app shallow push to idx 1
+		await r.listen()
+		// simulate an in-app shallow push to idx 2 (idx 1 was initial goto)
 		r.pushState('/app/foo')
 		// pop back to idx 0
 		const ev = new Event('popstate')
 		ev.state = { __navaid: { idx: 0 } }
 		global.dispatchEvent(ev)
 		expect(called > 0).toBe(true)
-		expect(hist._went).toBe(1)
+		// We shallow-pushed once after initial goto (idx 2 total); cancelling popstate to 0 requires history.go(2)
+		expect(hist._went).toBe(2)
 		r.unlisten()
 	})
 })
@@ -354,11 +354,11 @@ describe('preload behavior', () => {
 	it('skips preloading current route and dedupes others', async () => {
 		setupStubs('/app/')
 		const { router, calls, navs } = makeRouterWithLoaders()
-		router.listen()
-		await router.run()
+		await router.listen()
 
 		await router.preload('/app/')
-		expect(calls.root).toBe(0)
+		// initial goto() ran root loader once; preloading current route should not add more
+		expect(calls.root).toBe(1)
 
 		const p1 = router.preload('/app/foo')
 		const p2 = router.preload('/app/foo')
@@ -377,8 +377,7 @@ describe('scroll restore persistence', () => {
 	it('stores position on beforeunload and restores on next run', async () => {
 		// const hist = setupStubs('/app/foo')
 		const r1 = new Navaid([['/foo', {}]], { base: '/app' })
-		r1.listen()
-		await r1.run()
+		await r1.listen()
 		// move scroll
 		global.scrollTo(10, 200)
 		// trigger beforeunload
@@ -390,8 +389,7 @@ describe('scroll restore persistence', () => {
 
 		// new router instance simulating a refresh
 		const r2 = new Navaid([['/foo', {}]], { base: '/app' })
-		r2.listen()
-		await r2.run()
+		await r2.listen()
 		expect(global.scrollX).toBe(10)
 		expect(global.scrollY).toBe(200)
 		r2.unlisten()
@@ -416,8 +414,7 @@ describe('leave (beforeunload)', () => {
 			],
 			{ base: '/app' },
 		)
-		r.listen()
-		await r.run()
+		await r.listen()
 
 		const ev = {
 			type: 'beforeunload',
@@ -444,8 +441,7 @@ describe('link interception', () => {
 			],
 			{ base: '/app' },
 		)
-		r.listen()
-		await r.run()
+		await r.listen()
 
 		let prevented = false
 		const anchor = {
@@ -464,10 +460,10 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		// allow the async click handler to complete
 		await new Promise(r => setTimeout(r, 0))
 		expect(prevented).toBe(true)
-		expect(hist.state?.__navaid?.idx).toBe(1)
+		// initial goto() set idx to 1; clicking link pushes another entry → 2
+		expect(hist.state?.__navaid?.idx).toBe(2)
 		r.unlisten()
 	})
 
@@ -480,8 +476,7 @@ describe('link interception', () => {
 			],
 			{ base: '/app' },
 		)
-		r.listen()
-		await r.run()
+		await r.listen()
 
 		const anchor = {
 			host: 'example.com',
@@ -498,7 +493,8 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
+		// modifier click is ignored; idx remains whatever initial goto() set (1)
+		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
 		r.unlisten()
 	})
 })

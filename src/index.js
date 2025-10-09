@@ -145,10 +145,8 @@ export default class Navaid {
 		const prev = this.#current
 		this.#current = { uri, route: hit.route, params: hit.params }
 
-		// Use any preloaded data for this URI (from goto() or hover preload)
-		// const pre = this.#preloads.get(uri)
-		// const loaded = pre?.data
-		if (pre) this.#preloads.delete(uri)
+		// Use any preloaded data for this path (from goto() or hover preload)
+		if (pre) this.#preloads.delete(path)
 
 		// Build a completion nav using the previous route as `from`
 		const e = { state: { __navaid: { type: nav_type } } }
@@ -344,7 +342,7 @@ export default class Navaid {
 			this.#route_idx = cur_idx
 		}
 
-		this.goto()
+		return this.goto()
 	}
 
 	unlisten() {

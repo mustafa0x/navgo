@@ -68,8 +68,6 @@ export interface Router<T = unknown> {
 	preload(uri: string): Promise<unknown | void>
 	/** Try to match `uri`; returns route tuple and params or `null`. Supports async `validate`. */
 	match(uri: string): Promise<MatchResult<T> | null>
-	/** Process the current location (or call within listeners). */
-	run(e?: any): Promise<void>
 	/** Attach history + click listeners and immediately process current location. */
 	listen(): void
 	/** Remove listeners installed by `listen()`. */
