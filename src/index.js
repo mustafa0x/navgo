@@ -171,7 +171,6 @@ export default class Navaid {
 			(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
 				__error: e,
 			})))
-		this.#preloads.set(path, { data })
 
 		//
 		// change URL (not needed for popstate - browser already did it)
@@ -190,7 +189,7 @@ export default class Navaid {
 		const prev = this.#current
 		this.#current = { uri: path, route: hit.route, params: hit.params }
 
-		// Use any preloaded data for this path (from goto() or hover preload)
+		// Consume and clear any preloaded entry for this path
 		if (pre) this.#preloads.delete(path)
 
 		// Build a completion nav using the previous route as `from`
