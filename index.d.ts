@@ -23,7 +23,7 @@ export interface Hooks {
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
-	beforeRouteLeave?(nav: BeforeNavigate): void
+	beforeRouteLeave?(nav: Navigation): void
 }
 
 export interface NavigationTarget {
@@ -35,7 +35,7 @@ export interface NavigationTarget {
 	data?: unknown
 }
 
-export interface BeforeNavigate {
+export interface Navigation {
 	type: 'link' | 'goto' | 'popstate' | 'leave'
 	from: NavigationTarget | null
 	to: NavigationTarget | null
@@ -86,9 +86,9 @@ export interface Options {
 	/** Called when no route matches. Receives formatted URI. */
 	on404?(uri: string): void
 	/** Global hook fired after per-route `beforeRouteLeave`, before loaders/history change. Can cancel. */
-	beforeNavigate?(nav: BeforeNavigate): void
+	beforeNavigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
-	afterNavigate?(nav: BeforeNavigate): void
+	afterNavigate?(nav: Navigation): void
 }
 
 /** Navaid default export: class-based router. */

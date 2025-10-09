@@ -91,9 +91,9 @@ Notes:
     - App base pathname. With or without leading/trailing slashes is accepted.
 - `on404`: `(uri: string) => void`
     - Called when no route matches the formatted URI (only URIs under `base`).
-- `beforeNavigate`: `(nav: BeforeNavigate) => void`
+- `beforeNavigate`: `(nav: Navigation) => void`
     - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
-- `afterNavigate`: `(nav: BeforeNavigate) => void`
+- `afterNavigate`: `(nav: Navigation) => void`
     - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `preloadDelay`: `number` (default `20`)
     - Delay in ms before hover preloading triggers.
@@ -110,10 +110,10 @@ Important: Navaid only processes routes that match your `base` path. `on404` wil
     - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `afterNavigate`.
 - validate?(params): `boolean | Promise<boolean>`
     - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
-- beforeRouteLeave?(nav): `(nav: BeforeNavigate) => void`
+- beforeRouteLeave?(nav): `(nav: Navigation) => void`
     - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
-The `BeforeNavigate` object contains:
+The `Navigation` object contains:
 
 ```ts
 {
