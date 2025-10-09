@@ -128,7 +128,7 @@ export default class Navaid {
 		const { url, path } = info
 
 		const is_popstate = nav_type === 'popstate'
-		const nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
+		let nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
 
 		//
 		// beforeRouteLeave
@@ -171,6 +171,7 @@ export default class Navaid {
 			(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
 				__error: e,
 			})))
+		this.#preloads.delete(path)
 
 		//
 		// change URL (not needed for popstate - browser already did it)
@@ -189,13 +190,9 @@ export default class Navaid {
 		const prev = this.#current
 		this.#current = { uri: path, route: hit.route, params: hit.params }
 
-		// Consume and clear any preloaded entry for this path
-		if (pre) this.#preloads.delete(path)
-
 		// Build a completion nav using the previous route as `from`
-		const e = { state: { __navaid: { type: nav_type } } }
-		const nav1 = this.#make_nav({
-			type: e?.state?.__navaid?.type || (e?.type === 'popstate' ? 'popstate' : 'goto'),
+		nav = this.#make_nav({
+			type: nav_type,
 			from: prev?.uri
 				? {
 						url: new URL(prev.uri, location.origin),
@@ -209,10 +206,10 @@ export default class Navaid {
 				route: hit.route,
 				data,
 			},
-			event: e,
+			event: ev_param,
 		})
-		this.#opts.after_navigate?.(nav1)
-		this.#apply_scroll(e)
+		this.#opts.after_navigate?.(nav)
+		this.#apply_scroll(nav)
 	}
 
 	/**
@@ -395,17 +392,20 @@ export default class Navaid {
 		}
 	}
 
+	//
+	// Scroll
+	//
 	#save_scroll() {
 		this.#scroll.set(this.#route_idx, { x: scrollX, y: scrollY })
 	}
 
-	#apply_scroll(e) {
+	#apply_scroll(ctx) {
 		const hash = location.hash
-		const ev_type = e?.type
+		const t = ctx?.type || ctx?.event?.type
 		requestAnimationFrame(() => {
-			// 0) If this is an initial run (not popstate), prefer restoring
-			// last-known position from sessionStorage (e.g., after refresh/tab restore)
-			if (!ev_type) {
+			// 0) Initial (first) navigation: prefer restoring session scroll
+			const is_initial = ctx && 'from' in ctx ? ctx.from == null : !t
+			if (is_initial) {
 				try {
 					const k = `__navaid_scroll:${location.href}`
 					const { x, y } = JSON.parse(sessionStorage.getItem(k))
@@ -415,10 +415,9 @@ export default class Navaid {
 				} catch {}
 			}
 			// 1) On back/forward, restore saved position if available
-			if (ev_type === 'popstate') {
-				const idx = e?.state?.__navaid?.idx
+			if (t === 'popstate') {
+				const idx = ctx?.event?.state?.__navaid?.idx
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
-				// Update our current index to match the target of popstate
 				this.#route_idx = target_idx
 				const pos = this.#scroll.get(target_idx)
 				if (pos) {
