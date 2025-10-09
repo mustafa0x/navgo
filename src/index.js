@@ -467,14 +467,14 @@ export default class Navaid {
 				this.#route_idx = target_idx
 				const pos = this.#scroll.get(target_idx)
 				if (pos) {
-					if (typeof scrollTo === 'function') scrollTo(pos.x, pos.y)
+					scrollTo(pos.x, pos.y)
 					return
 				}
 			}
 			// 2) If there is a hash, prefer anchor scroll
 			if (hash && this.#scroll_to_hash(hash)) return
 			// 3) Default: scroll to top for new navigations
-			if (typeof scrollTo === 'function') scrollTo(0, 0)
+			scrollTo(0, 0)
 		})
 	}
 
