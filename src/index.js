@@ -9,6 +9,7 @@ export default class Navaid {
 		before_navigate: undefined,
 		after_navigate: undefined,
 	}
+	/** @type {RouteTuple[]} **/
 	#routes = []
 	#base = '/'
 	#base_rgx = /^\/+/
@@ -302,6 +303,7 @@ export default class Navaid {
 				href: url.href,
 			})
 			this.#route_idx = next_idx
+			if (!opts.replace) this.#clear_onward_history()
 		}
 
 		const prev = this.#current
@@ -325,7 +327,8 @@ export default class Navaid {
 			},
 			event: ev_param,
 		})
-		this.#opts.after_navigate?.(nav)
+		// await so that apply_scroll is after potential async work
+		await this.#opts.after_navigate?.(nav)
 		console.debug('[navaid:navigate]', 'done', {
 			from: nav.from?.url?.href,
 			to: nav.to?.url?.href,
@@ -355,6 +358,7 @@ export default class Navaid {
 		)
 		// Popstate handler checks state.__navaid.shallow and skips router processing
 		this.#route_idx = idx
+		if (!replace) this.#clear_onward_history()
 	}
 	/** @param {string|URL} [url] @param {any} [state] */
 	pushState(url, state) {
@@ -562,6 +566,11 @@ export default class Navaid {
 	#save_scroll() {
 		this.#scroll.set(this.#route_idx, { x: scrollX, y: scrollY })
 		console.debug('[navaid:scroll]', 'save', { idx: this.#route_idx, x: scrollX, y: scrollY })
+	}
+
+	#clear_onward_history() {
+		for (const k of this.#scroll.keys()) if (k > this.#route_idx) this.#scroll.delete(k)
+		console.debug('[navaid:scroll]', 'clear onward', { upto: this.#route_idx })
 	}
 
 	#apply_scroll(ctx) {
