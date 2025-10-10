@@ -215,7 +215,7 @@ export default class Navaid {
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async goto(url_raw = location.pathname, opts = {}, nav_type = 'goto', ev_param = undefined) {
+	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
 			console.debug('[navaid:goto]', 'invalid url', { url: url_raw })
