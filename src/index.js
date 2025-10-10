@@ -289,8 +289,9 @@ export default class Navaid {
 		}
 
 		//
-		// change URL (not needed for popstate - browser already did it)
-		if (!is_popstate) {
+		// change URL (skip if popstate as browser changes, or first goto())
+		//
+		if (!is_popstate && !(nav_type === 'goto' && this.#current?.url == null)) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
 				history.state && typeof history.state == 'object' ? history.state : {}
