@@ -65,19 +65,20 @@ export default class Navaid {
 		// ignore popstate while a hash-originating nav is in flight
 		if (this.#hash_navigating) return
 
+		const st = ev?.state?.__navaid
 		// 1) If target entry is marked shallow, skip router work; just restore scroll
-		if (ev?.state?.__navaid?.shallow) {
+		if (st?.shallow) {
 			console.debug('[navaid:event:popstate]', 'shallow entry; skip')
 			this.#apply_scroll(ev)
 			this.#opts.url_changed?.()
 			return
 		}
 
-		// 2) Same-path popstate is effectively shallow (query/hash only)
+		// 2) Treat same-path popstate as shallow ONLY if it doesn't change our index
 		const path = this.format(location.pathname)
-		if (path && path === this.#current?.url) {
+		if (path && path === this.#current?.url && st?.idx === this.#route_idx) {
 			console.debug('[navaid:event:popstate]', 'same-path; skip loaders', {
-				idx: ev?.state?.__navaid?.idx,
+				idx: st?.idx,
 				path,
 			})
 			this.#apply_scroll(ev)
