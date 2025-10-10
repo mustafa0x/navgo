@@ -74,6 +74,16 @@ export interface Router<T = unknown> {
 	unlisten(): void
 }
 
+/** Router metadata stored under `history.state.__navaid`. */
+export interface NavaidHistoryMeta {
+	/** Monotonic index of the current history entry for scroll restoration. */
+	idx: number
+	/** Present when the entry was created via shallow `pushState`/`replaceState`. */
+	shallow?: boolean
+	/** Origin of the navigation that created this entry. */
+	type?: 'link' | 'goto' | 'popstate'
+}
+
 export interface Options {
 	/** App base path. Default '/' */
 	base?: string
