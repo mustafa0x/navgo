@@ -92,9 +92,7 @@ export default class Navaid {
 		this.#hash_navigating = false
 		const prev = history.state && typeof history.state == 'object' ? history.state : {}
 		const next_idx = this.#route_idx + 1
-		const next_state = Object.assign({}, prev, {
-			__navaid: Object.assign({}, prev.__navaid, { idx: next_idx }),
-		})
+		const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: next_idx } }
 		history.replaceState(next_state, '', location.href)
 		this.#route_idx = next_idx
 		console.debug('[navaid:event:hashchange]', { idx: next_idx, href: location.href })
@@ -294,9 +292,10 @@ export default class Navaid {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
 				history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = Object.assign({}, prev_state, {
-				__navaid: Object.assign({}, prev_state.__navaid, { idx: next_idx, type: nav_type }),
-			})
+			const next_state = {
+				...prev_state,
+				__navaid: { ...prev_state.__navaid, idx: next_idx, type: nav_type },
+			}
 			history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
 			console.debug('[navaid:history]', opts.replace ? 'replaceState' : 'pushState', {
 				idx: next_idx,
@@ -347,9 +346,7 @@ export default class Navaid {
 		// save scroll for current index before shallow change
 		this.#save_scroll()
 		const idx = this.#route_idx + (replace ? 0 : 1)
-		const st = Object.assign({}, state, {
-			__navaid: Object.assign({}, state?.__navaid, { shallow: true, idx }),
-		})
+		const st = { ...state, __navaid: { ...state?.__navaid, shallow: true, idx } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', href)
 		console.debug(
 			'[navaid:history]',
@@ -477,9 +474,7 @@ export default class Navaid {
 		const cur_idx = history.state?.__navaid?.idx
 		if (cur_idx == null) {
 			const prev = history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = Object.assign({}, prev, {
-				__navaid: Object.assign({}, prev.__navaid, { idx: this.#route_idx }),
-			})
+			const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: this.#route_idx } }
 			history.replaceState(next_state, '', location.href)
 			console.debug('[navaid:history]', 'init idx', { idx: this.#route_idx })
 		} else {
