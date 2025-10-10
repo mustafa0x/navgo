@@ -23,7 +23,7 @@ const routes = [
 			param_validators: {
 				/* id: Navaid.validators.int({ min: 1 }) */
 			},
-                // load data before URL changes; result goes to after_navigate(...)
+			// load data before URL changes; result goes to after_navigate(...)
 			loaders: params => fetch('/api/admin').then(r => r.json()),
 			// per-route guard; cancel synchronously to block nav
 			beforeRouteLeave(nav) {
@@ -37,18 +37,24 @@ const routes = [
 
 // Create router with options + callbacks
 const router = new Navaid(routes, {
-    base: '/',
-    on_404(uri) {
-        console.log('404 for', uri)
-    },
-    before_navigate(nav) {
-        // app-level hook before loaders/URL update; may cancel
-        console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
-    },
-    after_navigate(nav) {
-        // called after routing completes; nav.to.data holds loader result
-        console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
-    },
+	base: '/',
+	before_navigate(nav) {
+		// app-level hook before loaders/URL update; may cancel
+		console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
+	},
+	after_navigate(nav) {
+		// called after routing completes; nav.to.data holds loader result
+		if (nav.to?.data?.__error?.status === 404) {
+			console.log('404 for', nav.to.url.pathname)
+			return
+		}
+
+		console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
+	},
+	url_changed() {
+		// fires for shallow, hashchanges, popstate-shallow, and 404s
+		console.log('url_changed', new URL(location.href))
+	},
 })
 
 // Process current location
@@ -89,18 +95,18 @@ Notes:
 
 - `base`: `string` (default `'/'`)
     - App base pathname. With or without leading/trailing slashes is accepted.
-- `on_404`: `(uri: string) => void`
-    - Called when no route matches the formatted URI (only URIs under `base`).
 - `before_navigate`: `(nav: Navigation) => void`
     - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation) => void`
     - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+- `url_changed`: `() => void`
+    - Global hook called whenever the browser URL changes — including shallow `pushState`/`replaceState`, hash changes, `popstate` shallow entries, and 404 navigations.
 - `preload_delay`: `number` (default `20`)
     - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)
     - When `false`, disables hover/touch preloading.
 
-Important: Navaid only processes routes that match your `base` path. `on_404` will never run for URLs that do not begin with `base`, allowing multiple instances to coexist.
+Important: Navaid only processes routes that match your `base` path.
 
 ### Route Hooks
 
@@ -226,6 +232,7 @@ In addition, `listen()` wires preloading listeners (enabled by default) so route
 Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preload_delay` and `preload_on_hover` options.
 
 Notes:
+
 - `preload(uri)` is a no-op when `uri` formats to the current route's path (already loaded).
 
 ### Scroll persistence

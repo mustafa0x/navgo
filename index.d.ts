@@ -49,25 +49,25 @@ export interface Navigation {
 /** A route tuple: [pattern, data?]. The `data` may include {@link Hooks}. */
 export type RouteTuple<T = unknown> = [pattern: string | RegExp, data: T]
 
-/** Result of calling `router.match(uri)` */
+/** Result of calling `router.match(url)` */
 export interface MatchResult<T = unknown> {
 	route: RouteTuple<T>
 	params: Params
 }
 
 export interface Router<T = unknown> {
-	/** Format `uri` relative to the configured base. */
-	format(uri: string): string | false
+	/** Format `url` relative to the configured base. */
+	format(url: string): string | false
 	/** SvelteKit-like navigation that runs loaders before updating the URL. */
-	goto(uri: string, opts?: { replace?: boolean }): Promise<void>
+	goto(url: string, opts?: { replace?: boolean }): Promise<void>
 	/** Shallow push — updates URL/state without triggering handlers. */
 	pushState(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */
 	replaceState(url?: string | URL, state?: any): void
 	/** Manually preload loaders for a URL (deduped). */
-	preload(uri: string): Promise<unknown | void>
-	/** Try to match `uri`; returns route tuple and params or `null`. Supports async `validate`. */
-	match(uri: string): Promise<MatchResult<T> | null>
+	preload(url: string): Promise<unknown | void>
+	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
+	match(url: string): Promise<MatchResult<T> | null>
 	/** Attach history + click listeners and immediately process current location. */
 	listen(): void
 	/** Remove listeners installed by `listen()`. */
@@ -81,23 +81,23 @@ export interface Options {
 	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
 	preload_on_hover?: boolean
-	/** Called when no route matches. Receives formatted URI. */
-	on_404?(uri: string): void
 	/** Global hook fired after per-route `beforeRouteLeave`, before loaders/history change. Can cancel. */
 	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
 	after_navigate?(nav: Navigation): void
+	/** Global hook fired whenever the URL changes (including shallow pushes, hash changes, and 404s). */
+	url_changed?(): void
 }
 
 /** Navaid default export: class-based router. */
 export default class Navaid<T = unknown> implements Router<T> {
 	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
-	format(uri: string): string | false
-	goto(uri: string, opts?: { replace?: boolean }): Promise<void>
+	format(url: string): string | false
+	goto(url: string, opts?: { replace?: boolean }): Promise<void>
 	pushState(url?: string | URL, state?: any): void
 	replaceState(url?: string | URL, state?: any): void
-	preload(uri: string): Promise<unknown | void>
-	match(uri: string): Promise<MatchResult<T> | null>
+	preload(url: string): Promise<unknown | void>
+	match(url: string): Promise<MatchResult<T> | null>
 	run(e?: any): Promise<void>
 	listen(): void
 	unlisten(): void

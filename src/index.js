@@ -5,9 +5,9 @@ export default class Navaid {
 		base: '/',
 		preload_delay: 20,
 		preload_on_hover: true,
-		on_404: undefined,
 		before_navigate: undefined,
 		after_navigate: undefined,
+		url_changed: undefined,
 	}
 	/** @type {RouteTuple[]} **/
 	#routes = []
@@ -15,7 +15,7 @@ export default class Navaid {
 	#base_rgx = /^\/+/
 	// preload cache: href -> { promise, data, error }
 	#preloads = new Map()
-	#current = { uri: null, route: null, params: {} } // last matched route info
+	#current = { url: null, route: null, params: {} } // last matched route info
 	#route_idx = 0
 	#scroll = new Map()
 	#hash_navigating = false
@@ -30,7 +30,7 @@ export default class Navaid {
 
 		const url = new URL(info.href, location.href)
 		const same_path =
-			this.format(url.pathname) === (this.#current?.uri || this.format(location.pathname))
+			this.format(url.pathname) === (this.#current?.url || this.format(location.pathname))
 		const has_hash = info.href.includes('#') || url.hash !== ''
 
 		// Hash-only navigation on same path: let browser handle, but track index
@@ -69,17 +69,19 @@ export default class Navaid {
 		if (ev?.state?.__navaid?.shallow) {
 			console.debug('[navaid:event:popstate]', 'shallow entry; skip')
 			this.#apply_scroll(ev)
+			this.#opts.url_changed?.()
 			return
 		}
 
 		// 2) Same-path popstate is effectively shallow (query/hash only)
 		const path = this.format(location.pathname)
-		if (path && path === this.#current?.uri) {
+		if (path && path === this.#current?.url) {
 			console.debug('[navaid:event:popstate]', 'same-path; skip loaders', {
 				idx: ev?.state?.__navaid?.idx,
 				path,
 			})
 			this.#apply_scroll(ev)
+			this.#opts.url_changed?.()
 			return
 		}
 
@@ -88,14 +90,17 @@ export default class Navaid {
 	}
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
-		if (!this.#hash_navigating) return
-		this.#hash_navigating = false
-		const prev = history.state && typeof history.state == 'object' ? history.state : {}
-		const next_idx = this.#route_idx + 1
-		const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: next_idx } }
-		history.replaceState(next_state, '', location.href)
-		this.#route_idx = next_idx
-		console.debug('[navaid:event:hashchange]', { idx: next_idx, href: location.href })
+		if (this.#hash_navigating) {
+			this.#hash_navigating = false
+			const prev = history.state && typeof history.state == 'object' ? history.state : {}
+			const next_idx = this.#route_idx + 1
+			const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: next_idx } }
+			history.replaceState(next_state, '', location.href)
+			this.#route_idx = next_idx
+			console.debug('[navaid:event:hashchange]', { idx: next_idx, href: location.href })
+		}
+		// Always notify on hash changes
+		this.#opts.url_changed?.()
 	}
 
 	#hover_timer = null
@@ -181,38 +186,38 @@ export default class Navaid {
 	//
 	// Helpers
 	//
-	#normalize(uri) {
-		return '/' + (uri || '').replace(/^\/|\/$/g, '')
+	#normalize(url) {
+		return '/' + (url || '').replace(/^\/|\/$/g, '')
 	}
-	/** @param {string} uri @returns {string|false} */
-	format(uri) {
-		if (!uri) return uri
-		uri = this.#normalize(uri)
-		const out = this.#base_rgx.test(uri) && uri.replace(this.#base_rgx, '/')
-		console.debug('[navaid:format]', { in: uri, out })
+	/** @param {string} url @returns {string|false} */
+	format(url) {
+		if (!url) return url
+		url = this.#normalize(url)
+		const out = this.#base_rgx.test(url) && url.replace(this.#base_rgx, '/')
+		console.debug('[navaid:format]', { in: url, out })
 		return out
 	}
-	#resolve_url_and_path(uri) {
-		if (uri[0] == '/' && !this.#base_rgx.test(uri)) uri = this.#base + uri
-		const url = new URL(uri, location.href)
+	#resolve_url_and_path(url_raw) {
+		if (url_raw[0] == '/' && !this.#base_rgx.test(url_raw)) url_raw = this.#base + url_raw
+		const url = new URL(url_raw, location.href)
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
-		console.debug('[navaid:resolve]', { uri, url: url.href, path })
+		console.debug('[navaid:resolve]', { url_in: url_raw, url: url.href, path })
 		return path ? { url, path } : null
 	}
 
 	/**
 	 * Programmatic navigation that runs loaders before changing URL.
 	 * Also used by popstate to unify the flow.
-	 * @param {string} [uri]
+	 * @param {string} [url]
 	 * @param {{ replace?: boolean }} [opts]
 	 * @param {'goto'|'link'|'popstate'} [nav_type]
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async goto(uri = location.pathname, opts = {}, nav_type = 'goto', ev_param = undefined) {
-		const info = this.#resolve_url_and_path(uri)
+	async goto(url_raw = location.pathname, opts = {}, nav_type = 'goto', ev_param = undefined) {
+		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
-			console.debug('[navaid:goto]', 'invalid uri', { uri })
+			console.debug('[navaid:goto]', 'invalid url', { url: url_raw })
 			return
 		}
 		const { url, path } = info
@@ -262,32 +267,28 @@ export default class Navaid {
 		// match
 		//
 		const hit = await this.match(path)
-		if (!hit) {
-			this.#opts.on_404?.(path)
-			console.debug('[navaid:match]', '404', { path })
-			this.#apply_scroll(ev_param)
-			return
-		}
 
 		//
 		// loaders
 		//
-		const pre = this.#preloads.get(path)
-		const data =
-			pre?.data ??
-			(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
-				__error: e,
-			})))
-		this.#preloads.delete(path)
-		console.debug('[navaid:loaders]', pre ? 'using preloaded data' : 'loaded', {
-			path,
-			preloaded: !!pre,
-			has_error: !!data?.__error,
-		})
+		let data
+		if (hit) {
+			const pre = this.#preloads.get(path)
+			data =
+				pre?.data ??
+				(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
+					__error: e,
+				})))
+			this.#preloads.delete(path)
+			console.debug('[navaid:loaders]', pre ? 'using preloaded data' : 'loaded', {
+				path,
+				preloaded: !!pre,
+				has_error: !!data?.__error,
+			})
+		}
 
 		//
 		// change URL (not needed for popstate - browser already did it)
-		//
 		if (!is_popstate) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
@@ -306,35 +307,36 @@ export default class Navaid {
 		}
 
 		const prev = this.#current
-		this.#current = { uri: path, route: hit.route, params: hit.params }
+		this.#current = { url: path, route: hit?.route || null, params: hit?.params || {} }
 
 		// Build a completion nav using the previous route as `from`
 		nav = this.#make_nav({
 			type: nav_type,
-			from: prev?.uri
+			from: prev?.url
 				? {
-						url: new URL(prev.uri, location.origin),
+						url: new URL(prev.url, location.origin),
 						params: prev.params || {},
 						route: prev.route,
 					}
 				: null,
 			to: {
 				url: new URL(location.href),
-				params: hit.params,
-				route: hit.route,
-				data,
+				params: hit?.params || {},
+				route: hit?.route || null,
+				data: hit ? data : { __error: { status: 404 } },
 			},
 			event: ev_param,
 		})
 		// await so that apply_scroll is after potential async work
 		await this.#opts.after_navigate?.(nav)
-		console.debug('[navaid:navigate]', 'done', {
+		console.debug('[navaid:navigate]', hit ? 'done' : 'done (404)', {
 			from: nav.from?.url?.href,
 			to: nav.to?.url?.href,
 			type: nav.type,
 			idx: this.#route_idx,
 		})
 		this.#apply_scroll(nav)
+		this.#opts.url_changed?.()
 	}
 
 	/**
@@ -356,7 +358,9 @@ export default class Navaid {
 		// Popstate handler checks state.__navaid.shallow and skips router processing
 		this.#route_idx = idx
 		if (!replace) this.#clear_onward_history()
+		this.#opts.url_changed?.()
 	}
+
 	/** @param {string|URL} [url] @param {any} [state] */
 	pushState(url, state) {
 		this.#commit_shallow(url, state, false)
@@ -370,16 +374,16 @@ export default class Navaid {
 	 * Manually preload loaders for a URL (e.g. to prime cache).
 	 * Dedupes concurrent preloads for the same path.
 	 */
-	/** @param {string} uri @returns {Promise<unknown|void>} */
-	async preload(uri) {
-		const info = this.#resolve_url_and_path(uri)
+	/** @param {string} url_raw @returns {Promise<unknown|void>} */
+	async preload(url_raw) {
+		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
-			console.debug('[navaid:preload]', 'invalid uri', { uri })
+			console.debug('[navaid:preload]', 'invalid url', { url: url_raw })
 			return Promise.resolve()
 		}
 		const { path } = info
 		// Do not preload if we're already at this path
-		if (path === this.#current?.uri) {
+		if (path === this.#current?.url) {
 			console.debug('[navaid:preload]', 'skip current path', { path })
 			return Promise.resolve()
 		}
@@ -409,13 +413,13 @@ export default class Navaid {
 	//
 	// Core matching
 	//
-	/** @param {string} uri @returns {Promise<MatchResult|null>} */
-	async match(uri) {
-		console.debug('[navaid:match]', 'start', { uri })
+	/** @param {string} url_raw @returns {Promise<MatchResult|null>} */
+	async match(url_raw) {
+		console.debug('[navaid:match]', 'start', { url: url_raw })
 		let arr, obj
 		for (let i = 0; i < this.#routes.length; i++) {
 			obj = this.#routes[i]
-			if (!(arr = obj.pattern.exec(uri))) continue
+			if (!(arr = obj.pattern.exec(url_raw))) continue
 			const params = {}
 			if (obj.keys?.length) {
 				for (let j = 0; j < obj.keys.length; ) {
@@ -444,7 +448,7 @@ export default class Navaid {
 			console.debug('[navaid:match]', 'hit', { pattern: obj.data?.[0], params })
 			return { route: obj.data || null, params }
 		}
-		console.debug('[navaid:match]', 'miss', { uri })
+		console.debug('[navaid:match]', 'miss', { url: url_raw })
 		return null
 	}
 
@@ -535,9 +539,9 @@ export default class Navaid {
 		const from_obj =
 			from !== undefined
 				? from
-				: this.#current?.uri
+				: this.#current?.url
 					? {
-							url: new URL(this.#current.uri, location.origin),
+							url: new URL(this.#current.url, location.origin),
 							params: this.#current.params || {},
 							route: this.#current.route,
 						}

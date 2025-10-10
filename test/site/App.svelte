@@ -152,63 +152,38 @@ const route = $state({path: location.pathname, params: null})
 let route_data = $state(null)
 
 const router = new Navaid(routes, {
-    base: '/',
-    async on_404(url) {
-        console.log('404', url)
-        is_404 = true
-        Component = null
-        Object.assign(route, {path: url, params: null})
-        route_data = null
+    url_changed() {
+        const url = new URL(location.href)
+        // Object.assign(route, {path: uri, params: nav.to.params})
     },
-    // preload_delay: 20,
-    // preload_on_hover: true,
     before_navigate(nav) {
-        // show a global loading indicator hook — demo logs only
-        console.log('beforeNavigate', nav.type, 'to', nav.to?.url.pathname)
         IS_FETCHING.set(true)
     },
     async after_navigate(nav) {
+        setTimeout(() => {
+            IS_FETCHING.set(false)
+        }, 50)
+        is_404 = nav.to?.data?.__error?.status === 404
+        if (is_404) {
+            console.log('404 for', nav.to.url.pathname)
+            return
+        }
         console.log('afterNavigate', nav)
-        is_404 = false
         const uri = router.format(nav.to.url.pathname)
-        Component = nav.to.route?.[1]?.default || null
-        Object.assign(route, {path: uri, params: nav.to.params})
-        route_data = nav.to.data ?? null
-        IS_FETCHING.set(false)
+
+        document.startViewTransition(() => {
+            route_data = nav.to.data ?? null
+            Component = nav.to.route?.[1]?.default || null
+        })
     },
 })
 router.listen()
 window['router'] = router
-
-// for (const [path, cmp_] of routes) {
-//     router.on(path, params => {
-//         is404 = false
-//         document.startViewTransition(async () => {
-//             const {default: cmp, ...exports} = await cmp_
-
-//             if (exports?.validate_params && !(await exports.validate_params(params))) {
-//                 router.route('/')
-//                 return
-//             }
-
-//             Component = cmp
-//             Object.assign(route, {path: location.pathname, params})
-//         })
-//     })
-// }
-
-// window.router_initialized = !!window.router_initialized
-// session.subscribe($session => {
-//     if (!window.router_initialized && $session.loaded) {
-//         setTimeout(() => router.listen(), 10)
-//         window.router_initialized = true
-//     }
-// })
 </script>
 
 <script>
 import {onDestroy, setContext} from 'svelte'
-import { writable } from 'svelte/store'
+import {writable} from 'svelte/store'
 setContext('router', router)
 onDestroy(() => {
     router.unlisten()
