@@ -9,13 +9,13 @@ export default class Navaid {
 		after_navigate: undefined,
 		url_changed: undefined,
 	}
-	/** @type {RouteTuple[]} **/
 	#routes = []
 	#base = '/'
 	#base_rgx = /^\/+/
 	// preload cache: href -> { promise, data, error }
 	#preloads = new Map()
-	#current = { url: null, route: null, params: {} } // last matched route info
+	// last matched route info
+	#current = { url: null, route: null, params: {} }
 	#route_idx = 0
 	#scroll = new Map()
 	#hash_navigating = false
@@ -537,6 +537,9 @@ export default class Navaid {
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
+	/**
+	 * @returns {Navigation}
+	 */
 	#make_nav({ type, from = undefined, to = undefined, willUnload = false, event = undefined }) {
 		const from_obj =
 			from !== undefined
@@ -630,7 +633,8 @@ export default class Navaid {
 	}
 }
 
-/** @typedef {import('navaid').Options} Options */
-/** @typedef {import('navaid').RouteTuple} RouteTuple */
-/** @typedef {import('navaid').MatchResult} MatchResult */
-/** @typedef {import('navaid').ValidatorHelpers} ValidatorHelpers */
+/** @typedef {import('../index.d.ts').Options} Options */
+/** @typedef {import('../index.d.ts').RouteTuple} RouteTuple */
+/** @typedef {import('../index.d.ts').MatchResult} MatchResult */
+/** @typedef {import('../index.d.ts').ValidatorHelpers} ValidatorHelpers */
+/** @typedef {import('../index.d.ts').Navigation} Navigation */
