@@ -1,7 +1,7 @@
 {
-	"name": "navaid",
-	"version": "2.0.0",
-	"repository": "lukeed/navaid",
+	"name": "navgo",
+	"version": "3.0.1",
+	"repository": "lukeed/navgo",
 	"description": "A navigation aid (aka, router) for the browser in 865 bytes~!",
 	"module": "./index.js",
 	"type": "module",
@@ -25,7 +25,7 @@
 	},
 	"files": [
 		"*.d.ts",
-		"dist"
+		"index.js"
 	],
 	"keywords": [
 		"browser",
