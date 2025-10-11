@@ -3,9 +3,9 @@
 	"version": "2.0.0",
 	"repository": "lukeed/navaid",
 	"description": "A navigation aid (aka, router) for the browser in 865 bytes~!",
-	"module": "dist/navaid.js",
+	"module": "./index.js",
 	"type": "module",
-	"exports": "./dist/navaid.js",
+	"exports": "./index.js",
 	"types": "index.d.ts",
 	"license": "MIT",
 	"author": {
