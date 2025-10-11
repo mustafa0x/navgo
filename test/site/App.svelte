@@ -3,51 +3,51 @@
         <nav class="mx-auto flex max-w-3xl items-center justify-center gap-1 p-3">
             <a
                 href="/"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path === '/'
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/'
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Home</a
             >
             <a
                 href="/products"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path === '/products'
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/products'
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Products</a
             >
             <a
+                href="/posts"
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/posts'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700'}">Posts</a
+            >
+            <a
                 href="/contact"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path === '/contact'
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/contact'
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Contact</a
             >
             <a
                 href="/about"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path === '/about'
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/about'
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">About</a
             >
             <a
                 href="/account"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path === '/account'
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/account'
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Account</a
             >
             <a
                 href="/users/42"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path.startsWith('/users')
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path.startsWith('/users')
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">User 42</a
             >
             <a
                 href="/files/foo/bar"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path.startsWith('/files')
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path.startsWith('/files')
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Files</a
-            >
-            <a
-                href="/articles/2024"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {route.path.startsWith('/articles')
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Articles</a
             >
         </nav>
     </header>
@@ -104,7 +104,7 @@
             <section class="rounded-md border border-gray-200 bg-white p-4">
                 <h2 class="mb-2 font-semibold">Debug</h2>
                 <div class="space-y-1 text-sm text-gray-700">
-                    <div><span class="font-mono">path</span>: {route.path}</div>
+                    <div><span class="font-mono">path</span>: {path}</div>
                     <div>
                         <span class="font-mono">params</span>:
                         <span class="font-mono">{JSON.stringify(route.params)}</span>
@@ -125,12 +125,12 @@
 import Navaid from 'navaid'
 
 import * as ProductsRoute from './routes/Products.svelte'
+import * as PostsRoute from './routes/Posts.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
 import * as AccountRoute from './routes/Account.svelte'
 import * as UsersRoute from './routes/Users.svelte'
 import * as FilesRoute from './routes/Files.svelte'
-import * as ArticleRoute from './routes/Article.svelte'
 
 export const IS_FETCHING = writable(true)
 
@@ -139,22 +139,23 @@ export const IS_FETCHING = writable(true)
 const routes = [
   ['/', {}],
   ['/products', ProductsRoute],
+  ['/posts', PostsRoute],
   ['/contact', ContactRoute],
   ['/about', AboutRoute],
   ['/account', AccountRoute],
   ['/users/:id', UsersRoute],
   ['/files/*', FilesRoute],
-  [/^\/articles\/(?<year>[0-9]{4})$/, ArticleRoute],
 ]
 let Component = $state()
 let is_404 = $state(false)
-const route = $state({path: location.pathname, params: null})
+const route = $state({url: new URL(location.href), params: null})
+const path = $derived(route.url.pathname)
 let route_data = $state(null)
 
 const router = new Navaid(routes, {
-    url_changed() {
-        const url = new URL(location.href)
-        // Object.assign(route, {path: uri, params: nav.to.params})
+    url_changed(cur) {
+        route.url = cur.url
+        route.params = cur.params
     },
     before_navigate(nav) {
         IS_FETCHING.set(true)
@@ -171,10 +172,12 @@ const router = new Navaid(routes, {
         console.log('afterNavigate', nav)
         const uri = router.format(nav.to.url.pathname)
 
-        document.startViewTransition(() => {
-            route_data = nav.to.data ?? null
-            Component = nav.to.route?.[1]?.default || null
-        })
+        route_data = nav.to.data ?? null
+        Component = nav.to.route?.[1]?.default || null
+        route.url = nav.to.url
+        route.params = nav.to.params
+        // document.startViewTransition(() => {
+        // })
     },
 })
 router.listen()
@@ -185,6 +188,7 @@ window['router'] = router
 import {onDestroy, setContext} from 'svelte'
 import {writable} from 'svelte/store'
 setContext('router', router)
+setContext('route', route)
 onDestroy(() => {
     router.unlisten()
 })

@@ -10,5 +10,5 @@ export function loaders(params) {
 </script>
 
 <script>
-export let params
+let {params} = $props()
 </script>

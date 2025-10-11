@@ -31,11 +31,9 @@ export default class Navaid {
 		if (!info) return
 
 		const url = new URL(info.href, location.href)
-		const cur_path = this.#current?.url ? this.#current.url.pathname : location.pathname
-		const has_hash = info.href.includes('#') || url.hash !== ''
 
 		// Hash-only navigation on same path: let browser handle, but track index
-		if (has_hash && url.pathname === cur_path) {
+		if (url.hash && url.pathname === this.#current.url.pathname) {
 			const cur_hash = location.href.split('#')[1]
 			const next_hash = url.href.split('#')[1] ?? ''
 			if (cur_hash === next_hash) {

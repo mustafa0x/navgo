@@ -7,7 +7,7 @@
             <li class="flex gap-3 rounded-md border border-gray-200 bg-white p-3">
                 <button
                     class="flex gap-3 text-left"
-                    onclick={() => openProduct(p)}
+                    onclick={() => router.pushState(`?product=${p?.id}`)}
                     aria-label={`View ${p.title}`}
                 >
                     <img
@@ -40,7 +40,7 @@
             <h3 class="truncate pr-2 font-semibold">{selected.title}</h3>
             <button
                 class="rounded px-2 py-1 text-sm hover:bg-gray-100"
-                onclick={closeProduct}
+                onclick={() => router.replaceState('/products')}
                 aria-label="Close">✕</button
             >
         </header>
@@ -61,7 +61,7 @@
         <footer class="flex justify-end border-t border-gray-200 px-4 py-3">
             <button
                 class="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-black"
-                onclick={closeProduct}>Close</button
+                onclick={() => router.replaceState('/products')}>Close</button
             >
         </footer>
     {/if}
@@ -79,6 +79,7 @@ export async function loaders() {
 import {getContext} from 'svelte'
 let {params, data = null} = $props()
 const router = getContext('router')
+const route = getContext('route')
 
 // Prefer preloaded list; use fetched fallback when navigating directly
 let fetched = $state(null)
@@ -89,59 +90,35 @@ let dlg
 
 function openProduct(p) {
     selected = p
-    const url = new URL(location.href)
-    url.searchParams.set('product', String(p.id))
-    router.pushState(url)
     dlg?.showModal?.()
 }
 
 function closeProduct() {
     if (dlg?.open) dlg.close()
-    const url = new URL(location.href)
-    url.searchParams.delete('product')
-    router.replaceState(url)
+    // router.replaceState('/products')
     selected = null
 }
 
-function syncFromLocation() {
-    const url = new URL(location.href)
-    const pid = url.searchParams.get('product')
-    if (pid) {
-        const id = String(pid)
-        const inList = items.find(p => String(p.id) === id)
-        if (inList) {
-            selected = inList
-            if (!dlg?.open) dlg?.showModal?.()
-        } else {
-            fetch(`https://dummyjson.com/products/${id}`)
-                .then(r => r.json())
-                .then(prod => {
-                    selected = prod
-                    if (!dlg?.open) dlg?.showModal?.()
-                })
-                .catch(() => {})
-        }
-    } else {
-        if (dlg?.open) dlg.close()
-        selected = null
-    }
+if (!data?.products) {
+    loaders()
+        .then(json => {
+            if (Array.isArray(json?.products)) data = json
+        })
+        .catch(() => {})
 }
 
-    if (!data?.products) {
-      fetch('https://dummyjson.com/products')
-        .then(r => r.json())
-        .then(json => { if (Array.isArray(json?.products)) data = json })
-        .catch(() => {})
+// Open modal on landing via /products?product=...
+let last_pid = null
+$effect(() => {
+    const pid = route.url.searchParams.get('product')
+    if (pid && last_pid != pid) {
+        const found = items.find(p => String(p.id) === String(pid))
+        if (found)
+            setTimeout(() => {
+                openProduct(found)
+            })
     }
-
-// React to shallow history events and back/forward
-  $effect(() => {
-    const onnav = () => syncFromLocation()
-    addEventListener('popstate', onnav)
-    // initialize from current URL
-    syncFromLocation()
-    return () => {
-      removeEventListener('popstate', onnav)
-    }
-  })
+    last_pid = pid
+    if (!pid && selected) closeProduct()
+})
 </script>
