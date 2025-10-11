@@ -56,6 +56,7 @@ export default defineConfig([
 	{
 		rules: {
 			'no-empty': ['error', { allowEmptyCatch: true }],
+			'@typescript-eslint/ban-ts-comment': 'off',
 		},
 	},
 ])

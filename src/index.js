@@ -470,7 +470,8 @@ export default class Navaid {
 		addEventListener('hashchange', this.#on_hashchange)
 
 		if (this.#opts.preload_on_hover) {
-			addEventListener('mousemove', this.#mouse_move)
+			// @ts-expect-error
+			if (!navigator.connection?.saveData) addEventListener('mousemove', this.#mouse_move)
 			addEventListener('touchstart', this.#tap, { passive: true })
 			addEventListener('mousedown', this.#tap)
 			ℹ('[🧭 listen]', 'hover preloading enabled', {
