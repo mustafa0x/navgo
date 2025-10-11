@@ -1,5 +1,5 @@
 export default {
-	build: { lib: { entry: 'src/index.js', formats: ['es'] }, minify: true },
+	build: { lib: { entry: 'index.js', formats: ['es'] }, minify: true },
 	plugins: [
 		{
 			name: 'console-debug-pure',

@@ -122,7 +122,7 @@
 <div class="request-indicator" class:active={$IS_FETCHING}></div>
 
 <script module>
-import Navaid from '../../src/index.js'
+import Navaid from '../../index.js'
 
 import * as ProductsRoute from './routes/Products.svelte'
 import * as PostsRoute from './routes/Posts.svelte'

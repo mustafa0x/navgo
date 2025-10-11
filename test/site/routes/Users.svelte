@@ -2,7 +2,7 @@
 <p class="opacity-80">This page validates the <code>:id</code> param via a validator.</p>
 
 <script module>
-import Navaid from '../../../src/index.js'
+import Navaid from '../../../index.js'
 
 export const param_validators = {id: Navaid.validators.int({min: 1})}
 export function loaders(params) {

@@ -637,8 +637,8 @@ export default class Navaid {
 	}
 }
 
-/** @typedef {import('../index.d.ts').Options} Options */
-/** @typedef {import('../index.d.ts').RouteTuple} RouteTuple */
-/** @typedef {import('../index.d.ts').MatchResult} MatchResult */
-/** @typedef {import('../index.d.ts').ValidatorHelpers} ValidatorHelpers */
-/** @typedef {import('../index.d.ts').Navigation} Navigation */
+/** @typedef {import('./index.d.ts').Options} Options */
+/** @typedef {import('./index.d.ts').RouteTuple} RouteTuple */
+/** @typedef {import('./index.d.ts').MatchResult} MatchResult */
+/** @typedef {import('./index.d.ts').ValidatorHelpers} ValidatorHelpers */
+/** @typedef {import('./index.d.ts').Navigation} Navigation */

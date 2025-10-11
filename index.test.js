@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import Navaid from './src/index.js'
+console.debug = () => {}
+import Navaid from './index.js'
 
 global.history = {}
 
