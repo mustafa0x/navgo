@@ -1,6 +1,6 @@
 import { parse } from 'regexparam'
 
-const ℹ = console.debug.bind(console)
+const ℹ = (...args) => console.debug(...args)
 
 export default class Navaid {
 	#opts = {
