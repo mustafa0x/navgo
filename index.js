@@ -229,7 +229,7 @@ export default class Navaid {
 	 * Also used by popstate to unify the flow.
 	 * @param {string} [url_raw]
 	 * @param {{ replace?: boolean }} [opts]
-	 * @param {'nav'|'link'|'popstate'} [nav_type]
+	 * @param {'goto'|'link'|'popstate'} [nav_type]
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
@@ -238,14 +238,14 @@ export default class Navaid {
 		this.#nav_active = nav_id
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
-			ℹ('[🧭 nav]', 'invalid url', { url: url_raw })
+			ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
 			return
 		}
 		const { url, path } = info
 
 		const is_popstate = nav_type === 'popstate'
 		let nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
-		ℹ('[🧭 nav]', 'start', {
+		ℹ('[🧭 goto]', 'start', {
 			type: nav_type,
 			path,
 			replace: !!opts.replace,
@@ -263,14 +263,14 @@ export default class Navaid {
 				if (new_idx != null) {
 					const delta = new_idx - this.#route_idx
 					if (delta) {
-						ℹ('[🧭 nav]', 'cancel popstate; correcting history', {
+						ℹ('[🧭 goto]', 'cancel popstate; correcting history', {
 							delta,
 						})
 						history.go(-delta)
 					}
 				}
 			}
-			ℹ('[🧭 nav]', 'cancelled by beforeRouteLeave')
+			ℹ('[🧭 goto]', 'cancelled by beforeRouteLeave')
 			return
 		}
 
