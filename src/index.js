@@ -57,7 +57,7 @@ export default class Navaid {
 
 		e.preventDefault()
 		ℹ('[🧭 link]', 'intercept', { href: info.href })
-		this.goto(info.href, { replace: false }, 'link', e)
+		this.nav(info.href, { replace: false }, 'link', e)
 	}
 
 	#on_popstate = ev => {
@@ -86,7 +86,7 @@ export default class Navaid {
 		}
 
 		ℹ('  - [🧭 event:popstate]', { idx: st?.idx })
-		this.goto(location.href, { replace: true }, 'popstate', ev)
+		this.nav(location.href, { replace: true }, 'popstate', ev)
 	}
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
@@ -209,23 +209,23 @@ export default class Navaid {
 	/**
 	 * Programmatic navigation that runs loaders before changing URL.
 	 * Also used by popstate to unify the flow.
-	 * @param {string} [url]
+	 * @param {string} [url_raw]
 	 * @param {{ replace?: boolean }} [opts]
 	 * @param {'goto'|'link'|'popstate'} [nav_type]
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
+	async nav(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
-			ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
+			ℹ('[🧭 nav]', 'invalid url', { url: url_raw })
 			return
 		}
 		const { url, path } = info
 
 		const is_popstate = nav_type === 'popstate'
 		let nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
-		ℹ('[🧭 goto]', 'start', {
+		ℹ('[🧭 nav]', 'start', {
 			type: nav_type,
 			path,
 			replace: !!opts.replace,
@@ -243,14 +243,14 @@ export default class Navaid {
 				if (new_idx != null) {
 					const delta = new_idx - this.#route_idx
 					if (delta) {
-						ℹ('[🧭 goto]', 'cancel popstate; correcting history', {
+						ℹ('[🧭 nav]', 'cancel popstate; correcting history', {
 							delta,
 						})
 						history.go(-delta)
 					}
 				}
 			}
-			ℹ('[🧭 goto]', 'cancelled by beforeRouteLeave')
+			ℹ('[🧭 nav]', 'cancelled by beforeRouteLeave')
 			return
 		}
 
@@ -285,7 +285,7 @@ export default class Navaid {
 		}
 
 		//
-		// change URL (skip if popstate as browser changes, or first goto())
+		// change URL (skip if popstate as browser changes, or first nav())
 		//
 		if (!is_popstate && !(nav_type === 'goto' && this.#current.url == null)) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
@@ -490,8 +490,8 @@ export default class Navaid {
 			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
 		}
 
-		ℹ('[🧭 listen]', 'initial goto')
-		return this.goto()
+		ℹ('[🧭 listen]', 'initial nav')
+		return this.nav()
 	}
 
 	/** Remove listeners installed by listen(). */

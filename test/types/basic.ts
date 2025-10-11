@@ -52,7 +52,7 @@ router.unlisten?.()
 
 // Async-returning methods
 declare function expectsPromise<T>(p: Promise<T>): void
-expectsPromise(router.goto('/users/1'))
+expectsPromise(router.nav('/users/1'))
 expectsPromise(router.preload('/users/1'))
 
 // Shallow history helpers

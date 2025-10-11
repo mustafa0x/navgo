@@ -6,7 +6,7 @@
 <label class="inline-flex items-center gap-2 text-sm">
     <input type="checkbox" bind:checked={protect} />
     Protect navigation away from this page (asks for confirmation)
-    <span class="opacity-60">— affects link/goto and popstate</span>
+    <span class="opacity-60">— affects link/nav and popstate</span>
 </label>
 
 <script module>

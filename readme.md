@@ -58,9 +58,6 @@ const router = new Navaid(routes, {
 	},
 })
 
-// Process current location
-router.run()
-
 // Long-lived router: history + <a> bindings
 // Also immediately processes the current location
 router.listen()
@@ -180,7 +177,7 @@ Formats and returns a pathname relative to the [`base`](#base) path.
 If the `uri` **does not** begin with the `base`, then `false` will be returned instead.<br>
 Otherwise, the return value will always lead with a slash (`/`).
 
-> **Note:** This is called automatically within the [`listen()`](#listen) and [`run()`](#runuri) methods.
+> **Note:** This is called automatically within the [`listen()`](#listen) method.
 
 #### uri
 
@@ -190,7 +187,7 @@ The path to format.
 
 > **Note:** Much like [`base`](#base), paths with or without leading and trailing slashes are handled identically.
 
-### goto(uri, options?)
+### nav(uri, options?)
 
 Returns: `Promise<void>`
 
@@ -209,12 +206,6 @@ Type: `Object`
 - replace: `Boolean` (default `false`)
     - When `true`, uses `history.replaceState`; otherwise `history.pushState`.
 
-### run()
-
-Returns: `Promise<void>`
-
-Processes the current `location.pathname`. This does not modify browser history nor emit History API events.
-
 ### listen()
 
 Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
@@ -225,7 +216,7 @@ Events:
 
 Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
-While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
+While listening, link clicks are intercepted and translated into `nav()` navigations. You can also call `nav()` programmatically.
 
 In addition, `listen()` wires preloading listeners (enabled by default) so route data can be fetched early:
 
@@ -272,7 +263,7 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 ### Navigation Types
 
 - `link` — user clicked an in-app `<a>` that matches `base`.
-- `goto` — programmatic navigation via `router.goto(...)`.
+- `nav` — programmatic navigation via `router.nav(...)`.
 - `popstate` — browser back/forward.
 - `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 - `pushState` (shallow)?
@@ -291,19 +282,17 @@ The router passes the type to your route-level `beforeRouteLeave(nav)` hook.
 
 ### Data Flow
 
-For `link` and `goto` navigations that match a route:
+For `link` and programmatic navigations that match a route:
 
 ```
-[click <a>] or [router.goto()]
+[click <a>] or [router.nav()]
         → beforeRouteLeave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
             → no → run loaders(params)  // may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
-            → run()
-                → consume cached data (if any)
-                → after_navigate(nav)
+            → after_navigate(nav)
 ```
 
 - If a loader throws/rejects, navigation continues and `after_navigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
@@ -330,7 +319,7 @@ To enable `popstate` cancellation, Navaid stores a monotonic `idx` in `history.s
 Navaid manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
 
 - Saves the current scroll position for the active history index.
-- On `link`/`goto` (after route commit):
+- On `link`/`nav` (after route commit):
     - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
     - Otherwise, scroll to the top `(0, 0)`.
 - On `popstate`: restore the saved position for the target history index; if not found but there is a `#hash`, scroll to the anchor instead.
@@ -339,18 +328,17 @@ Navaid manages scroll manually (sets `history.scrollRestoration = 'manual'`) and
 ```
 scroll flow
     ├─ on any nav: save current scroll for current idx
-    ├─ link/goto: after run() → hash? anchor : scroll(0,0)
-    └─ popstate: after run() → restore saved idx position (fallback: anchor)
+    ├─ link/nav: after navigate → hash? anchor : scroll(0,0)
+    └─ popstate: after navigate → restore saved idx position (fallback: anchor)
 ```
 
 ### Method-by-Method Semantics
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
+- `nav(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
 - `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `unlisten()` — removes listeners added by `listen()`.
-- `run(e?)` — processes the current `location.pathname`. Skips work when `e?.state?.__navaid?.shallow` is true; applies scroll behavior described above.
 - `preload(uri)` — pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
 - `pushState(url?, state?)` — shallow push that updates the URL and `history.state` without route processing.
 - `replaceState(url?, state?)` — shallow replace that updates the URL and `history.state` without route processing.

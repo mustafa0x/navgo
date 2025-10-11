@@ -47,14 +47,14 @@ test('spa links: navigate and update content without reload', async ({ page }) =
 	expect(end_nav).toBe(start_nav)
 })
 
-test('programmatic goto + replace preserves history idx', async ({ page }) => {
+test('programmatic nav + replace preserves history idx', async ({ page }) => {
 	await page.click('a[href="/"]')
-	await page.evaluate(() => window.router.goto('/users/7'))
+	await page.evaluate(() => window.router.nav('/users/7'))
 	await expect(page).toHaveURL(/\/users\/7$/)
 	await expect(page.getByRole('heading', { level: 1, name: /User #7/ })).toBeVisible()
 
 	const idx_before = await page.evaluate(() => history.state?.__navaid?.idx ?? null)
-	await page.evaluate(() => window.router.goto('/products', { replace: true }))
+	await page.evaluate(() => window.router.nav('/products', { replace: true }))
 	await expect(page).toHaveURL(/\/products$/)
 	const idx_after = await page.evaluate(() => history.state?.__navaid?.idx ?? null)
 	expect(idx_after).toBe(idx_before)
@@ -98,7 +98,7 @@ test('beforeNavigate: cancel on link and on popstate', async ({ page }) => {
 })
 
 test('404 view when no route matches', async ({ page }) => {
-	await page.evaluate(() => window.router.goto('/totally-missing'))
+	await page.evaluate(() => window.router.nav('/totally-missing'))
 	await expect(page.locator('main')).toContainText('Page not found')
 })
 

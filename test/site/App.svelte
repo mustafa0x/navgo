@@ -75,12 +75,12 @@
                 <div class="flex flex-wrap gap-2">
                     <button
                         class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700"
-                        onclick={() => router.goto('/products')}>goto('/products')</button
+                        onclick={() => router.nav('/products')}>nav('/products')</button
                     >
                     <button
                         class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700"
-                        onclick={() => router.goto('/users/7', {replace: true})}
-                        >goto('/users/7', &#123; replace: true &#125;)</button
+                        onclick={() => router.nav('/users/7', {replace: true})}
+                        >nav('/users/7', &#123; replace: true &#125;)</button
                     >
                     <button
                         class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700"

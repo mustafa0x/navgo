@@ -255,7 +255,7 @@ describe('$.match', () => {
 })
 
 describe('beforeRouteLeave', () => {
-	it('goto; cancel prevents push', async () => {
+	it('nav; cancel prevents push', async () => {
 		const hist = setupStubs('/app/')
 		let called = 0
 		const r = new Navaid(
@@ -277,9 +277,9 @@ describe('beforeRouteLeave', () => {
 			},
 		)
 		await r.listen()
-		await r.goto('/app/test')
+		await r.nav('/app/test')
 		expect(called > 0).toBe(true)
-		// initial goto() does not push/replace; idx remains 0
+		// initial nav() does not push/replace; idx remains 0
 		// cancellation should not change idx further
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
 	})
@@ -357,7 +357,7 @@ describe('preload behavior', () => {
 		await router.listen()
 
 		await router.preload('/app/')
-		// initial goto() ran root loader once; preloading current route should not add more
+		// initial nav() ran root loader once; preloading current route should not add more
 		expect(calls.root).toBe(1)
 
 		const p1 = router.preload('/app/foo')
@@ -365,9 +365,9 @@ describe('preload behavior', () => {
 		await Promise.all([p1, p2])
 		expect(calls.foo).toBe(1)
 
-		await router.goto('/app/foo')
+		await router.nav('/app/foo')
 		expect(calls.foo).toBe(1)
-		// afterNavigate received completion nav for goto
+		// afterNavigate received completion nav for goto (type remains 'goto')
 		expect(navs.at(-1)?.type).toBe('goto')
 		router.unlisten()
 	})
@@ -432,7 +432,7 @@ describe('leave (beforeunload)', () => {
 })
 
 describe('link interception', () => {
-	it('intercepts internal anchor clicks and calls goto', async () => {
+	it('intercepts internal anchor clicks and calls nav', async () => {
 		const hist = setupStubs('/app/')
 		const r = new Navaid(
 			[
@@ -462,7 +462,7 @@ describe('link interception', () => {
 		global.dispatchEvent(click)
 		await new Promise(r => setTimeout(r, 0))
 		expect(prevented).toBe(true)
-		// initial goto() leaves idx at 0; clicking link pushes to 1
+		// initial nav() leaves idx at 0; clicking link pushes to 1
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
 		r.unlisten()
 	})

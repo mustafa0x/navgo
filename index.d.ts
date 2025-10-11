@@ -59,7 +59,7 @@ export interface Router<T = unknown> {
 	/** Format `url` relative to the configured base. */
 	format(url: string): string | false
 	/** SvelteKit-like navigation that runs loaders before updating the URL. */
-	goto(url: string, opts?: { replace?: boolean }): Promise<void>
+	nav(url: string, opts?: { replace?: boolean }): Promise<void>
 	/** Shallow push — updates URL/state without triggering handlers. */
 	pushState(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */
@@ -69,7 +69,7 @@ export interface Router<T = unknown> {
 	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
 	match(url: string): Promise<MatchResult<T> | null>
 	/** Attach history + click listeners and immediately process current location. */
-	listen(): void
+	listen(): Promise<void>
 	/** Remove listeners installed by `listen()`. */
 	unlisten(): void
 }
@@ -105,16 +105,6 @@ export interface Options {
 /** Navaid default export: class-based router. */
 export default class Navaid<T = unknown> implements Router<T> {
 	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
-	format(url: string): string | false
-	goto(url: string, opts?: { replace?: boolean }): Promise<void>
-	pushState(url?: string | URL, state?: any): void
-	replaceState(url?: string | URL, state?: any): void
-	preload(url: string): Promise<unknown | void>
-	match(url: string): Promise<MatchResult<T> | null>
-	run(e?: any): Promise<void>
-	listen(): Promise<void>
-	unlisten(): void
-
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }
