@@ -143,47 +143,6 @@ export default class Navaid {
 		}
 	}
 
-	/** @type {ValidatorHelpers} */
-	static validators = {
-		int(opts = {}) {
-			const { min = null, max = null } = opts
-			return v => {
-				if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
-				const n = Number(v)
-				if (min != null && n < min) return false
-				if (max != null && n > max) return false
-				return true
-			}
-		},
-		oneOf(values) {
-			const set = new Set(values)
-			return v => set.has(v)
-		},
-	}
-
-	/** @param {RouteTuple[]} [routes] @param {Options} [opts] */
-	constructor(routes = [], opts) {
-		this.#opts = { ...this.#opts, ...opts }
-		this.#base = this.#normalize(this.#opts.base || '/')
-		this.#base_rgx =
-			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
-
-		this.#routes = routes.map(r => {
-			const pat_or_rx = r[0]
-			const pat =
-				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
-			pat.data = r // keep original tuple: [pattern, hooks, ...]
-			return pat
-		})
-
-		ℹ('[🧭 init]', {
-			base: this.#base,
-			routes: this.#routes.length,
-			preload_on_hover: this.#opts.preload_on_hover,
-			preload_delay: this.#opts.preload_delay,
-		})
-	}
-
 	//
 	// Helpers
 	//
@@ -204,6 +163,62 @@ export default class Navaid {
 		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
 		ℹ('[🧭 resolve]', { url_in: url_raw, url: url.href, path })
 		return path ? { url, path } : null
+	}
+
+	#link_from_event(e, check_button = false) {
+		// prettier-ignore
+		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button))
+			return null
+		const a = (e.composedPath()[0] || e.target)?.closest?.('a')
+		const href = a?.getAttribute?.('href')
+		return href &&
+			!a.target &&
+			!a.download &&
+			a.host === location.host &&
+			(href[0] != '/' || this.#base_rgx.test(href))
+			? { a, href }
+			: null
+	}
+
+	#check_param_validators(param_validators, params) {
+		for (const k in param_validators) {
+			const fn = param_validators[k]
+			if (typeof fn !== 'function') continue
+			if (!fn(params[k])) return false
+		}
+		return true
+	}
+
+	async #run_loaders(route, params) {
+		const ret_val = route[1].loaders?.(params)
+		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
+	}
+
+	/**
+	 * @returns {Navigation}
+	 */
+	#make_nav({ type, from = undefined, to = undefined, willUnload = false, event = undefined }) {
+		const from_obj =
+			from !== undefined
+				? from
+				: this.#current.url
+					? {
+							url: this.#current.url,
+							params: this.#current.params || {},
+							route: this.#current.route,
+						}
+					: null
+		return {
+			type, // 'link' | 'goto' | 'popstate' | 'leave'
+			from: from_obj,
+			to,
+			willUnload,
+			cancelled: false,
+			event,
+			cancel() {
+				this.cancelled = true
+			},
+		}
 	}
 
 	/**
@@ -372,24 +387,20 @@ export default class Navaid {
 	}
 
 	/**
-	 * Manually preload loaders for a URL (e.g. to prime cache).
+	 * Preload loaders for a URL (e.g. to prime cache).
 	 * Dedupes concurrent preloads for the same path.
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
 	async preload(url_raw) {
-		const info = this.#resolve_url_and_path(url_raw)
-		if (!info) {
+		const { path } = this.#resolve_url_and_path(url_raw) || {}
+		if (!path) {
 			ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
 			return Promise.resolve()
 		}
-		const { path } = info
 		// Do not preload if we're already at this path
-		if (this.#current.url) {
-			const cur = this.format(this.#current.url.pathname)
-			if (cur && path === cur) {
-				ℹ('[🧭 preload]', 'skip current path', { path })
-				return Promise.resolve()
-			}
+		if (this.format(this.#current.url?.pathname) === path) {
+			ℹ('[🧭 preload]', 'skip current path', { path })
+			return Promise.resolve()
 		}
 		const hit = await this.match(path)
 		if (!hit) {
@@ -456,10 +467,32 @@ export default class Navaid {
 		return null
 	}
 
+	/** @param {RouteTuple[]} [routes] @param {Options} [opts] */
+	constructor(routes = [], opts) {
+		this.#opts = { ...this.#opts, ...opts }
+		this.#base = this.#normalize(this.#opts.base || '/')
+		this.#base_rgx =
+			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
+
+		this.#routes = routes.map(r => {
+			const pat_or_rx = r[0]
+			const pat =
+				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
+			pat.data = r // keep original tuple: [pattern, hooks, ...]
+			return pat
+		})
+
+		ℹ('[🧭 init]', {
+			base: this.#base,
+			routes: this.#routes.length,
+			preload_on_hover: this.#opts.preload_on_hover,
+			preload_delay: this.#opts.preload_delay,
+		})
+	}
+
 	//
 	// Lifecycle hooks
 	//
-	/** Attach history + click listeners and process current location. */
 	listen() {
 		history.scrollRestoration = 'manual'
 		ℹ('[🧭 listen]', 'attach listeners; scrollRestoration=manual')
@@ -494,8 +527,6 @@ export default class Navaid {
 		ℹ('[🧭 listen]', 'initial nav')
 		return this.nav()
 	}
-
-	/** Remove listeners installed by listen(). */
 	unlisten() {
 		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
@@ -504,67 +535,6 @@ export default class Navaid {
 		removeEventListener('mousedown', this.#tap)
 		removeEventListener('beforeunload', this.#before_unload)
 		removeEventListener('hashchange', this.#on_hashchange)
-		ℹ('[🧭 listen]', 'detached listeners')
-	}
-
-	//
-	// Internals
-	//
-	#link_from_event(e, check_button = false) {
-		// prettier-ignore
-		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button))
-			return null
-		const a = (e.composedPath()[0] || e.target)?.closest?.('a')
-		const href = a?.getAttribute?.('href')
-		return href &&
-			!a.target &&
-			!a.download &&
-			a.host === location.host &&
-			(href[0] != '/' || this.#base_rgx.test(href))
-			? { a, href }
-			: null
-	}
-
-	#check_param_validators(param_validators, params) {
-		if (!param_validators) return true
-		for (const k in param_validators) {
-			const fn = param_validators[k]
-			if (typeof fn !== 'function') continue
-			if (!fn(params[k])) return false
-		}
-		return true
-	}
-
-	async #run_loaders(route, params) {
-		const ret_val = route[1].loaders?.(params)
-		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
-	}
-
-	/**
-	 * @returns {Navigation}
-	 */
-	#make_nav({ type, from = undefined, to = undefined, willUnload = false, event = undefined }) {
-		const from_obj =
-			from !== undefined
-				? from
-				: this.#current.url
-					? {
-							url: this.#current.url,
-							params: this.#current.params || {},
-							route: this.#current.route,
-						}
-					: null
-		return {
-			type, // 'link' | 'goto' | 'popstate' | 'leave'
-			from: from_obj,
-			to,
-			willUnload,
-			cancelled: false,
-			event,
-			cancel() {
-				this.cancelled = true
-			},
-		}
 	}
 
 	//
@@ -634,6 +604,24 @@ export default class Navaid {
 		el?.scrollIntoView()
 		ℹ('[🧭 scroll]', 'anchor', { id, found: !!el })
 		return !!el
+	}
+
+	/** @type {ValidatorHelpers} */
+	static validators = {
+		int(opts = {}) {
+			const { min = null, max = null } = opts
+			return v => {
+				if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
+				const n = Number(v)
+				if (min != null && n < min) return false
+				if (max != null && n > max) return false
+				return true
+			}
+		},
+		oneOf(values) {
+			const set = new Set(values)
+			return v => set.has(v)
+		},
 	}
 }
 
