@@ -21,6 +21,9 @@ export default class Navaid {
 	#route_idx = 0
 	#scroll = new Map()
 	#hash_navigating = false
+	// Latest-wins nav guard: monotonic id and currently active id
+	#nav_seq = 0
+	#nav_active = 0
 
 	//
 	// Event listeners
@@ -231,6 +234,8 @@ export default class Navaid {
 	 * @returns {Promise<void>}
 	 */
 	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
+		const nav_id = ++this.#nav_seq
+		this.#nav_active = nav_id
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
 			ℹ('[🧭 nav]', 'invalid url', { url: url_raw })
@@ -279,6 +284,7 @@ export default class Navaid {
 		})
 		this.#save_scroll()
 		const hit = await this.match(path)
+		if (nav_id !== this.#nav_active) return
 
 		//
 		// loaders
@@ -298,6 +304,7 @@ export default class Navaid {
 				has_error: !!data?.__error,
 			})
 		}
+		if (nav_id !== this.#nav_active) return
 
 		//
 		// change URL (skip if popstate as browser changes, or first goto())
@@ -318,6 +325,7 @@ export default class Navaid {
 			this.#route_idx = next_idx
 			if (!opts.replace) this.#clear_onward_history()
 		}
+		if (nav_id !== this.#nav_active) return
 
 		const prev = this.#current
 		this.#current = { url, route: hit?.route || null, params: hit?.params || {} }
@@ -342,6 +350,7 @@ export default class Navaid {
 		})
 		// await so that apply_scroll is after potential async work
 		await this.#opts.after_navigate?.(nav)
+		if (nav_id !== this.#nav_active) return
 		ℹ('[🧭 navigate]', hit ? 'done' : 'done (404)', {
 			from: nav.from?.url?.href,
 			to: nav.to?.url?.href,
