@@ -256,7 +256,7 @@ describe('$.match', () => {
 })
 
 describe('beforeRouteLeave', () => {
-	it('nav; cancel prevents push', async () => {
+	it('goto; cancel prevents push', async () => {
 		const hist = setupStubs('/app/')
 		let called = 0
 		const r = new Navaid(
@@ -267,7 +267,7 @@ describe('beforeRouteLeave', () => {
 						// leave-only semantics: cancel when leaving '/'
 						beforeRouteLeave(nav) {
 							called++
-							if (nav.type === 'nav') nav.cancel()
+							if (nav.type === 'goto') nav.cancel()
 						},
 					},
 				],
@@ -278,9 +278,9 @@ describe('beforeRouteLeave', () => {
 			},
 		)
 		await r.init()
-		await r.nav('/app/test')
+		await r.goto('/app/test')
 		expect(called > 0).toBe(true)
-		// initial nav() does not push/replace; idx remains 0
+		// initial goto() does not push/replace; idx remains 0
 		// cancellation should not change idx further
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
 	})
@@ -358,7 +358,7 @@ describe('preload behavior', () => {
 		await router.init()
 
 		await router.preload('/app/')
-		// initial nav() ran root loader once; preloading current route should not add more
+		// initial goto() ran root loader once; preloading current route should not add more
 		expect(calls.root).toBe(1)
 
 		const p1 = router.preload('/app/foo')
@@ -366,10 +366,10 @@ describe('preload behavior', () => {
 		await Promise.all([p1, p2])
 		expect(calls.foo).toBe(1)
 
-		await router.nav('/app/foo')
+		await router.goto('/app/foo')
 		expect(calls.foo).toBe(1)
-		// afterNavigate received completion nav for programmatic navigation (type 'nav')
-		expect(navs.at(-1)?.type).toBe('nav')
+		// afterNavigate received completion nav for goto
+		expect(navs.at(-1)?.type).toBe('goto')
 		router.destroy()
 	})
 })
@@ -463,7 +463,7 @@ describe('link interception', () => {
 		global.dispatchEvent(click)
 		await new Promise(r => setTimeout(r, 0))
 		expect(prevented).toBe(true)
-		// initial nav() leaves idx at 0; clicking link pushes to 1
+		// initial goto() leaves idx at 0; clicking link pushes to 1
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
 		r.destroy()
 	})

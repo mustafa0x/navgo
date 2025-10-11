@@ -22,7 +22,7 @@ const opts: Options = {
 	preload_delay: 10,
 	preload_on_hover: true,
 	before_navigate(nav) {
-		const t: 'link' | 'nav' | 'popstate' | 'leave' = nav.type
+		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
 	},
 	after_navigate(nav) {
 		const to = nav.to!
@@ -52,7 +52,7 @@ router.destroy?.()
 
 // Async-returning methods
 declare function expectsPromise<T>(p: Promise<T>): void
-expectsPromise(router.nav('/users/1'))
+expectsPromise(router.goto('/users/1'))
 expectsPromise(router.preload('/users/1'))
 
 // Shallow history helpers

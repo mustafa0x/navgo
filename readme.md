@@ -187,7 +187,7 @@ The path to format.
 
 > **Note:** Much like [`base`](#base), paths with or without leading and trailing slashes are handled identically.
 
-### nav(uri, options?)
+### goto(uri, options?)
 
 Returns: `Promise<void>`
 
@@ -216,7 +216,7 @@ Events:
 
 Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
-While listening, link clicks are intercepted and translated into `nav()` navigations. You can also call `nav()` programmatically.
+While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
 In addition, `init()` wires preloading listeners (enabled by default) so route data can be fetched early:
 
@@ -263,7 +263,7 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 ### Navigation Types
 
 - `link` — user clicked an in-app `<a>` that matches `base`.
-- `nav` — programmatic navigation via `router.nav(...)`.
+- `goto` — programmatic navigation via `router.goto(...)`.
 - `popstate` — browser back/forward.
 - `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 - `pushState` (shallow)?
@@ -282,10 +282,10 @@ The router passes the type to your route-level `beforeRouteLeave(nav)` hook.
 
 ### Data Flow
 
-For `link` and programmatic navigations that match a route:
+For `link` and `goto` navigations that match a route:
 
 ```
-[click <a>] or [router.nav()]
+[click <a>] or [router.goto()]
         → beforeRouteLeave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
@@ -328,7 +328,7 @@ Navaid manages scroll manually (sets `history.scrollRestoration = 'manual'`) and
 ```
 scroll flow
     ├─ on any nav: save current scroll for current idx
-    ├─ link/nav: after navigate → hash? anchor : scroll(0,0)
+    ├─ link/goto: after navigate → hash? anchor : scroll(0,0)
     └─ popstate: after navigate → restore saved idx position (fallback: anchor)
 ```
 
@@ -336,7 +336,7 @@ scroll flow
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `nav(uri, { replace? })` — fires route-level `beforeRouteLeave('nav')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
+- `goto(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
 - `init()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `destroy()` — removes listeners added by `init()`.
 - `preload(uri)` — pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.

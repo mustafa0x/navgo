@@ -57,7 +57,7 @@ export default class Navaid {
 
 		e.preventDefault()
 		ℹ('[🧭 link]', 'intercept', { href: info.href })
-		this.nav(info.href, { replace: false }, 'link', e)
+		this.goto(info.href, { replace: false }, 'link', e)
 	}
 
 	#on_popstate = ev => {
@@ -86,7 +86,7 @@ export default class Navaid {
 		}
 
 		ℹ('  - [🧭 event:popstate]', { idx: st?.idx })
-		this.nav(location.href, { replace: true }, 'popstate', ev)
+		this.goto(location.href, { replace: true }, 'popstate', ev)
 	}
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
@@ -209,7 +209,7 @@ export default class Navaid {
 						}
 					: null
 		return {
-			type, // 'link' | 'nav' | 'popstate' | 'leave'
+			type, // 'link' | 'goto' | 'popstate' | 'leave'
 			from: from_obj,
 			to,
 			willUnload,
@@ -230,7 +230,7 @@ export default class Navaid {
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async nav(url_raw = location.href, opts = {}, nav_type = 'nav', ev_param = undefined) {
+	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
 			ℹ('[🧭 nav]', 'invalid url', { url: url_raw })
@@ -300,9 +300,9 @@ export default class Navaid {
 		}
 
 		//
-		// change URL (skip if popstate as browser changes, or first nav())
+		// change URL (skip if popstate as browser changes, or first goto())
 		//
-		if (!is_popstate && !(nav_type === 'nav' && this.#current.url == null)) {
+		if (!is_popstate && !(nav_type === 'goto' && this.#current.url == null)) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
 				history.state && typeof history.state == 'object' ? history.state : {}
@@ -524,8 +524,8 @@ export default class Navaid {
 			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
 		}
 
-		ℹ('[🧭 init]', 'initial nav')
-		return this.nav()
+		ℹ('[🧭 init]', 'initial goto')
+		return this.goto()
 	}
 	destroy() {
 		removeEventListener('popstate', this.#on_popstate)

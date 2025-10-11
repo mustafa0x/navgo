@@ -36,7 +36,7 @@ export interface NavigationTarget {
 }
 
 export interface Navigation {
-	type: 'link' | 'nav' | 'popstate' | 'leave'
+	type: 'link' | 'goto' | 'popstate' | 'leave'
 	from: NavigationTarget | null
 	to: NavigationTarget | null
 	willUnload: boolean
@@ -59,7 +59,7 @@ export interface Router<T = unknown> {
 	/** Format `url` relative to the configured base. */
 	format(url: string): string | false
 	/** SvelteKit-like navigation that runs loaders before updating the URL. */
-	nav(url: string, opts?: { replace?: boolean }): Promise<void>
+	goto(url: string, opts?: { replace?: boolean }): Promise<void>
 	/** Shallow push — updates URL/state without triggering handlers. */
 	pushState(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */
@@ -81,7 +81,7 @@ export interface NavaidHistoryMeta {
 	/** Present when the entry was created via shallow `pushState`/`replaceState`. */
 	shallow?: boolean
 	/** Origin of the navigation that created this entry. */
-	type?: 'link' | 'nav' | 'popstate'
+	type?: 'link' | 'goto' | 'popstate'
 }
 
 export interface Options {
