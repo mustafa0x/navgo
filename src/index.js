@@ -66,32 +66,20 @@ export default class Navaid {
 
 		const st = ev?.state?.__navaid
 		ℹ('[🧭 event:popstate]', st)
-		// 1) If target entry is marked shallow, treat as shallow ONLY when the pathname is unchanged
-		if (st?.shallow) {
-			const target_path = location.pathname
-			const current_path = this.#current?.url?.pathname
-			if (current_path && target_path === current_path) {
-				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip')
-				this.#apply_scroll(ev)
-				this.#current.url = new URL(location.href)
-				this.#opts.url_changed?.(this.#current)
-				return
-			}
+		// Hash-only or state-only change: pathname+search unchanged -> skip loaders
+		const cur = this.#current.url
+		const target = new URL(location.href)
+		if (cur && target.pathname === cur.pathname) {
+			this.#current.url = target
+			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loaders')
+			this.#apply_scroll(ev)
+			this.#opts.url_changed?.(this.#current)
+			return
 		}
-
-		// 2) Treat same-path popstate as shallow ONLY if it doesn't change our index
-		const path = location.pathname
-		if (
-			path &&
-			this.#current?.url &&
-			path === this.#current.url.pathname &&
-			st?.idx === this.#route_idx
-		) {
-			this.#current.url = new URL(location.href)
-			ℹ('  - [🧭 event:popstate]', 'same-path; skip loaders', {
-				idx: st?.idx,
-				path,
-			})
+		// Explicit shallow entries (pushState/replaceState) regardless of path
+		if (st?.shallow) {
+			this.#current.url = target
+			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loaders')
 			this.#apply_scroll(ev)
 			this.#opts.url_changed?.(this.#current)
 			return
@@ -147,7 +135,7 @@ export default class Navaid {
 			willUnload: true,
 			event: ev,
 		})
-		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
+		this.#current.route?.[1]?.beforeRouteLeave?.(nav)
 		if (nav.cancelled) {
 			ℹ('[🧭 navigate]', 'cancelled by beforeRouteLeave during unload')
 			ev.preventDefault()
@@ -247,7 +235,7 @@ export default class Navaid {
 		//
 		// beforeRouteLeave
 		//
-		this.#current?.route?.[1]?.beforeRouteLeave?.(nav)
+		this.#current.route?.[1]?.beforeRouteLeave?.(nav)
 		if (nav.cancelled) {
 			// use history.go to cancel the nav, and jump back to where we are
 			if (is_popstate) {
@@ -299,7 +287,7 @@ export default class Navaid {
 		//
 		// change URL (skip if popstate as browser changes, or first goto())
 		//
-		if (!is_popstate && !(nav_type === 'goto' && this.#current?.url == null)) {
+		if (!is_popstate && !(nav_type === 'goto' && this.#current.url == null)) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
 				history.state && typeof history.state == 'object' ? history.state : {}
@@ -396,7 +384,7 @@ export default class Navaid {
 		}
 		const { path } = info
 		// Do not preload if we're already at this path
-		if (this.#current?.url) {
+		if (this.#current.url) {
 			const cur = this.format(this.#current.url.pathname)
 			if (cur && path === cur) {
 				ℹ('[🧭 preload]', 'skip current path', { path })
@@ -558,7 +546,7 @@ export default class Navaid {
 		const from_obj =
 			from !== undefined
 				? from
-				: this.#current?.url
+				: this.#current.url
 					? {
 							url: this.#current.url,
 							params: this.#current.params || {},

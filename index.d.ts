@@ -112,7 +112,7 @@ export default class Navaid<T = unknown> implements Router<T> {
 	preload(url: string): Promise<unknown | void>
 	match(url: string): Promise<MatchResult<T> | null>
 	run(e?: any): Promise<void>
-	listen(): void
+	listen(): Promise<void>
 	unlisten(): void
 
 	/** Built-in validator helpers (namespaced). */
