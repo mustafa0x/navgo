@@ -14,7 +14,7 @@
 export function beforeRouteLeave(nav) {
     if (!window['__account_protect']) return
     // Cancel SPA navigations and tab close/reload
-    if (nav.willUnload || nav.type === 'link' || nav.type === 'goto' || nav.type === 'popstate') {
+    if (nav.willUnload || nav.type === 'link' || nav.type === 'nav' || nav.type === 'popstate') {
         // For SPA navigations, we can ask interactively. For unload, router will show native confirm.
         if (!nav.willUnload && !confirm('You have unsaved changes. Leave this page?')) nav.cancel()
         if (nav.willUnload) nav.cancel()

@@ -27,7 +27,7 @@ const routes = [
 			loaders: params => fetch('/api/admin').then(r => r.json()),
 			// per-route guard; cancel synchronously to block nav
 			beforeRouteLeave(nav) {
-				if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
+				if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
 					nav.cancel()
 				}
 			},
@@ -60,7 +60,7 @@ const router = new Navaid(routes, {
 
 // Long-lived router: history + <a> bindings
 // Also immediately processes the current location
-router.listen()
+router.init()
 ```
 
 ## API
@@ -113,7 +113,7 @@ Important: Navaid only processes routes that match your `base` path.
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
     - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
-    - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `after_navigate`.
+    - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
     - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - beforeRouteLeave?(nav): `(nav: Navigation) => void`
@@ -123,7 +123,7 @@ The `Navigation` object contains:
 
 ```ts
 {
-  type: 'link' | 'goto' | 'popstate' | 'leave',
+  type: 'link' | 'nav' | 'popstate' | 'leave',
   from: { url, params, route } | null,
   to:   { url, params, route } | null,
   willUnload: boolean,
@@ -137,7 +137,7 @@ The `Navigation` object contains:
 
 - Router calls `before_navigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
-    - For `link`/`goto`, it stops before URL change.
+    - For `link`/`nav`, it stops before URL change.
     - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
     - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
 
@@ -151,9 +151,9 @@ const routes = [
 			param_validators: {
 				/* ... */
 			},
-			loaders: params => fetch('/api/admin/stats').then(r => r.json()),
+				loaders: params => fetch('/api/admin/stats').then(r => r.json()),
 			beforeRouteLeave(nav) {
-				if (nav.type === 'link' || nav.type === 'goto') {
+					if (nav.type === 'link' || nav.type === 'nav') {
 					if (!confirm('Enter admin area?')) nav.cancel()
 				}
 			},
@@ -163,7 +163,7 @@ const routes = [
 ]
 
 const router = new Navaid(routes, { base: '/app' })
-router.listen()
+router.init()
 ```
 
 ### Methods
@@ -177,7 +177,7 @@ Formats and returns a pathname relative to the [`base`](#base) path.
 If the `uri` **does not** begin with the `base`, then `false` will be returned instead.<br>
 Otherwise, the return value will always lead with a slash (`/`).
 
-> **Note:** This is called automatically within the [`listen()`](#listen) method.
+> **Note:** This is called automatically within the [`init()`](#init) method.
 
 #### uri
 
@@ -206,7 +206,7 @@ Type: `Object`
 - replace: `Boolean` (default `false`)
     - When `true`, uses `history.replaceState`; otherwise `history.pushState`.
 
-### listen()
+### init()
 
 Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
 
@@ -218,7 +218,7 @@ Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) s
 
 While listening, link clicks are intercepted and translated into `nav()` navigations. You can also call `nav()` programmatically.
 
-In addition, `listen()` wires preloading listeners (enabled by default) so route data can be fetched early:
+In addition, `init()` wires preloading listeners (enabled by default) so route data can be fetched early:
 
 - `mousemove` (hover) — after a short delay, hovering an in-app link triggers `preload(href)`.
 - `touchstart` and `mousedown` (tap) — tapping or pressing on an in-app link also triggers `preload(href)`.
@@ -252,9 +252,9 @@ Returns: `void`
 
 Perform a shallow history replace: updates the URL/state without triggering route processing.
 
-### unlisten()
+### destroy()
 
-Detach all listeners initialized by [`listen()`](#listen).
+Detach all listeners initialized by [`init()`](#init).
 
 ## Semantics
 
@@ -336,9 +336,9 @@ scroll flow
 
 - `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `nav(uri, { replace? })` — fires route-level `beforeRouteLeave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
-- `listen()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
-- `unlisten()` — removes listeners added by `listen()`.
+- `nav(uri, { replace? })` — fires route-level `beforeRouteLeave('nav')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
+- `init()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
+- `destroy()` — removes listeners added by `init()`.
 - `preload(uri)` — pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
 - `pushState(url?, state?)` — shallow push that updates the URL and `history.state` without route processing.
 - `replaceState(url?, state?)` — shallow replace that updates the URL and `history.state` without route processing.

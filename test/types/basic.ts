@@ -22,7 +22,7 @@ const opts: Options = {
 	preload_delay: 10,
 	preload_on_hover: true,
 	before_navigate(nav) {
-		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
+		const t: 'link' | 'nav' | 'popstate' | 'leave' = nav.type
 	},
 	after_navigate(nav) {
 		const to = nav.to!
@@ -47,8 +47,8 @@ const f2: string | false = router.format('users/1')
 
 const m1p: Promise<MatchResult<Meta> | null> = router.match('/users/42')
 
-router.listen()
-router.unlisten?.()
+router.init()
+router.destroy?.()
 
 // Async-returning methods
 declare function expectsPromise<T>(p: Promise<T>): void

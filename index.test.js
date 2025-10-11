@@ -74,7 +74,7 @@ describe('exports', () => {
 	it('new Navaid()', () => {
 		let foo = new Navaid()
 		expect(typeof foo.format).toBe('function')
-		expect(typeof foo.listen).toBe('function')
+		expect(typeof foo.init).toBe('function')
 	})
 })
 
@@ -267,7 +267,7 @@ describe('beforeRouteLeave', () => {
 						// leave-only semantics: cancel when leaving '/'
 						beforeRouteLeave(nav) {
 							called++
-							if (nav.type === 'goto') nav.cancel()
+							if (nav.type === 'nav') nav.cancel()
 						},
 					},
 				],
@@ -277,7 +277,7 @@ describe('beforeRouteLeave', () => {
 				base: '/app',
 			},
 		)
-		await r.listen()
+		await r.init()
 		await r.nav('/app/test')
 		expect(called > 0).toBe(true)
 		// initial nav() does not push/replace; idx remains 0
@@ -305,7 +305,7 @@ describe('beforeRouteLeave', () => {
 				base: '/app',
 			},
 		)
-		await r.listen()
+		await r.init()
 		// simulate an in-app shallow push to idx 2 (idx 1 was initial goto)
 		r.pushState('/app/foo')
 		// pop back to idx 0
@@ -315,7 +315,7 @@ describe('beforeRouteLeave', () => {
 		expect(called > 0).toBe(true)
 		// We shallow-pushed once after initial goto (idx 1 total); cancelling popstate to 0 requires history.go(1)
 		expect(hist._went).toBe(1)
-		r.unlisten()
+		r.destroy()
 	})
 })
 
@@ -355,7 +355,7 @@ describe('preload behavior', () => {
 	it('skips preloading current route and dedupes others', async () => {
 		setupStubs('/app/')
 		const { router, calls, navs } = makeRouterWithLoaders()
-		await router.listen()
+		await router.init()
 
 		await router.preload('/app/')
 		// initial nav() ran root loader once; preloading current route should not add more
@@ -368,9 +368,9 @@ describe('preload behavior', () => {
 
 		await router.nav('/app/foo')
 		expect(calls.foo).toBe(1)
-		// afterNavigate received completion nav for goto (type remains 'goto')
-		expect(navs.at(-1)?.type).toBe('goto')
-		router.unlisten()
+		// afterNavigate received completion nav for programmatic navigation (type 'nav')
+		expect(navs.at(-1)?.type).toBe('nav')
+		router.destroy()
 	})
 })
 
@@ -378,7 +378,7 @@ describe('scroll restore persistence', () => {
 	it('stores position on beforeunload and restores on next run', async () => {
 		// const hist = setupStubs('/app/foo')
 		const r1 = new Navaid([['/foo', {}]], { base: '/app' })
-		await r1.listen()
+		await r1.init()
 		// move scroll
 		global.scrollTo(10, 200)
 		// trigger beforeunload
@@ -386,14 +386,14 @@ describe('scroll restore persistence', () => {
 		global.dispatchEvent(ev)
 		const key = `__navaid_scroll:${global.location.href}`
 		expect(global.sessionStorage.getItem(key)).toBeTruthy()
-		r1.unlisten()
+		r1.destroy()
 
 		// new router instance simulating a refresh
 		const r2 = new Navaid([['/foo', {}]], { base: '/app' })
-		await r2.listen()
+		await r2.init()
 		expect(global.scrollX).toBe(10)
 		expect(global.scrollY).toBe(200)
-		r2.unlisten()
+		r2.destroy()
 	})
 })
 
@@ -415,7 +415,7 @@ describe('leave (beforeunload)', () => {
 			],
 			{ base: '/app' },
 		)
-		await r.listen()
+		await r.init()
 
 		const ev = {
 			type: 'beforeunload',
@@ -428,7 +428,7 @@ describe('leave (beforeunload)', () => {
 		expect(called > 0).toBe(true)
 		expect(ev.prevented).toBe(true)
 		expect(ev.returnValue).toBe('')
-		r.unlisten()
+		r.destroy()
 	})
 })
 
@@ -442,7 +442,7 @@ describe('link interception', () => {
 			],
 			{ base: '/app' },
 		)
-		await r.listen()
+		await r.init()
 
 		let prevented = false
 		const anchor = {
@@ -465,7 +465,7 @@ describe('link interception', () => {
 		expect(prevented).toBe(true)
 		// initial nav() leaves idx at 0; clicking link pushes to 1
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
-		r.unlisten()
+		r.destroy()
 	})
 
 	it('ignores clicks with modifier keys', async () => {
@@ -477,7 +477,7 @@ describe('link interception', () => {
 			],
 			{ base: '/app' },
 		)
-		await r.listen()
+		await r.init()
 
 		const anchor = {
 			host: 'example.com',
@@ -496,6 +496,6 @@ describe('link interception', () => {
 		global.dispatchEvent(click)
 		// modifier click is ignored; idx remains at 0
 		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
-		r.unlisten()
+		r.destroy()
 	})
 })

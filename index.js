@@ -209,7 +209,7 @@ export default class Navaid {
 						}
 					: null
 		return {
-			type, // 'link' | 'goto' | 'popstate' | 'leave'
+			type, // 'link' | 'nav' | 'popstate' | 'leave'
 			from: from_obj,
 			to,
 			willUnload,
@@ -226,11 +226,11 @@ export default class Navaid {
 	 * Also used by popstate to unify the flow.
 	 * @param {string} [url_raw]
 	 * @param {{ replace?: boolean }} [opts]
-	 * @param {'goto'|'link'|'popstate'} [nav_type]
+	 * @param {'nav'|'link'|'popstate'} [nav_type]
 	 * @param {Event} [ev_param]
 	 * @returns {Promise<void>}
 	 */
-	async nav(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
+	async nav(url_raw = location.href, opts = {}, nav_type = 'nav', ev_param = undefined) {
 		const info = this.#resolve_url_and_path(url_raw)
 		if (!info) {
 			ℹ('[🧭 nav]', 'invalid url', { url: url_raw })
@@ -302,7 +302,7 @@ export default class Navaid {
 		//
 		// change URL (skip if popstate as browser changes, or first nav())
 		//
-		if (!is_popstate && !(nav_type === 'goto' && this.#current.url == null)) {
+		if (!is_popstate && !(nav_type === 'nav' && this.#current.url == null)) {
 			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
 			const prev_state =
 				history.state && typeof history.state == 'object' ? history.state : {}
@@ -493,9 +493,9 @@ export default class Navaid {
 	//
 	// Lifecycle hooks
 	//
-	listen() {
+	init() {
 		history.scrollRestoration = 'manual'
-		ℹ('[🧭 listen]', 'attach listeners; scrollRestoration=manual')
+		ℹ('[🧭 init]', 'attach listeners; scrollRestoration=manual')
 
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
@@ -507,7 +507,7 @@ export default class Navaid {
 			if (!navigator.connection?.saveData) addEventListener('mousemove', this.#mouse_move)
 			addEventListener('touchstart', this.#tap, { passive: true })
 			addEventListener('mousedown', this.#tap)
-			ℹ('[🧭 listen]', 'hover preloading enabled', {
+			ℹ('[🧭 init]', 'hover preloading enabled', {
 				delay: this.#opts.preload_delay,
 			})
 		}
@@ -524,10 +524,10 @@ export default class Navaid {
 			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
 		}
 
-		ℹ('[🧭 listen]', 'initial nav')
+		ℹ('[🧭 init]', 'initial nav')
 		return this.nav()
 	}
-	unlisten() {
+	destroy() {
 		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
 		removeEventListener('mousemove', this.#mouse_move)

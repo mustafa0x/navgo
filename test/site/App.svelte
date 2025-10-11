@@ -180,7 +180,7 @@ const router = new Navaid(routes, {
         // })
     },
 })
-router.listen()
+router.init()
 window['router'] = router
 </script>
 
@@ -190,6 +190,6 @@ import {writable} from 'svelte/store'
 setContext('router', router)
 setContext('route', route)
 onDestroy(() => {
-    router.unlisten()
+    router.destroy()
 })
 </script>

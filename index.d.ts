@@ -36,7 +36,7 @@ export interface NavigationTarget {
 }
 
 export interface Navigation {
-	type: 'link' | 'goto' | 'popstate' | 'leave'
+	type: 'link' | 'nav' | 'popstate' | 'leave'
 	from: NavigationTarget | null
 	to: NavigationTarget | null
 	willUnload: boolean
@@ -69,9 +69,9 @@ export interface Router<T = unknown> {
 	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
 	match(url: string): Promise<MatchResult<T> | null>
 	/** Attach history + click listeners and immediately process current location. */
-	listen(): Promise<void>
-	/** Remove listeners installed by `listen()`. */
-	unlisten(): void
+	init(): Promise<void>
+	/** Remove listeners installed by `init()`. */
+	destroy(): void
 }
 
 /** Router metadata stored under `history.state.__navaid`. */
@@ -81,7 +81,7 @@ export interface NavaidHistoryMeta {
 	/** Present when the entry was created via shallow `pushState`/`replaceState`. */
 	shallow?: boolean
 	/** Origin of the navigation that created this entry. */
-	type?: 'link' | 'goto' | 'popstate'
+	type?: 'link' | 'nav' | 'popstate'
 }
 
 export interface Options {
