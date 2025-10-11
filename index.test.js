@@ -279,9 +279,9 @@ describe('beforeRouteLeave', () => {
 		await r.listen()
 		await r.goto('/app/test')
 		expect(called > 0).toBe(true)
-		// listen() triggers an initial goto() that increments idx to 1
+		// initial goto() does not push/replace; idx remains 0
 		// cancellation should not change idx further
-		expect(hist.state?.__navaid?.idx).toBe(1)
+		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
 	})
 
 	it('popstate; cancel reverts with history.go', async () => {
@@ -312,8 +312,8 @@ describe('beforeRouteLeave', () => {
 		ev.state = { __navaid: { idx: 0 } }
 		global.dispatchEvent(ev)
 		expect(called > 0).toBe(true)
-		// We shallow-pushed once after initial goto (idx 2 total); cancelling popstate to 0 requires history.go(2)
-		expect(hist._went).toBe(2)
+		// We shallow-pushed once after initial goto (idx 1 total); cancelling popstate to 0 requires history.go(1)
+		expect(hist._went).toBe(1)
 		r.unlisten()
 	})
 })
@@ -462,8 +462,8 @@ describe('link interception', () => {
 		global.dispatchEvent(click)
 		await new Promise(r => setTimeout(r, 0))
 		expect(prevented).toBe(true)
-		// initial goto() set idx to 1; clicking link pushes another entry → 2
-		expect(hist.state?.__navaid?.idx).toBe(2)
+		// initial goto() leaves idx at 0; clicking link pushes to 1
+		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
 		r.unlisten()
 	})
 
@@ -493,8 +493,8 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		// modifier click is ignored; idx remains whatever initial goto() set (1)
-		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
+		// modifier click is ignored; idx remains at 0
+		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
 		r.unlisten()
 	})
 })

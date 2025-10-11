@@ -31,12 +31,11 @@ export default class Navaid {
 		if (!info) return
 
 		const url = new URL(info.href, location.href)
-		const same_path =
-			this.format(url.pathname) === (this.#current?.url || this.format(location.pathname))
+		const cur_path = this.#current?.url ? this.#current.url.pathname : location.pathname
 		const has_hash = info.href.includes('#') || url.hash !== ''
 
 		// Hash-only navigation on same path: let browser handle, but track index
-		if (has_hash && same_path) {
+		if (has_hash && url.pathname === cur_path) {
 			const cur_hash = location.href.split('#')[1]
 			const next_hash = url.href.split('#')[1] ?? ''
 			if (cur_hash === next_hash) {
@@ -68,27 +67,39 @@ export default class Navaid {
 		if (this.#hash_navigating) return
 
 		const st = ev?.state?.__navaid
-		// 1) If target entry is marked shallow, skip router work; just restore scroll
+		ℹ('[🧭 event:popstate]', st)
+		// 1) If target entry is marked shallow, treat as shallow ONLY when the pathname is unchanged
 		if (st?.shallow) {
-			ℹ('[🧭 event:popstate]', 'shallow entry; skip')
-			this.#apply_scroll(ev)
-			this.#opts.url_changed?.()
-			return
+			const target_path = location.pathname
+			const current_path = this.#current?.url?.pathname
+			if (current_path && target_path === current_path) {
+				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip')
+				this.#apply_scroll(ev)
+				this.#current.url = new URL(location.href)
+				this.#opts.url_changed?.(this.#current)
+				return
+			}
 		}
 
 		// 2) Treat same-path popstate as shallow ONLY if it doesn't change our index
-		const path = this.format(location.pathname)
-		if (path && path === this.#current?.url && st?.idx === this.#route_idx) {
-			ℹ('[🧭 event:popstate]', 'same-path; skip loaders', {
+		const path = location.pathname
+		if (
+			path &&
+			this.#current?.url &&
+			path === this.#current.url.pathname &&
+			st?.idx === this.#route_idx
+		) {
+			this.#current.url = new URL(location.href)
+			ℹ('  - [🧭 event:popstate]', 'same-path; skip loaders', {
 				idx: st?.idx,
 				path,
 			})
 			this.#apply_scroll(ev)
-			this.#opts.url_changed?.()
+			this.#opts.url_changed?.(this.#current)
 			return
 		}
 
-		ℹ('[🧭 event:popstate]', { idx: ev?.state?.__navaid?.idx })
+		ℹ('  - [🧭 event:popstate]', { idx: st?.idx })
 		this.goto(location.href, { replace: true }, 'popstate', ev)
 	}
 	#on_hashchange = () => {
@@ -102,8 +113,9 @@ export default class Navaid {
 			this.#route_idx = next_idx
 			ℹ('[🧭 event:hashchange]', { idx: next_idx, href: location.href })
 		}
-		// Always notify on hash changes
-		this.#opts.url_changed?.()
+		// update current URL snapshot and notify
+		this.#current.url = new URL(location.href)
+		this.#opts.url_changed?.(this.#current)
 	}
 
 	#hover_timer = null
@@ -307,14 +319,14 @@ export default class Navaid {
 		}
 
 		const prev = this.#current
-		this.#current = { url: path, route: hit?.route || null, params: hit?.params || {} }
+		this.#current = { url, route: hit?.route || null, params: hit?.params || {} }
 
 		// Build a completion nav using the previous route as `from`
 		nav = this.#make_nav({
 			type: nav_type,
 			from: prev?.url
 				? {
-						url: new URL(prev.url, location.origin),
+						url: prev.url,
 						params: prev.params || {},
 						route: prev.route,
 					}
@@ -336,7 +348,7 @@ export default class Navaid {
 			idx: this.#route_idx,
 		})
 		this.#apply_scroll(nav)
-		this.#opts.url_changed?.()
+		this.#opts.url_changed?.(this.#current)
 	}
 
 	/**
@@ -344,17 +356,24 @@ export default class Navaid {
 	 * URL changes, content stays put until a real nav.
 	 */
 	#commit_shallow(url, state, replace) {
-		const href = new URL(url || location.href, location.href).href
+		const u = new URL(url || location.href, location.href)
 		// save scroll for current index before shallow change
 		this.#save_scroll()
 		const idx = this.#route_idx + (replace ? 0 : 1)
 		const st = { ...state, __navaid: { ...state?.__navaid, shallow: true, idx } }
-		history[(replace ? 'replace' : 'push') + 'State'](st, '', href)
-		ℹ('[🧭 history]', replace ? 'replaceState(shallow)' : 'pushState(shallow)', { idx, href })
+		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
+		ℹ('[🧭 history]', replace ? 'replaceState(shallow)' : 'pushState(shallow)', {
+			idx,
+			href: u.href,
+		})
 		// Popstate handler checks state.__navaid.shallow and skips router processing
 		this.#route_idx = idx
+		// carry forward current scroll position for the shallow entry so Forward restores correctly
+		this.#scroll.set(idx, { x: scrollX, y: scrollY })
 		if (!replace) this.#clear_onward_history()
-		this.#opts.url_changed?.()
+		// update current URL snapshot and notify
+		this.#current.url = u
+		this.#opts.url_changed?.(this.#current)
 	}
 
 	/** @param {string|URL} [url] @param {any} [state] */
@@ -379,9 +398,12 @@ export default class Navaid {
 		}
 		const { path } = info
 		// Do not preload if we're already at this path
-		if (path === this.#current?.url) {
-			ℹ('[🧭 preload]', 'skip current path', { path })
-			return Promise.resolve()
+		if (this.#current?.url) {
+			const cur = this.format(this.#current.url.pathname)
+			if (cur && path === cur) {
+				ℹ('[🧭 preload]', 'skip current path', { path })
+				return Promise.resolve()
+			}
 		}
 		const hit = await this.match(path)
 		if (!hit) {
@@ -540,7 +562,7 @@ export default class Navaid {
 				? from
 				: this.#current?.url
 					? {
-							url: new URL(this.#current.url, location.origin),
+							url: this.#current.url,
 							params: this.#current.params || {},
 							route: this.#current.route,
 						}
@@ -589,7 +611,8 @@ export default class Navaid {
 			}
 			// 1) On back/forward, restore saved position if available
 			if (t === 'popstate') {
-				const idx = ctx?.event?.state?.__navaid?.idx
+				const ev_state = ctx?.state ?? ctx?.event?.state
+				const idx = ev_state?.__navaid?.idx
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
 				const pos = this.#scroll.get(target_idx)

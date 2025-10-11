@@ -51,9 +51,10 @@ const router = new Navaid(routes, {
 
 		console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
 	},
-	url_changed() {
-		// fires for shallow, hashchanges, popstate-shallow, and 404s
-		console.log('url_changed', new URL(location.href))
+	url_changed(cur) {
+		// fires on shallow/hash/popstate-shallow/404 and full navigations
+		// `cur` is the router snapshot: { url: URL, route, params }
+		console.log('url_changed', cur.url.href)
 	},
 })
 
@@ -99,8 +100,10 @@ Notes:
     - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation) => void`
     - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
-- `url_changed`: `() => void`
-    - Global hook called whenever the browser URL changes — including shallow `pushState`/`replaceState`, hash changes, `popstate` shallow entries, and 404 navigations.
+- `url_changed`: `(snapshot: any) => void`
+    - Fires on every URL change — shallow `pushState`/`replaceState`, hash changes, `popstate` shallow entries, 404s, and full navigations.
+    - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
+    - The snapshot type is intentionally `any` and may evolve without a breaking change.
 - `preload_delay`: `number` (default `20`)
     - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)

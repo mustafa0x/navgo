@@ -21,9 +21,6 @@ const opts: Options = {
 	base: '/app',
 	preload_delay: 10,
 	preload_on_hover: true,
-	on_404(uri) {
-		const u: string = uri
-	},
 	before_navigate(nav) {
 		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
 	},
@@ -33,6 +30,11 @@ const opts: Options = {
 		const m: RouteTuple<Meta> = to.route as RouteTuple<Meta>
 		const p: Params = to.params
 		const d: unknown = to.data
+	},
+	url_changed(cur) {
+		const u: URL = cur.url
+		const m: RouteTuple<Meta> | null = cur.route
+		const p: Params = cur.params
 	},
 }
 
@@ -58,5 +60,5 @@ router.pushState('/app/foo', { x: 1 })
 router.replaceState('/app/foo', { x: 1 })
 
 // Static validator helpers
-const isColor = Navaid.validators.oneOf(['red', 'green'])
-const ok: boolean = isColor('red')
+const is_color = Navaid.validators.oneOf(['red', 'green'])
+const ok: boolean = is_color('red')

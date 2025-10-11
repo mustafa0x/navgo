@@ -95,8 +95,11 @@ export interface Options {
 	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
 	after_navigate?(nav: Navigation): void
-	/** Global hook fired whenever the URL changes (including shallow pushes, hash changes, and 404s). */
-	url_changed?(): void
+	/** Global hook fired whenever the URL changes.
+	 *  Triggers for shallow pushes/replaces, hash changes, popstate-shallow, 404s, and full navigations.
+	 *  Receives the router's current snapshot (eg `{ url: URL, route: RouteTuple|null, params: Params }`).
+	 */
+	url_changed?(payload: any): void
 }
 
 /** Navaid default export: class-based router. */
