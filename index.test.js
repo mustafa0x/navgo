@@ -637,6 +637,7 @@ describe('link interception', () => {
 		const anchor = {
 			host: 'example.com',
 			getAttribute: name => (name === 'href' ? '/app/foo' : null),
+			pathname: '/app/foo',
 			closest: () => anchor,
 		}
 		const click = {
@@ -685,6 +686,77 @@ describe('link interception', () => {
 		global.dispatchEvent(click)
 		// modifier click is ignored; idx remains at 0
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
+		r.destroy()
+	})
+
+	it('skips absolute same-host links outside base', async () => {
+		const hist = setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? 'http://example.com/outside' : null),
+			pathname: '/outside',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		await new Promise(r => setTimeout(r, 0))
+		// outside base: not intercepted
+		expect(prevented).toBe(false)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
+		r.destroy()
+	})
+
+	it('intercepts absolute same-host links within base', async () => {
+		const hist = setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? 'http://example.com/app/foo' : null),
+			pathname: '/app/foo',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		await new Promise(r => setTimeout(r, 0))
+		expect(prevented).toBe(true)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
 		r.destroy()
 	})
 })

@@ -163,7 +163,7 @@ export default class Navgo {
 	#resolve_url_and_path(url_raw) {
 		if (url_raw[0] == '/' && !this.#base_rgx.test(url_raw)) url_raw = this.#base + url_raw
 		const url = new URL(url_raw, location.href)
-		const path = this.format(url.pathname)?.match(/[^?#]*/)?.[0]
+		const path = this.format(url.pathname).match?.(/[^?#]*/)?.[0]
 		ℹ('[🧭 resolve]', { url_in: url_raw, url: url.href, path })
 		return path ? { url, path } : null
 	}
@@ -178,7 +178,8 @@ export default class Navgo {
 			!a.target &&
 			!a.download &&
 			a.host === location.host &&
-			(href[0] != '/' || this.#base_rgx.test(href))
+			href[0] != '#' &&
+			this.#base_rgx.test(a.pathname)
 			? { a, href }
 			: null
 	}
