@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 console.debug = () => {}
-import Navaid from './index.js'
+import Navgo from './index.js'
 
 global.history = {}
 
@@ -68,11 +68,11 @@ function setupStubs(base = '/') {
 
 describe('exports', () => {
 	it('exports', () => {
-		expect(typeof Navaid).toBe('function')
+		expect(typeof Navgo).toBe('function')
 	})
 
-	it('new Navaid()', () => {
-		let foo = new Navaid()
+	it('new Navgo()', () => {
+		let foo = new Navgo()
 		expect(typeof foo.format).toBe('function')
 		expect(typeof foo.init).toBe('function')
 	})
@@ -82,7 +82,7 @@ describe('exports', () => {
 
 describe('$.format', () => {
 	it('empty base', () => {
-		let foo = new Navaid()
+		let foo = new Navgo()
 		expect(foo.format('')).toBe('')
 		expect(foo.format('/')).toBe('/')
 		expect(foo.format('foo/bar/')).toBe('/foo/bar')
@@ -92,7 +92,7 @@ describe('$.format', () => {
 	})
 
 	it('base with leading slash', () => {
-		let bar = new Navaid([], { base: '/hello' })
+		let bar = new Navgo([], { base: '/hello' })
 		expect(bar.format('/hello/world')).toBe('/world')
 		expect(bar.format('hello/world')).toBe('/world')
 		expect(bar.format('/world')).toBe(false)
@@ -103,7 +103,7 @@ describe('$.format', () => {
 	})
 
 	it('base without leading slash', () => {
-		let baz = new Navaid([], { base: 'hello' })
+		let baz = new Navgo([], { base: 'hello' })
 		expect(baz.format('/hello/world')).toBe('/world')
 		expect(baz.format('hello/world')).toBe('/world')
 		expect(baz.format('/hello.123')).toBe(false)
@@ -115,7 +115,7 @@ describe('$.format', () => {
 	})
 
 	it('base with trailing slash', () => {
-		let bat = new Navaid([], { base: 'hello/' })
+		let bat = new Navgo([], { base: 'hello/' })
 		expect(bat.format('/hello/world')).toBe('/world')
 		expect(bat.format('hello/world')).toBe('/world')
 		expect(bat.format('/hello.123')).toBe(false)
@@ -127,7 +127,7 @@ describe('$.format', () => {
 	})
 
 	it('base with leading and trailing slash', () => {
-		let quz = new Navaid([], { base: '/hello/' })
+		let quz = new Navgo([], { base: '/hello/' })
 		expect(quz.format('/hello/world')).toBe('/world')
 		expect(quz.format('hello/world')).toBe('/world')
 		expect(quz.format('/hello.123')).toBe(false)
@@ -139,7 +139,7 @@ describe('$.format', () => {
 	})
 
 	it('base = "/" only', () => {
-		let qut = new Navaid([], { base: '/' })
+		let qut = new Navgo([], { base: '/' })
 		expect(qut.format('/hello/world')).toBe('/hello/world')
 		expect(qut.format('hello/world')).toBe('/hello/world')
 		expect(qut.format('/world')).toBe('/world')
@@ -147,7 +147,7 @@ describe('$.format', () => {
 	})
 
 	it('base with nested path', () => {
-		let qar = new Navaid([], { base: '/hello/there' })
+		let qar = new Navgo([], { base: '/hello/there' })
 		expect(qar.format('hello/there/world/')).toBe('/world')
 		expect(qar.format('/hello/there/world/')).toBe('/world')
 		expect(qar.format('/hello/there/world?foo=bar')).toBe('/world?foo=bar')
@@ -162,7 +162,7 @@ describe('$.format', () => {
 
 describe('$.match', () => {
 	it('returns null when no route matches', async () => {
-		const ctx = new Navaid([
+		const ctx = new Navgo([
 			['/', {}],
 			['users/:name', {}],
 		])
@@ -171,7 +171,7 @@ describe('$.match', () => {
 	})
 
 	it('string patterns with named params', async () => {
-		const ctx = new Navaid([
+		const ctx = new Navgo([
 			['users/:name', {}],
 			['/foo/books/:genre/:title?', {}],
 		])
@@ -190,7 +190,7 @@ describe('$.match', () => {
 	it('custom validate hook skips a route when false', async () => {
 		const r1 = ['users/:id', { validate: p => Number(p.id) > 5 }]
 		const r2 = ['users/:id', {}]
-		const ctx = new Navaid([r1, r2])
+		const ctx = new Navgo([r1, r2])
 		const res = await ctx.match('/users/3')
 		if (!res) throw new Error('expected a match')
 		// should skip r1 because validate returned false, and match r2
@@ -198,7 +198,7 @@ describe('$.match', () => {
 	})
 
 	it('wildcard captures as "*"', async () => {
-		const ctx = new Navaid([['foo/bar/*', {}]])
+		const ctx = new Navgo([['foo/bar/*', {}]])
 		let res = await ctx.match('/foo/bar/baz/bat')
 		expect(!!res).toBe(true)
 		expect(res.route[0]).toBe('foo/bar/*')
@@ -206,7 +206,7 @@ describe('$.match', () => {
 	})
 
 	it('RegExp routes with named groups', async () => {
-		const ctx = new Navaid([[/^\/articles\/(?<year>[0-9]{4})$/, {}]])
+		const ctx = new Navgo([[/^\/articles\/(?<year>[0-9]{4})$/, {}]])
 		let res = await ctx.match('/articles/2024')
 		expect(!!res).toBe(true)
 		expect(res.route[0] instanceof RegExp).toBe(true)
@@ -214,7 +214,7 @@ describe('$.match', () => {
 	})
 
 	it('RegExp alternation without named groups', async () => {
-		const ctx = new Navaid([[/about\/(contact|team)/, {}]])
+		const ctx = new Navgo([[/about\/(contact|team)/, {}]])
 		let a = await ctx.match('/about/contact')
 		let b = await ctx.match('/about/team')
 		expect(!!(a && b)).toBe(true)
@@ -222,7 +222,7 @@ describe('$.match', () => {
 	})
 
 	it('use with base via $.format', async () => {
-		const ctx = new Navaid(
+		const ctx = new Navgo(
 			[
 				['/', {}],
 				['users/:name', {}],
@@ -248,7 +248,7 @@ describe('$.match', () => {
 			},
 		]
 		const r2 = ['users/:id', {}]
-		const ctx = new Navaid([r1, r2])
+		const ctx = new Navgo([r1, r2])
 		const res = await ctx.match('/users/3')
 		if (!res) throw new Error('expected a match')
 		if (res.route !== r2) throw new Error('async validate(false) did not skip the route')
@@ -259,7 +259,7 @@ describe('beforeRouteLeave', () => {
 	it('goto; cancel prevents push', async () => {
 		const hist = setupStubs('/app/')
 		let called = 0
-		const r = new Navaid(
+		const r = new Navgo(
 			[
 				[
 					'/',
@@ -288,7 +288,7 @@ describe('beforeRouteLeave', () => {
 	it('popstate; cancel reverts with history.go', async () => {
 		const hist = setupStubs('/app/')
 		let called = 0
-		const r = new Navaid(
+		const r = new Navgo(
 			[
 				[
 					'/',
@@ -343,7 +343,7 @@ describe('preload behavior', () => {
 			],
 		]
 		const navs = []
-		const router = new Navaid(routes, {
+		const router = new Navgo(routes, {
 			base: '/app',
 			after_navigate(nav) {
 				navs.push(nav)
@@ -377,7 +377,7 @@ describe('preload behavior', () => {
 describe('scroll restore persistence', () => {
 	it('stores position on beforeunload and restores on next run', async () => {
 		// const hist = setupStubs('/app/foo')
-		const r1 = new Navaid([['/foo', {}]], { base: '/app' })
+		const r1 = new Navgo([['/foo', {}]], { base: '/app' })
 		await r1.init()
 		// move scroll
 		global.scrollTo(10, 200)
@@ -389,7 +389,7 @@ describe('scroll restore persistence', () => {
 		r1.destroy()
 
 		// new router instance simulating a refresh
-		const r2 = new Navaid([['/foo', {}]], { base: '/app' })
+		const r2 = new Navgo([['/foo', {}]], { base: '/app' })
 		await r2.init()
 		expect(global.scrollX).toBe(10)
 		expect(global.scrollY).toBe(200)
@@ -401,7 +401,7 @@ describe('leave (beforeunload)', () => {
 	it('cancels leave by setting returnValue and preventing default', async () => {
 		setupStubs('/app/leave')
 		let called = 0
-		const r = new Navaid(
+		const r = new Navgo(
 			[
 				[
 					'/leave',
@@ -435,7 +435,7 @@ describe('leave (beforeunload)', () => {
 describe('link interception', () => {
 	it('intercepts internal anchor clicks and calls nav', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navaid(
+		const r = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],
@@ -470,7 +470,7 @@ describe('link interception', () => {
 
 	it('ignores clicks with modifier keys', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navaid(
+		const r = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],

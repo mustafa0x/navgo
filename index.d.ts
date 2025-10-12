@@ -103,7 +103,7 @@ export interface Options {
 }
 
 /** Navaid default export: class-based router. */
-export default class Navaid<T = unknown> implements Router<T> {
+export default class Navgo<T = unknown> implements Router<T> {
 	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers

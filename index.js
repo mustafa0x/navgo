@@ -2,7 +2,7 @@ import { parse } from 'regexparam'
 
 const ℹ = (...args) => console.debug(...args)
 
-export default class Navaid {
+export default class Navgo {
 	#opts = {
 		base: '/',
 		preload_delay: 20,

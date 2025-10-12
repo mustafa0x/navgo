@@ -8,9 +8,9 @@
 		"noEmit": true,
 		"baseUrl": "../..",
 		"types": [],
-		"paths": {
-			"navaid": ["index.d.ts"]
-		}
+        "paths": {
+            "navgo": ["index.d.ts"]
+        }
 	},
 	"include": ["./**/*.ts", "../../index.d.ts"]
 }

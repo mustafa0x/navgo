@@ -2,9 +2,9 @@
 <p class="opacity-80">This page validates the <code>:id</code> param via a validator.</p>
 
 <script module>
-import Navaid from '../../../index.js'
+import Navgo from '../../../index.js'
 
-export const param_validators = {id: Navaid.validators.int({min: 1})}
+export const param_validators = {id: Navgo.validators.int({min: 1})}
 export function loaders(params) {
     return Promise.resolve({id: params.id, loaded: true})
 }

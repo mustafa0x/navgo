@@ -1,26 +1,24 @@
 {
 	"name": "navgo",
 	"version": "3.0.2",
-	"repository": "lukeed/navgo",
-	"description": "A navigation aid (aka, router) for the browser in 865 bytes~!",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/mustafa0x/navgo.git"
+	},
+	"description": "Adavanced router",
 	"module": "./index.js",
 	"type": "module",
 	"exports": "./index.js",
 	"types": "index.d.ts",
 	"license": "MIT",
 	"author": {
-		"name": "Luke Edwards",
-		"email": "luke.edwards05@gmail.com",
-		"url": "https://lukeed.com"
-	},
-	"engines": {
-		"node": ">= 20"
+		"name": "mustafa j"
 	},
 	"scripts": {
-		"pretest": "npm run build",
+		"pretest": "pnpm run build",
 		"test": "vitest run",
 		"test:e2e": "playwright test",
-		"test:all": "npm run build && vitest run && playwright test",
+		"test:all": "pnpm run build && vitest run && playwright test",
 		"types": "pnpm --package=typescript@5.6.3 dlx tsc -p test/types"
 	},
 	"files": [

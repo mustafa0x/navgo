@@ -7,7 +7,7 @@ $ pnpm install --dev navaid
 ## Usage
 
 ```js
-import Navaid from 'navaid'
+import Navgo from 'navgo'
 
 // Define routes up front (strings or RegExp)
 const routes = [
@@ -36,7 +36,7 @@ const routes = [
 ]
 
 // Create router with options + callbacks
-const router = new Navaid(routes, {
+const router = new Navgo(routes, {
 	base: '/',
 	before_navigate(nav) {
 		// app-level hook before loaders/URL update; may cancel
@@ -65,7 +65,7 @@ router.init()
 
 ## API
 
-### new Navaid(routes?, options?)
+### new Navgo(routes?, options?)
 
 Returns: `Router`
 
@@ -73,7 +73,7 @@ Returns: `Router`
 
 Type: `Array<[pattern: string | RegExp, data: any]>`
 
-Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). Pass `{}` when no hooks are needed. Navaid returns this tuple back to you unchanged via `onRoute`.
+Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). Pass `{}` when no hooks are needed. Navgo returns this tuple back to you unchanged via `onRoute`.
 
 Supported pattern types:
 
@@ -162,7 +162,7 @@ const routes = [
 	['/', {}],
 ]
 
-const router = new Navaid(routes, { base: '/app' })
+const router = new Navgo(routes, { base: '/app' })
 router.init()
 ```
 
@@ -208,13 +208,13 @@ Type: `Object`
 
 ### init()
 
-Attaches global listeners to synchronize your router with URL changes, which allows Navaid to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
+Attaches global listeners to synchronize your router with URL changes, which allows Navgo to respond consistently to your browser's <kbd>BACK</kbd> and <kbd>FORWARD</kbd> buttons.
 
 Events:
 
 - Responds to: `popstate` only. No synthetic events are emitted.
 
-Navaid will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navaid **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
+Navgo will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navgo **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
@@ -316,7 +316,7 @@ To enable `popstate` cancellation, Navaid stores a monotonic `idx` in `history.s
 
 ### Scroll Restoration
 
-Navaid manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
+Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
 
 - Saves the current scroll position for the active history index.
 - On `link`/`nav` (after route commit):
@@ -345,7 +345,7 @@ scroll flow
 
 ### Built-in Validators
 
-- `Navaid.validators.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
-- `Navaid.validators.oneOf(iterable)` — `true` iff the value is in the provided set.
+- `Navgo.validators.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
+- `Navgo.validators.oneOf(iterable)` — `true` iff the value is in the provided set.
 
 Attach validators via a route tuple's `data.param_validators` to constrain matches.

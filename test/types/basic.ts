@@ -3,7 +3,7 @@
 // Type-level smoke tests for the public API using the new class-based signature.
 // These are compile-only tests; they should typecheck without emitting JS.
 
-import Navaid, { type RouteTuple, type Options, type Params, type MatchResult } from 'navaid'
+import Navgo, { type RouteTuple, type Options, type Params, type MatchResult } from 'navgo'
 
 // Custom route metadata type for generics flow
 type Meta = {
@@ -13,7 +13,7 @@ type Meta = {
 
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
-	['users/:id', { param_validators: { id: Navaid.validators.int({ min: 1 }) } }],
+	['users/:id', { param_validators: { id: Navgo.validators.int({ min: 1 }) } }],
 	[/^\/posts\/(?<slug>[^/]+)$/, {}],
 ]
 
@@ -39,7 +39,7 @@ const opts: Options = {
 }
 
 // New class-based constructor
-const router = new Navaid<Meta>(routes, opts)
+const router = new Navgo<Meta>(routes, opts)
 
 // API surface checks
 const f1: string | false = router.format('/app/users/1')
@@ -60,5 +60,5 @@ router.pushState('/app/foo', { x: 1 })
 router.replaceState('/app/foo', { x: 1 })
 
 // Static validator helpers
-const is_color = Navaid.validators.oneOf(['red', 'green'])
+const is_color = Navgo.validators.oneOf(['red', 'green'])
 const ok: boolean = is_color('red')
