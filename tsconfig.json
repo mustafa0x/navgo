@@ -1,9 +1,10 @@
 {
 	"compilerOptions": {
+		"allowJs": true,
 		"checkJs": true,
 		"noEmit": true,
-		"module": "ESNext",
-		"target": "ESNext",
+		"module": "esnext",
+		"target": "esnext",
 		"moduleResolution": "bundler",
 		"strict": false
 	},

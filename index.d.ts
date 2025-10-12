@@ -55,24 +55,8 @@ export interface MatchResult<T = unknown> {
 	params: Params
 }
 
-export interface Router<T = unknown> {
-	/** Format `url` relative to the configured base. */
-	format(url: string): string | false
-	/** SvelteKit-like navigation that runs loaders before updating the URL. */
-	goto(url: string, opts?: { replace?: boolean }): Promise<void>
-	/** Shallow push — updates URL/state without triggering handlers. */
-	pushState(url?: string | URL, state?: any): void
-	/** Shallow replace — updates URL/state without triggering handlers. */
-	replaceState(url?: string | URL, state?: any): void
-	/** Manually preload loaders for a URL (deduped). */
-	preload(url: string): Promise<unknown | void>
-	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
-	match(url: string): Promise<MatchResult<T> | null>
-	/** Attach history + click listeners and immediately process current location. */
-	init(): Promise<void>
-	/** Remove listeners installed by `init()`. */
-	destroy(): void
-}
+// For convenience in docs/types, alias the class instance type
+export type Router<T = unknown> = Navgo<T>
 
 /** Router metadata stored under `history.state.__navgo`. */
 export interface NavgoHistoryMeta {
@@ -103,8 +87,24 @@ export interface Options {
 }
 
 /** Navgo default export: class-based router. */
-export default class Navgo<T = unknown> implements Router<T> {
+export default class Navgo<T = unknown> {
 	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
+	/** Format `url` relative to the configured base. */
+	format(url: string): string | false
+	/** SvelteKit-like navigation that runs loaders before updating the URL. */
+	goto(url: string, opts?: { replace?: boolean }): Promise<void>
+	/** Shallow push — updates URL/state without triggering handlers. */
+	pushState(url?: string | URL, state?: any): void
+	/** Shallow replace — updates URL/state without triggering handlers. */
+	replaceState(url?: string | URL, state?: any): void
+	/** Manually preload loaders for a URL (deduped). */
+	preload(url: string): Promise<unknown | void>
+	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
+	match(url: string): Promise<MatchResult<T> | null>
+	/** Attach history + click listeners and immediately process current location. */
+	init(): Promise<void>
+	/** Remove listeners installed by `init()`. */
+	destroy(): void
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }

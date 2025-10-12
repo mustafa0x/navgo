@@ -1,9 +1,10 @@
-node_modules
 .DS_Store
+
+node_modules
 *-lock.*
-*.lock
-*.log
 dist
+*.tgz
+
 .mise.local.toml
 test-results
 AGENTS.md
