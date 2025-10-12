@@ -11,51 +11,51 @@ import Navgo from 'navgo'
 
 // Define routes up front (strings or RegExp)
 const routes = [
-	['/', {}],
-	['/users/:username', {}],
-	['/books/*', {}],
-	[/articles\/(?<year>[0-9]{4})/, {}],
-	[/privacy|privacy-policy/, {}],
-	[
-		'/admin',
-		{
-			// constrain params with built-ins or your own
-			param_validators: {
-				/* id: Navaid.validators.int({ min: 1 }) */
-			},
-			// load data before URL changes; result goes to after_navigate(...)
-			loaders: params => fetch('/api/admin').then(r => r.json()),
-			// per-route guard; cancel synchronously to block nav
-			beforeRouteLeave(nav) {
-				if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
-					nav.cancel()
-				}
-			},
-		},
-	],
+  ['/', {}],
+  ['/users/:username', {}],
+  ['/books/*', {}],
+  [/articles\/(?<year>[0-9]{4})/, {}],
+  [/privacy|privacy-policy/, {}],
+  [
+    '/admin',
+    {
+      // constrain params with built-ins or your own
+      param_validators: {
+        /* id: Navgo.validators.int({ min: 1 }) */
+      },
+      // load data before URL changes; result goes to after_navigate(...)
+      loaders: params => fetch('/api/admin').then(r => r.json()),
+      // per-route guard; cancel synchronously to block nav
+      beforeRouteLeave(nav) {
+        if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
+          nav.cancel()
+        }
+      },
+    },
+  ],
 ]
 
 // Create router with options + callbacks
 const router = new Navgo(routes, {
-	base: '/',
-	before_navigate(nav) {
-		// app-level hook before loaders/URL update; may cancel
-		console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
-	},
-	after_navigate(nav) {
-		// called after routing completes; nav.to.data holds loader result
-		if (nav.to?.data?.__error?.status === 404) {
-			console.log('404 for', nav.to.url.pathname)
-			return
-		}
+  base: '/',
+  before_navigate(nav) {
+    // app-level hook before loaders/URL update; may cancel
+    console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
+  },
+  after_navigate(nav) {
+    // called after routing completes; nav.to.data holds loader result
+    if (nav.to?.data?.__error?.status === 404) {
+      console.log('404 for', nav.to.url.pathname)
+      return
+    }
 
-		console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
-	},
-	url_changed(cur) {
-		// fires on shallow/hash/popstate-shallow/404 and full navigations
-		// `cur` is the router snapshot: { url: URL, route, params }
-		console.log('url_changed', cur.url.href)
-	},
+    console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
+  },
+  url_changed(cur) {
+    // fires on shallow/hash/popstate-shallow/404 and full navigations
+    // `cur` is the router snapshot: { url: URL, route, params }
+    console.log('url_changed', cur.url.href)
+  },
 })
 
 // Long-lived router: history + <a> bindings
@@ -92,32 +92,32 @@ Notes:
 #### `options`
 
 - `base`: `string` (default `'/'`)
-    - App base pathname. With or without leading/trailing slashes is accepted.
+  - App base pathname. With or without leading/trailing slashes is accepted.
 - `before_navigate`: `(nav: Navigation) => void`
-    - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
+  - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation) => void`
-    - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+  - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `url_changed`: `(snapshot: any) => void`
-    - Fires on every URL change — shallow `pushState`/`replaceState`, hash changes, `popstate` shallow entries, 404s, and full navigations.
-    - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
-    - The snapshot type is intentionally `any` and may evolve without a breaking change.
+  - Fires on every URL change — shallow `pushState`/`replaceState`, hash changes, `popstate` shallow entries, 404s, and full navigations.
+  - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
+  - The snapshot type is intentionally `any` and may evolve without a breaking change.
 - `preload_delay`: `number` (default `20`)
-    - Delay in ms before hover preloading triggers.
+  - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)
-    - When `false`, disables hover/touch preloading.
+  - When `false`, disables hover/touch preloading.
 
-Important: Navaid only processes routes that match your `base` path.
+Important: Navgo only processes routes that match your `base` path.
 
 ### Route Hooks
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
-    - Validate params (e.g., `id: Navaid.validators.int({ min: 1 })`). Any `false` result skips the route.
+  - Validate params (e.g., `id: Navgo.validators.int({ min: 1 })`). Any `false` result skips the route.
 - loaders?(params): `unknown | Promise | Array<unknown|Promise>`
-    - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
+  - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
-    - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
+  - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - beforeRouteLeave?(nav): `(nav: Navigation) => void`
-    - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
+  - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
 
 The `Navigation` object contains:
 
@@ -137,29 +137,29 @@ The `Navigation` object contains:
 
 - Router calls `before_navigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
-    - For `link`/`nav`, it stops before URL change.
-    - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
-    - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
+  - For `link`/`nav`, it stops before URL change.
+  - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
+  - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
 
 Example:
 
 ```js
 const routes = [
-	[
-		'/admin',
-		{
-			param_validators: {
-				/* ... */
-			},
-				loaders: params => fetch('/api/admin/stats').then(r => r.json()),
-			beforeRouteLeave(nav) {
-					if (nav.type === 'link' || nav.type === 'nav') {
-					if (!confirm('Enter admin area?')) nav.cancel()
-				}
-			},
-		},
-	],
-	['/', {}],
+  [
+    '/admin',
+    {
+      param_validators: {
+        /* ... */
+      },
+      loaders: params => fetch('/api/admin/stats').then(r => r.json()),
+      beforeRouteLeave(nav) {
+        if (nav.type === 'link' || nav.type === 'nav') {
+          if (!confirm('Enter admin area?')) nav.cancel()
+        }
+      },
+    },
+  ],
+  ['/', {}],
 ]
 
 const router = new Navgo(routes, { base: '/app' })
@@ -204,7 +204,7 @@ The desired path to navigate. If it begins with `/` and does not match the confi
 Type: `Object`
 
 - replace: `Boolean` (default `false`)
-    - When `true`, uses `history.replaceState`; otherwise `history.pushState`.
+  - When `true`, uses `history.replaceState`; otherwise `history.pushState`.
 
 ### init()
 
@@ -312,7 +312,7 @@ This lets you reflect UI state in the URL while deferring route transitions unti
 
 ### History Index & popstate Cancellation
 
-To enable `popstate` cancellation, Navaid stores a monotonic `idx` in `history.state.__navaid.idx`. On `popstate`, a cancelled navigation computes the delta between the target and current `idx` and calls `history.go(-delta)` to return to the prior entry.
+To enable `popstate` cancellation, Navgo stores a monotonic `idx` in `history.state.__navgo.idx`. On `popstate`, a cancelled navigation computes the delta between the target and current `idx` and calls `history.go(-delta)` to return to the prior entry.
 
 ### Scroll Restoration
 
@@ -320,8 +320,8 @@ Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and 
 
 - Saves the current scroll position for the active history index.
 - On `link`/`nav` (after route commit):
-    - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
-    - Otherwise, scroll to the top `(0, 0)`.
+  - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
+  - Otherwise, scroll to the top `(0, 0)`.
 - On `popstate`: restore the saved position for the target history index; if not found but there is a `#hash`, scroll to the anchor instead.
 - Shallow `pushState`/`replaceState` never adjust scroll (routing is skipped).
 

@@ -69,6 +69,15 @@
 		"quoteProps": "as-needed",
 		"bracketSpacing": true,
 		"arrowParens": "avoid",
-		"useTabs": true
+		"useTabs": true,
+		"overrides": [
+			{
+				"files": "*.md",
+				"options": {
+					"tabWidth": 2,
+					"useTabs": false
+				}
+			}
+		]
 	}
 }
