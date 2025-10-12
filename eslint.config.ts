@@ -12,9 +12,6 @@ export default defineConfig([
 		ignores: ['dist/**', 'test-results/**', 'test/types/basic.ts'],
 	},
 	{
-		rules: { '@typescript-eslint/no-explicit-any': 'off' },
-	},
-	{
 		files: ['playwright.config.*', 'test/server.js', 'index.test.js', 'eslint.config.*'],
 		languageOptions: { globals: { ...globals.es2021, ...globals.node } },
 	},
@@ -33,9 +30,6 @@ export default defineConfig([
 			ecmaVersion: 'latest',
 			sourceType: 'module',
 			globals: { ...globals.es2021, ...globals.node },
-		},
-		rules: {
-			'@typescript-eslint/ban-ts-comment': 'off',
 		},
 	},
 	{
@@ -57,6 +51,7 @@ export default defineConfig([
 		rules: {
 			'no-empty': ['error', { allowEmptyCatch: true }],
 			'@typescript-eslint/ban-ts-comment': 'off',
+			'@typescript-eslint/no-explicit-any': 'off',
 		},
 	},
 ])
