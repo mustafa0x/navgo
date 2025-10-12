@@ -1,0 +1,8 @@
+[tools]
+lefthook = 'latest'
+
+[tasks.work-check]
+run = '''
+pnpm exec prettier --write '**/*.{js,ts,svelte,json}' --write
+pnpm exec eslint --fix $(git diff --name-only HEAD)
+'''

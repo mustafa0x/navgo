@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"noEmit": true,
+		"module": "esnext",
+		"target": "esnext",
+		"moduleResolution": "bundler",
+		"strict": false
+	},
+	"include": ["./index.d.ts", "./index.js"]
+}

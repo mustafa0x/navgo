@@ -1,0 +1,10 @@
+.DS_Store
+
+node_modules
+*-lock.*
+dist
+*.tgz
+
+.mise.local.toml
+test-results
+AGENTS.md

@@ -1,0 +1,11 @@
+pre-commit:
+    commands:
+        prettier:
+            glob: '*.{js,ts,html,css}'
+            run: pnpm exec prettier --write {staged_files}
+            stage_fixed: true
+
+        eslint:
+            glob: '*.{js,ts}'
+            run: pnpm exec eslint --concurrency auto --fix {staged_files}
+            stage_fixed: true
