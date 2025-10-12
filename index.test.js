@@ -282,7 +282,7 @@ describe('beforeRouteLeave', () => {
 		expect(called > 0).toBe(true)
 		// initial goto() does not push/replace; idx remains 0
 		// cancellation should not change idx further
-		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
 	})
 
 	it('popstate; cancel reverts with history.go', async () => {
@@ -310,7 +310,7 @@ describe('beforeRouteLeave', () => {
 		r.pushState('/app/foo')
 		// pop back to idx 0
 		const ev = new Event('popstate')
-		ev.state = { __navaid: { idx: 0 } }
+		ev.state = { __navgo: { idx: 0 } }
 		global.dispatchEvent(ev)
 		expect(called > 0).toBe(true)
 		// We shallow-pushed once after initial goto (idx 1 total); cancelling popstate to 0 requires history.go(1)
@@ -384,7 +384,7 @@ describe('scroll restore persistence', () => {
 		// trigger beforeunload
 		const ev = { type: 'beforeunload', preventDefault() {}, returnValue: undefined }
 		global.dispatchEvent(ev)
-		const key = `__navaid_scroll:${global.location.href}`
+		const key = `__navgo_scroll:${global.location.href}`
 		expect(global.sessionStorage.getItem(key)).toBeTruthy()
 		r1.destroy()
 
@@ -464,7 +464,7 @@ describe('link interception', () => {
 		await new Promise(r => setTimeout(r, 0))
 		expect(prevented).toBe(true)
 		// initial goto() leaves idx at 0; clicking link pushes to 1
-		expect(hist.state?.__navaid?.idx ?? 0).toBe(1)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
 		r.destroy()
 	})
 
@@ -495,7 +495,7 @@ describe('link interception', () => {
 		}
 		global.dispatchEvent(click)
 		// modifier click is ignored; idx remains at 0
-		expect(hist.state?.__navaid?.idx ?? 0).toBe(0)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
 		r.destroy()
 	})
 })

@@ -67,7 +67,7 @@ export default class Navgo {
 		// ignore popstate while a hash-originating nav is in flight
 		if (this.#hash_navigating) return
 
-		const st = ev?.state?.__navaid
+		const st = ev?.state?.__navgo
 		ℹ('[🧭 event:popstate]', st)
 		// Hash-only or state-only change: pathname+search unchanged -> skip loaders
 		const cur = this.#current.url
@@ -97,7 +97,7 @@ export default class Navgo {
 			this.#hash_navigating = false
 			const prev = history.state && typeof history.state == 'object' ? history.state : {}
 			const next_idx = this.#route_idx + 1
-			const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: next_idx } }
+			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: next_idx } }
 			history.replaceState(next_state, '', location.href)
 			this.#route_idx = next_idx
 			ℹ('[🧭 event:hashchange]', { idx: next_idx, href: location.href })
@@ -125,7 +125,7 @@ export default class Navgo {
 		// persist scroll for refresh / session restore
 		try {
 			sessionStorage.setItem(
-				`__navaid_scroll:${location.href}`,
+				`__navgo_scroll:${location.href}`,
 				JSON.stringify({ x: scrollX, y: scrollY }),
 			)
 		} catch {}
@@ -259,7 +259,7 @@ export default class Navgo {
 		if (nav.cancelled) {
 			// use history.go to cancel the nav, and jump back to where we are
 			if (is_popstate) {
-				const new_idx = ev_param?.state?.__navaid?.idx
+				const new_idx = ev_param?.state?.__navgo?.idx
 				if (new_idx != null) {
 					const delta = new_idx - this.#route_idx
 					if (delta) {
@@ -315,7 +315,7 @@ export default class Navgo {
 				history.state && typeof history.state == 'object' ? history.state : {}
 			const next_state = {
 				...prev_state,
-				__navaid: { ...prev_state.__navaid, idx: next_idx, type: nav_type },
+				__navgo: { ...prev_state.__navgo, idx: next_idx, type: nav_type },
 			}
 			history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
 			ℹ('[🧭 history]', opts.replace ? 'replaceState' : 'pushState', {
@@ -522,10 +522,10 @@ export default class Navgo {
 		}
 
 		// ensure current history state carries our index
-		const cur_idx = history.state?.__navaid?.idx
+		const cur_idx = history.state?.__navgo?.idx
 		if (cur_idx == null) {
 			const prev = history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = { ...prev, __navaid: { ...prev.__navaid, idx: this.#route_idx } }
+			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: this.#route_idx } }
 			history.replaceState(next_state, '', location.href)
 			ℹ('[🧭 history]', 'init idx', { idx: this.#route_idx })
 		} else {
@@ -567,7 +567,7 @@ export default class Navgo {
 			const is_initial = ctx && 'from' in ctx ? ctx.from == null : !t
 			if (is_initial) {
 				try {
-					const k = `__navaid_scroll:${location.href}`
+					const k = `__navgo_scroll:${location.href}`
 					const { x, y } = JSON.parse(sessionStorage.getItem(k))
 					sessionStorage.removeItem(k)
 					scrollTo(x, y)
@@ -578,7 +578,7 @@ export default class Navgo {
 			// 1) On back/forward, restore saved position if available
 			if (t === 'popstate') {
 				const ev_state = ctx?.state ?? ctx?.event?.state
-				const idx = ev_state?.__navaid?.idx
+				const idx = ev_state?.__navgo?.idx
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
 				const pos = this.#scroll.get(target_idx)

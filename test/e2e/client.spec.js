@@ -53,10 +53,10 @@ test('programmatic nav + replace preserves history idx', async ({ page }) => {
 	await expect(page).toHaveURL(/\/users\/7$/)
 	await expect(page.getByRole('heading', { level: 1, name: /User #7/ })).toBeVisible()
 
-	const idx_before = await page.evaluate(() => history.state?.__navaid?.idx ?? null)
+	const idx_before = await page.evaluate(() => history.state?.__navgo?.idx ?? null)
 	await page.evaluate(() => window.router.goto('/products', { replace: true }))
 	await expect(page).toHaveURL(/\/products$/)
-	const idx_after = await page.evaluate(() => history.state?.__navaid?.idx ?? null)
+	const idx_after = await page.evaluate(() => history.state?.__navgo?.idx ?? null)
 	expect(idx_after).toBe(idx_before)
 })
 

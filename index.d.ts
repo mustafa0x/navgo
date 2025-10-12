@@ -14,7 +14,7 @@ export interface ValidatorHelpers {
 	oneOf(values: Iterable<string>): (value: string | null | undefined) => boolean
 }
 
-/** Optional per-route hooks recognized by Navaid. */
+/** Optional per-route hooks recognized by Navgo. */
 export interface Hooks {
 	/** Validate params with custom per-param validators. Return `false` to skip a match. */
 	param_validators?: Record<string, (value: string | null | undefined) => boolean>
@@ -74,8 +74,8 @@ export interface Router<T = unknown> {
 	destroy(): void
 }
 
-/** Router metadata stored under `history.state.__navaid`. */
-export interface NavaidHistoryMeta {
+/** Router metadata stored under `history.state.__navgo`. */
+export interface NavgoHistoryMeta {
 	/** Monotonic index of the current history entry for scroll restoration. */
 	idx: number
 	/** Present when the entry was created via shallow `pushState`/`replaceState`. */
@@ -102,7 +102,7 @@ export interface Options {
 	url_changed?(payload: any): void
 }
 
-/** Navaid default export: class-based router. */
+/** Navgo default export: class-based router. */
 export default class Navgo<T = unknown> implements Router<T> {
 	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
 	/** Built-in validator helpers (namespaced). */
