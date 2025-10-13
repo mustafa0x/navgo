@@ -9,3 +9,7 @@ pre-commit:
             glob: '*.{js,ts}'
             run: pnpm exec eslint --concurrency auto --fix {staged_files}
             stage_fixed: true
+
+        tests:
+            glob: '*.{js,ts}'
+            run: pnpm test
