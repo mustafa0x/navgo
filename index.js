@@ -28,7 +28,7 @@ export default class Navgo {
 	//
 	// Event listeners
 	//
-	#click = e => {
+	#click = async e => {
 		ℹ('[🧭 event:click]', { type: e?.type, target: e?.target })
 		const info = this.#link_from_event(e, true)
 		if (!info) return
@@ -59,6 +59,18 @@ export default class Navgo {
 		}
 
 		e.preventDefault()
+
+		// allow the browser to repaint before navigating —
+		// this prevents INP scores being penalised
+		await new Promise(fulfil => {
+			requestAnimationFrame(() => {
+				setTimeout(fulfil, 0)
+			})
+
+			// fallback for edge case where rAF doesn't fire because e.g. tab was backgrounded
+			setTimeout(fulfil, 100)
+		})
+
 		ℹ('[🧭 link]', 'intercept', { href: info.href })
 		this.goto(info.href, { replace: false }, 'link', e)
 	}

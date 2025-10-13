@@ -76,6 +76,11 @@ function setupStubs(base = '/') {
 	return hist
 }
 
+// micro helper: wait enough ticks for rAF+setTimeout chain
+async function tick(n = 2) {
+	while (n--) await new Promise(r => setTimeout(r, 0))
+}
+
 describe('exports', () => {
 	it('exports', () => {
 		expect(typeof Navgo).toBe('function')
@@ -651,7 +656,7 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		await new Promise(r => setTimeout(r, 0))
+		await tick()
 		expect(prevented).toBe(true)
 		// initial goto() leaves idx at 0; clicking link pushes to 1
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
@@ -718,7 +723,7 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		await new Promise(r => setTimeout(r, 0))
+		await tick()
 		// outside base: not intercepted
 		expect(prevented).toBe(false)
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
@@ -754,7 +759,7 @@ describe('link interception', () => {
 			composedPath: () => [anchor],
 		}
 		global.dispatchEvent(click)
-		await new Promise(r => setTimeout(r, 0))
+		await tick()
 		expect(prevented).toBe(true)
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
 		r.destroy()
