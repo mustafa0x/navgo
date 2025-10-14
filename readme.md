@@ -238,6 +238,26 @@ Notes:
 
 On `beforeunload`, the current scroll position is saved to `sessionStorage` and restored on the next load of the same URL (e.g., refresh or tab restore).
 
+### Scroll Restoration (areas)
+
+Navgo caches/restores scroll positions for the window and any scrollable element that has a stable identifier:
+
+- Give your element either an `id` or `data-scroll-id="..."`.
+- Navgo listens to `scroll` globally (capture) and records positions per history entry.
+- On `popstate`, it restores matching elements before paint.
+
+Example:
+
+```html
+<div id="pane" class="overflow-auto">...</div>
+```
+
+Or with a custom id:
+
+```html
+<div data-scroll-id="pane">...</div>
+```
+
 ### preload(uri)
 
 Returns: `Promise<unknown | void>`
@@ -355,3 +375,11 @@ scroll flow
 - `Navgo.validators.one_of(iterable)` — `true` iff the value is in the provided set.
 
 Attach validators via a route tuple's `data.param_validators` to constrain matches.
+
+# Credits
+
+This router integrates ideas and small portions of code from these fantastic projects:
+
+- SvelteKit — https://github.com/sveltejs/kit
+- navaid — https://github.com/lukeed/navaid
+- TanStack Router — https://github.com/TanStack/router

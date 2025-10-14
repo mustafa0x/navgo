@@ -22,9 +22,11 @@ export default class Navgo {
 	#route_idx = 0
 	#scroll = new Map()
 	#hash_navigating = false
+	#areas_pos = new Map()
 	// Latest-wins nav guard: monotonic id and currently active id
 	#nav_seq = 0
 	#nav_active = 0
+	#scroll_handler = null
 
 	//
 	// Event listeners
@@ -134,6 +136,22 @@ export default class Navgo {
 	}
 	#tap = ev => this.#maybe_preload(ev)
 
+	#on_scroll = e => {
+		const el = e?.target
+		// window/document scroll → snapshot window position
+		if (!el || el === window || el === document) {
+			this.#save_scroll()
+			return
+		}
+		// element scroll → snapshot element position keyed by stable id
+		const id = el?.dataset?.scrollId || el?.id
+		if (!id) return
+		const pos = { x: el.scrollLeft || 0, y: el.scrollTop || 0 }
+		const m = this.#areas_pos.get(this.#route_idx) || new Map()
+		m.set(String(id), pos)
+		this.#areas_pos.set(this.#route_idx, m)
+	}
+
 	#before_unload = ev => {
 		// persist scroll for refresh / session restore
 		try {
@@ -239,8 +257,6 @@ export default class Navgo {
 	}
 
 	/**
-	 * Programmatic navigation that runs loaders before changing URL.
-	 * Also used by popstate to unify the flow.
 	 * @param {string} [url_raw]
 	 * @param {{ replace?: boolean }} [opts]
 	 * @param {'goto'|'link'|'popstate'} [nav_type]
@@ -382,7 +398,6 @@ export default class Navgo {
 
 	/**
 	 * Shallow push — updates the URL/state but DOES NOT call handlers or loaders.
-	 * URL changes, content stays put until a real nav.
 	 */
 	#commit_shallow(url, state, replace) {
 		const u = new URL(url || location.href, location.href)
@@ -529,6 +544,8 @@ export default class Navgo {
 		addEventListener('click', this.#click)
 		addEventListener('beforeunload', this.#before_unload)
 		addEventListener('hashchange', this.#on_hashchange)
+		this.#scroll_handler = throttle(this.#on_scroll, 100)
+		addEventListener('scroll', this.#scroll_handler, { capture: true })
 
 		if (this.#opts.preload_on_hover) {
 			// @ts-expect-error
@@ -563,6 +580,8 @@ export default class Navgo {
 		removeEventListener('mousedown', this.#tap)
 		removeEventListener('beforeunload', this.#before_unload)
 		removeEventListener('hashchange', this.#on_hashchange)
+		removeEventListener('scroll', this.#scroll_handler, { capture: true })
+		this.#areas_pos.clear()
 	}
 
 	//
@@ -575,6 +594,7 @@ export default class Navgo {
 
 	#clear_onward_history() {
 		for (const k of this.#scroll.keys()) if (k > this.#route_idx) this.#scroll.delete(k)
+		for (const k of this.#areas_pos.keys()) if (k > this.#route_idx) this.#areas_pos.delete(k)
 		ℹ('[🧭 scroll]', 'clear onward', { upto: this.#route_idx })
 	}
 
@@ -607,6 +627,18 @@ export default class Navgo {
 						idx: target_idx,
 						...pos,
 					})
+
+					// restore registered areas
+					const m = this.#areas_pos.get(target_idx) || []
+					for (const [id, p] of m) {
+						const sel = `[data-scroll-id="${CSS.escape(id)}"],` + `#${CSS.escape(id)}`
+						const el = document.querySelector(sel)
+						if (el) {
+							el.scrollTo?.(p.x, p.y)
+							el.scrollLeft = p.x
+							el.scrollTop = p.y
+						}
+					}
 					return
 				}
 			}
@@ -650,6 +682,27 @@ export default class Navgo {
 			const set = new Set(values)
 			return v => set.has(v)
 		},
+	}
+}
+
+function throttle(fn, ms) {
+	let t,
+		last = 0
+	return e => {
+		const now = Date.now()
+		if (now - last >= ms) {
+			last = now
+			fn(e)
+		} else {
+			clearTimeout(t)
+			t = setTimeout(
+				() => {
+					last = Date.now()
+					fn(e)
+				},
+				ms - (now - last),
+			)
+		}
 	}
 }
 

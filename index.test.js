@@ -7,6 +7,10 @@ global.history = {}
 // Shared test stubs for browser-ish globals
 function setupStubs(base = '/') {
 	const listeners = new Map()
+	// emulate window alias in Node env for code paths that reference it
+	// tests assume browser-only library; alias keeps code minimal
+	// @ts-ignore
+	global.window = global
 	global.addEventListener = (type, fn) => {
 		const arr = listeners.get(type) || []
 		arr.push(fn)
@@ -627,6 +631,66 @@ describe('tick option', () => {
 		expect(events.indexOf('tick') < events.indexOf('scroll')).toBe(true)
 		r.destroy()
 		global.scrollTo = prevScroll
+	})
+})
+
+function make_pane() {
+	const listeners = new Map()
+	return {
+		scrollLeft: 0,
+		scrollTop: 0,
+		addEventListener(type, fn) {
+			const a = listeners.get(type) || []
+			a.push(fn)
+			listeners.set(type, a)
+		},
+		removeEventListener(type, fn) {
+			const a = listeners.get(type) || []
+			const i = a.indexOf(fn)
+			if (i >= 0) a.splice(i, 1)
+			listeners.set(type, a)
+		},
+		scrollTo(x = 0, y = 0) {
+			this.scrollLeft = x
+			this.scrollTop = y
+		},
+		_emit(type) {
+			for (const fn of listeners.get(type) || []) fn({ type, target: this })
+		},
+	}
+}
+
+describe('scroll restoration (areas)', () => {
+	it('restores element position on popstate (by id)', async () => {
+		setupStubs('/app/')
+		const pane = make_pane()
+		pane.id = 'pane'
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+				['/bar', {}],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+
+		await r.goto('/app/foo') // idx 1
+		// simulate a user scroll inside the pane
+		pane.scrollTop = 123
+		// router listens on window with capture (throttled 100ms)
+		global.dispatchEvent({ type: 'scroll', target: pane })
+		await new Promise(r => setTimeout(r, 120))
+
+		await r.goto('/app/bar') // idx 2
+		// popstate back to idx 1
+		global.location = new URL('http://example.com/app/foo')
+		const ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 1 } }
+		global.dispatchEvent(ev)
+		await tick(2)
+		expect(pane.scrollTop).toBe(123)
+		r.destroy()
 	})
 })
 

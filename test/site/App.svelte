@@ -49,6 +49,12 @@
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700'}">Files</a
             >
+            <a
+                href="/scroll"
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/scroll'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-700'}">Scroll</a
+            >
         </nav>
     </header>
 
@@ -131,6 +137,7 @@ import * as AboutRoute from './routes/About.svelte'
 import * as AccountRoute from './routes/Account.svelte'
 import * as UsersRoute from './routes/Users.svelte'
 import * as FilesRoute from './routes/Files.svelte'
+import * as ScrollRoute from './routes/Scroll.svelte'
 
 export const IS_FETCHING = writable(true)
 
@@ -145,6 +152,7 @@ const routes = [
   ['/account', AccountRoute],
   ['/users/:id', UsersRoute],
   ['/files/*', FilesRoute],
+  ['/scroll', ScrollRoute],
 ]
 let Component = $state()
 let is_404 = $state(false)
