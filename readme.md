@@ -51,6 +51,9 @@ const router = new Navgo(routes, {
 
     console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
   },
+  // let your framework flush DOM before scroll
+  // e.g. in Svelte: `import { tick } from 'svelte'`
+  tick: tick,
   url_changed(cur) {
     // fires on shallow/hash/popstate-shallow/404 and full navigations
     // `cur` is the router snapshot: { url: URL, route, params }
@@ -97,6 +100,8 @@ Notes:
   - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation) => void`
   - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+- `tick`: `() => void | Promise<void>`
+  - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `url_changed`: `(snapshot: any) => void`
   - Fires on every URL change — shallow `push_state`/`replace_state`, hash changes, `popstate` shallow entries, 404s, and full navigations.
   - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
@@ -292,6 +297,8 @@ For `link` and `goto` navigations that match a route:
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → after_navigate(nav)
+            → tick()?                 // optional app-provided await before scroll
+            → scroll restore/hash/top
 ```
 
 - If a loader throws/rejects, navigation continues and `after_navigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.

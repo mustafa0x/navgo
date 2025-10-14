@@ -10,6 +10,7 @@ export default class Navgo {
 		before_navigate: undefined,
 		after_navigate: undefined,
 		url_changed: undefined,
+		tick: undefined,
 	}
 	#routes = []
 	#base = '/'
@@ -363,6 +364,7 @@ export default class Navgo {
 		})
 		// await so that apply_scroll is after potential async work
 		await this.#opts.after_navigate?.(nav)
+
 		if (nav_id !== this.#nav_active) return
 		ℹ('[🧭 navigate]', hit ? 'done' : 'done (404)', {
 			from: nav.from?.url?.href,
@@ -370,6 +372,10 @@ export default class Navgo {
 			type: nav.type,
 			idx: this.#route_idx,
 		})
+
+		// allow frameworks to flush DOM before scrolling
+		await this.#opts.tick?.()
+
 		this.#apply_scroll(nav)
 		this.#opts.url_changed?.(this.#current)
 	}

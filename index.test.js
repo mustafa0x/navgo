@@ -591,6 +591,45 @@ describe('stress and edge cases', () => {
 	})
 })
 
+describe('tick option', () => {
+	it('awaits tick between after_navigate and scroll', async () => {
+		setupStubs('/app/')
+		const events = []
+		// record scroll calls
+		const prevScroll = global.scrollTo
+		global.scrollTo = (x = 0, y = 0) => {
+			events.push('scroll')
+			prevScroll(x, y)
+		}
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{
+				base: '/app',
+				after_navigate() {
+					events.push('after')
+				},
+				tick() {
+					events.push('tick')
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		await tick(2)
+		expect(events.includes('after')).toBe(true)
+		expect(events.includes('tick')).toBe(true)
+		expect(events.includes('scroll')).toBe(true)
+		// ordering: after -> tick -> scroll
+		expect(events.indexOf('after') < events.indexOf('tick')).toBe(true)
+		expect(events.indexOf('tick') < events.indexOf('scroll')).toBe(true)
+		r.destroy()
+		global.scrollTo = prevScroll
+	})
+})
+
 describe('leave (beforeunload)', () => {
 	it('cancels leave by setting returnValue and preventing default', async () => {
 		setupStubs('/app/leave')

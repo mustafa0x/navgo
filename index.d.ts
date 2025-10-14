@@ -79,6 +79,11 @@ export interface Options {
 	before_navigate?(_nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
 	after_navigate?(_nav: Navigation): void
+	/** Optional hook awaited after `after_navigate` and before scroll handling.
+	 *  Useful for UI frameworks (e.g., Svelte) to flush DOM updates so anchor/top
+	 *  scrolling lands on the correct elements.
+	 */
+	tick?: () => void | Promise<void>
 	/** Global hook fired whenever the URL changes.
 	 *  Triggers for shallow pushes/replaces, hash changes, popstate-shallow, 404s, and full navigations.
 	 *  Receives the router's current snapshot (eg `{ url: URL, route: RouteTuple|null, params: Params }`).
