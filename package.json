@@ -16,7 +16,7 @@
 	},
 	"scripts": {
 		"build": "perl -0777 -i -pe 's/console.debug\\(...args\\)/{}/g' index.js",
-		"prepublishOnly": "pnpm run build",
+		"prepublishOnly": "pnpm test && pnpm test:e2e && pnpm run build",
 		"test": "vitest run index.test.js",
 		"test:e2e": "playwright test",
 		"types": "tsc -p test/types"
