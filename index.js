@@ -3,6 +3,7 @@ import { parse } from 'regexparam'
 const ℹ = (...args) => console.debug(...args)
 
 export default class Navgo {
+	/** @type {Options} */
 	#opts = {
 		base: '/',
 		preload_delay: 20,
@@ -12,19 +13,28 @@ export default class Navgo {
 		url_changed: undefined,
 		tick: undefined,
 	}
+	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
 	#routes = []
+	/** @type {string} */
 	#base = '/'
+	/** @type {RegExp} */
 	#base_rgx = /^\/+/
-	// preload cache: href -> { promise, data, error }
+	/** @type {Map<string, { promise?: Promise<any>, data?: any }>} */
 	#preloads = new Map()
-	// last matched route info
+	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params }} */
 	#current = { url: null, route: null, params: {} }
+	/** @type {number} */
 	#route_idx = 0
+	/** @type {boolean} */
 	#hash_navigating = false
+	/** @type {Map<number, Map<string, { x: number, y: number }>>} */
 	#areas_pos = new Map()
 	// Latest-wins nav guard: monotonic id and currently active id
+	/** @type {number} */
 	#nav_seq = 0
+	/** @type {number} */
 	#nav_active = 0
+	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
 
 	//
@@ -120,6 +130,7 @@ export default class Navgo {
 		this.#opts.url_changed?.(this.#current)
 	}
 
+	/** @type {any} */
 	#hover_timer = null
 	#maybe_preload = ev => {
 		const info = this.#link_from_event(ev, ev.type === 'mousedown')
