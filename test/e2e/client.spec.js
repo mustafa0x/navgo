@@ -48,7 +48,8 @@ test('spa links: navigate and update content without reload', async ({ page }) =
 })
 
 test('programmatic nav + replace preserves history idx', async ({ page }) => {
-	await page.click('a[href="/"]')
+	// Already at '/' from ensure_app_ready; avoid clicking the Home link here
+	await expect(page).toHaveURL(/\/$/)
 	await page.evaluate(() => window.router.goto('/users/7'))
 	await expect(page).toHaveURL(/\/users\/7$/)
 	await expect(page.getByRole('heading', { level: 1, name: /User #7/ })).toBeVisible()
