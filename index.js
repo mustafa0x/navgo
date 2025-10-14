@@ -20,7 +20,6 @@ export default class Navgo {
 	// last matched route info
 	#current = { url: null, route: null, params: {} }
 	#route_idx = 0
-	#scroll = new Map()
 	#hash_navigating = false
 	#areas_pos = new Map()
 	// Latest-wins nav guard: monotonic id and currently active id
@@ -56,7 +55,6 @@ export default class Navgo {
 
 			// different hash on same path — let browser update URL + scroll
 			this.#hash_navigating = true
-			this.#save_scroll()
 			ℹ('[🧭 hash]', 'navigate', { href: url.href })
 			return
 		}
@@ -138,18 +136,17 @@ export default class Navgo {
 
 	#on_scroll = e => {
 		const el = e?.target
-		// window/document scroll → snapshot window position
-		if (!el || el === window || el === document) {
-			this.#save_scroll()
-			return
-		}
-		// element scroll → snapshot element position keyed by stable id
-		const id = el?.dataset?.scrollId || el?.id
+		const id =
+			!el || el === window || el === document ? 'window' : el?.dataset?.scrollId || el?.id
 		if (!id) return
-		const pos = { x: el.scrollLeft || 0, y: el.scrollTop || 0 }
+		const pos =
+			id === 'window'
+				? { x: scrollX || 0, y: scrollY || 0 }
+				: { x: el.scrollLeft || 0, y: el.scrollTop || 0 }
 		const m = this.#areas_pos.get(this.#route_idx) || new Map()
 		m.set(String(id), pos)
 		this.#areas_pos.set(this.#route_idx, m)
+		ℹ('[🧭 scroll:set]', this.#route_idx, m)
 	}
 
 	#before_unload = ev => {
@@ -312,7 +309,6 @@ export default class Navgo {
 			from: nav.from?.url?.href,
 			to: url.href,
 		})
-		this.#save_scroll()
 		const hit = await this.match(path)
 		if (nav_id !== this.#nav_active) return
 
@@ -401,8 +397,6 @@ export default class Navgo {
 	 */
 	#commit_shallow(url, state, replace) {
 		const u = new URL(url || location.href, location.href)
-		// save scroll for current index before shallow change
-		this.#save_scroll()
 		const idx = this.#route_idx + (replace ? 0 : 1)
 		const st = { ...state, __navgo: { ...state?.__navgo, shallow: true, idx } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
@@ -412,8 +406,10 @@ export default class Navgo {
 		})
 		// Popstate handler checks state.__navgo.shallow and skips router processing
 		this.#route_idx = idx
-		// carry forward current scroll position for the shallow entry so Forward restores correctly
-		this.#scroll.set(idx, { x: scrollX, y: scrollY })
+		// carry forward current window position for the shallow entry so Forward restores correctly
+		const m = this.#areas_pos.get(idx) || new Map()
+		m.set('window', { x: scrollX || 0, y: scrollY || 0 })
+		this.#areas_pos.set(idx, m)
 		if (!replace) this.#clear_onward_history()
 		// update current URL snapshot and notify
 		this.#current.url = u
@@ -584,16 +580,7 @@ export default class Navgo {
 		this.#areas_pos.clear()
 	}
 
-	//
-	// Scroll
-	//
-	#save_scroll() {
-		this.#scroll.set(this.#route_idx, { x: scrollX, y: scrollY })
-		ℹ('[🧭 scroll]', 'save', { idx: this.#route_idx, x: scrollX, y: scrollY })
-	}
-
 	#clear_onward_history() {
-		for (const k of this.#scroll.keys()) if (k > this.#route_idx) this.#scroll.delete(k)
 		for (const k of this.#areas_pos.keys()) if (k > this.#route_idx) this.#areas_pos.delete(k)
 		ℹ('[🧭 scroll]', 'clear onward', { upto: this.#route_idx })
 	}
@@ -620,27 +607,23 @@ export default class Navgo {
 				const idx = ev_state?.__navgo?.idx
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
-				const pos = this.#scroll.get(target_idx)
+				const m = this.#areas_pos.get(target_idx)
+				const pos = m?.get?.('window')
 				if (pos) {
 					scrollTo(pos.x, pos.y)
-					ℹ('[🧭 scroll]', 'restore popstate', {
-						idx: target_idx,
-						...pos,
-					})
-
-					// restore registered areas
-					const m = this.#areas_pos.get(target_idx) || []
-					for (const [id, p] of m) {
-						const sel = `[data-scroll-id="${CSS.escape(id)}"],` + `#${CSS.escape(id)}`
-						const el = document.querySelector(sel)
-						if (el) {
-							el.scrollTo?.(p.x, p.y)
-							el.scrollLeft = p.x
-							el.scrollTop = p.y
-						}
-					}
-					return
+					ℹ('[🧭 scroll]', 'restore popstate', { idx: target_idx, ...pos })
 				}
+				for (const [id, p] of m || []) {
+					if (id === 'window') continue
+					const sel = `[data-scroll-id="${CSS.escape(id)}"],` + `#${CSS.escape(id)}`
+					const el = document.querySelector(sel)
+					if (el) {
+						el.scrollTo?.(p.x, p.y)
+						el.scrollLeft = p.x
+						el.scrollTop = p.y
+					}
+				}
+				if (pos || m) return
 			}
 			// 2) If there is a hash, prefer anchor scroll
 			if (hash && this.#scroll_to_hash(hash)) {
