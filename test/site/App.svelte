@@ -130,6 +130,8 @@
 <script module>
 import Navgo from '../../index.js'
 
+import {tick} from 'svelte'
+
 import * as ProductsRoute from './routes/Products.svelte'
 import * as PostsRoute from './routes/Posts.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
@@ -161,6 +163,7 @@ const path = $derived(route.url.pathname)
 let route_data = $state(null)
 
 const router = new Navgo(routes, {
+    tick,
     url_changed(cur) {
         route.url = cur.url
         route.params = cur.params
