@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 async function ensure_app_ready(page) {
-	await page.goto('/test/site/index.html')
+	await page.goto('/')
 	await page.waitForSelector('header nav a[href="/"]')
 }
 

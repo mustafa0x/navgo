@@ -19,6 +19,7 @@
 		"prepublishOnly": "pnpm test && pnpm test:e2e && pnpm run build",
 		"test": "vitest run index.test.js",
 		"test:e2e": "playwright test",
+		"start:testsite": "pnpm vite dev test/site --port 5714",
 		"types": "tsc -p test/types"
 	},
 	"files": [

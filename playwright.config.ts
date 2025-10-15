@@ -6,7 +6,7 @@ export default defineConfig({
 	retries: process.env.CI ? 2 : 0,
 	use: {
 		headless: true,
-		baseURL: 'http://localhost:5173',
+		baseURL: 'http://localhost:5714',
 		acceptDownloads: true,
 		trace: 'retain-on-failure',
 		launchOptions: {
@@ -14,8 +14,8 @@ export default defineConfig({
 		},
 	},
 	webServer: {
-		command: 'pnpm run build && node test/server.js',
-		port: 5173,
+		command: 'pnpm start:testsite',
+		port: 5714,
 		timeout: 120_000,
 		reuseExistingServer: !process.env.CI,
 	},
