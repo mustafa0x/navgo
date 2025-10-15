@@ -132,6 +132,47 @@ test('hash navigation and scroll restoration', async ({ page }) => {
 	expect(still_in_view).toBeTruthy()
 })
 
+test('absolute same-path hash link scrolls via browser default', async ({ page }) => {
+	await page.click('a[href="/about"]')
+	await expect(page).toHaveURL(/\/about$/)
+	const before = await navigation_count(page)
+
+	await page.click('a[href="/about#bottom"]')
+	await expect(page).toHaveURL(/\/about#bottom$/)
+	const after = await navigation_count(page)
+	expect(after).toBe(before)
+
+	const in_view = await page.evaluate(() => {
+		const el = document.getElementById('bottom')
+		const r = el.getBoundingClientRect()
+		return r.top < innerHeight && r.bottom > 0
+	})
+	expect(in_view).toBeTruthy()
+})
+
+test('relative same-path hash (#...) should bump idx', async ({ page }) => {
+	await page.click('a[href="/about"]')
+	await expect(page).toHaveURL(/\/about$/)
+	const beforeIdx = await page.evaluate(() => history.state?.__navgo?.idx ?? 0)
+	await page.click('a[href="#bottom"]')
+	await expect(page).toHaveURL(/#bottom$/)
+	await page.waitForFunction(
+		before => (history.state?.__navgo?.idx ?? 0) === before + 1,
+		beforeIdx,
+	)
+	const afterIdx = await page.evaluate(() => history.state?.__navgo?.idx ?? 0)
+	// also verify that the browser scrolled to the element
+	const scrolled = await page.evaluate(() => scrollY > 0)
+	expect(scrolled).toBeTruthy()
+	const in_view = await page.evaluate(() => {
+		const el = document.getElementById('bottom')
+		const r = el.getBoundingClientRect()
+		return r.top < innerHeight && r.bottom > 0
+	})
+	expect(in_view).toBeTruthy()
+	expect(afterIdx).toBe(beforeIdx + 1)
+})
+
 test('popstate restores scroll position', async ({ page }) => {
 	await page.click('a[href="/about"]')
 	await expect(page).toHaveURL(/\/about$/)

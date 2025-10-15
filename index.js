@@ -217,7 +217,6 @@ export default class Navgo {
 			!a.target &&
 			!a.download &&
 			a.host === location.host &&
-			href[0] != '#' &&
 			this.#base_rgx.test(a.pathname)
 			? { a, href }
 			: null

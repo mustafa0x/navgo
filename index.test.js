@@ -867,4 +867,99 @@ describe('link interception', () => {
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
 		r.destroy()
 	})
+
+	it('absolute same-path hash link within base lets browser handle + bumps idx', async () => {
+		const hist = setupStubs('/app/about')
+		const r = new Navgo([['/about', {}]], { base: '/app' })
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? 'http://example.com/app/about#bottom' : null),
+			pathname: '/app/about',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		// simulate browser default hashchange
+		global.location = new URL('http://example.com/app/about#bottom')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick()
+		// absolute same-path + hash: browser handles (no preventDefault), router bumps idx on hashchange
+		expect(prevented).toBe(false)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
+		r.destroy()
+	})
+
+	it('absolute same-path same-hash prevents default and does not bump idx', async () => {
+		const hist = setupStubs('/app/about#bottom')
+		const r = new Navgo([['/about', {}]], { base: '/app' })
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? 'http://example.com/app/about#bottom' : null),
+			pathname: '/app/about',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		await tick()
+		// same-hash: router handles via preventDefault and does not change history
+		expect(prevented).toBe(true)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
+		r.destroy()
+	})
+
+	it('relative same-path hash (#...) should bump idx', async () => {
+		const hist = setupStubs('/app/about')
+		const r = new Navgo([['/about', {}]], { base: '/app' })
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '#bottom' : null),
+			pathname: '/app/about',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		// simulate browser behavior
+		global.location = new URL('http://example.com/app/about#bottom')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick()
+		expect(prevented).toBe(false)
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
+		r.destroy()
+	})
 })
