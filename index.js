@@ -124,6 +124,14 @@ export default class Navgo {
 			history.replaceState(next_state, '', location.href)
 			this.#route_idx = next_idx
 			ℹ('[🧭 event:hashchange]', { idx: next_idx, href: location.href })
+		} else {
+			// hashchange via Back/Forward — restore previous position when hash is removed
+			const idx = history.state?.__navgo?.idx
+			if (typeof idx === 'number') this.#route_idx = idx
+			if (!location.hash) {
+				const pos = this.#areas_pos.get(this.#route_idx)?.get?.('window')
+				if (pos) scrollTo(pos.x, pos.y)
+			}
 		}
 		// update current URL snapshot and notify
 		this.#current.url = new URL(location.href)
@@ -146,6 +154,9 @@ export default class Navgo {
 	#tap = ev => this.#maybe_preload(ev)
 
 	#on_scroll = e => {
+		// prevent hash from overwriting the previous entry’s saved position.
+		if (this.#hash_navigating) return
+
 		const el = e?.target
 		const id =
 			!el || el === window || el === document ? 'window' : el?.dataset?.scrollId || el?.id

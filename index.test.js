@@ -692,6 +692,50 @@ describe('scroll restoration (areas)', () => {
 		expect(pane.scrollTop).toBe(123)
 		r.destroy()
 	})
+
+	it('hash-only back restores previous window scroll position', async () => {
+		const hist = setupStubs('/app/posts')
+		const r = new Navgo([['/posts', {}]], { base: '/app' })
+		await r.init()
+
+		// simulate user scroll on no-hash entry
+		global.scrollTo(0, 333)
+		// router listens to window scroll (capture)
+		global.dispatchEvent({ type: 'scroll', target: global.window })
+
+		// click a relative same-path hash link
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '#post-1' : null),
+			pathname: '/app/posts',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		// browser default: update URL then fire hashchange
+		global.location = new URL('http://example.com/app/posts#post-1')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick()
+		expect(prevented).toBe(false)
+
+		// user presses Back: browser sets state for previous entry and fires hashchange
+		hist.state = { __navgo: { idx: 0 } }
+		global.location = new URL('http://example.com/app/posts')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick()
+		expect(global.scrollY).toBe(333)
+		r.destroy()
+	})
 })
 
 describe('leave (beforeunload)', () => {

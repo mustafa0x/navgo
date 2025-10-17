@@ -112,24 +112,24 @@ test('hash navigation and scroll restoration', async ({ page }) => {
 	await expect(page).toHaveURL(/#bottom$/)
 	const after = await navigation_count(page)
 	expect(after).toBe(before)
-	const in_view = await page.evaluate(() => {
+	await page.waitForFunction(() => {
 		const el = document.getElementById('bottom')
+		if (!el) return false
 		const r = el.getBoundingClientRect()
 		return r.top < innerHeight && r.bottom > 0
 	})
-	expect(in_view).toBeTruthy()
 
 	// navigate away via shallow push, then back
 	await page.evaluate(() => window.router.push_state('/products'))
 	await expect(page).toHaveURL(/\/products$/)
 	await page.goBack()
 	await expect(page).toHaveURL(/\/about(?:#.*)?$/)
-	const still_in_view = await page.evaluate(() => {
+	await page.waitForFunction(() => {
 		const el = document.getElementById('bottom')
+		if (!el) return false
 		const r = el.getBoundingClientRect()
 		return r.top < innerHeight && r.bottom > 0
 	})
-	expect(still_in_view).toBeTruthy()
 })
 
 test('absolute same-path hash link scrolls via browser default', async ({ page }) => {
@@ -173,6 +173,19 @@ test('relative same-path hash (#...) should bump idx', async ({ page }) => {
 	expect(afterIdx).toBe(beforeIdx + 1)
 })
 
+test('posts: back from hash-only returns to top', async ({ page }) => {
+	await page.click('a[href="/posts"]')
+	await expect(page).toHaveURL(/\/posts$/)
+	await page.click('a[href^="#post-"]')
+	await expect(page).toHaveURL(/#post-\d+$/)
+	const scrolled = await page.evaluate(() => scrollY > 0)
+	expect(scrolled).toBeTruthy()
+	await page.goBack()
+	await expect(page).toHaveURL(/\/posts$/)
+	const at_top = await page.evaluate(() => scrollY === 0)
+	expect(at_top).toBeTruthy()
+})
+
 test('popstate restores scroll position', async ({ page }) => {
 	await page.click('a[href="/about"]')
 	await expect(page).toHaveURL(/\/about$/)
@@ -184,12 +197,12 @@ test('popstate restores scroll position', async ({ page }) => {
 	await expect(page).toHaveURL(/\/products$/)
 	await page.goBack()
 	await expect(page).toHaveURL(/\/about(?:#.*)?$/)
-	const still_in_view = await page.evaluate(() => {
+	await page.waitForFunction(() => {
 		const el = document.getElementById('bottom')
+		if (!el) return false
 		const r = el.getBoundingClientRect()
 		return r.top < innerHeight && r.bottom > 0
 	})
-	expect(still_in_view).toBeTruthy()
 })
 
 test('target=_blank and download links are not intercepted', async ({ page }) => {
