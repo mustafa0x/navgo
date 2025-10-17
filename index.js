@@ -418,6 +418,13 @@ export default class Navgo {
 	 */
 	#commit_shallow(url, state, replace) {
 		const u = new URL(url || location.href, location.href)
+		// persist current entry's scroll into its state so Back after refresh restores it
+		const prev = history.state && typeof history.state == 'object' ? history.state : {}
+		history.replaceState(
+			{ ...prev, __navgo: { ...prev.__navgo, pos: { x: scrollX || 0, y: scrollY || 0 } } },
+			'',
+			location.href,
+		)
 		const idx = this.#route_idx + (replace ? 0 : 1)
 		const st = { ...state, __navgo: { ...state?.__navgo, shallow: true, idx } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
@@ -625,11 +632,12 @@ export default class Navgo {
 			// 1) On back/forward, restore saved position if available
 			if (t === 'popstate') {
 				const ev_state = ctx?.state ?? ctx?.event?.state
-				const idx = ev_state?.__navgo?.idx
+				const st = ev_state?.__navgo
+				const idx = st?.idx
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
 				const m = this.#areas_pos.get(target_idx)
-				const pos = m?.get?.('window')
+				const pos = st?.pos || m?.get?.('window')
 				if (pos) {
 					scrollTo(pos.x, pos.y)
 					ℹ('[🧭 scroll]', 'restore popstate', { idx: target_idx, ...pos })

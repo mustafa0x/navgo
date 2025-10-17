@@ -445,6 +445,38 @@ describe('scroll restore persistence', () => {
 		expect(global.scrollY).toBe(200)
 		r2.destroy()
 	})
+
+	it('shallow push saves previous entry scroll into state.pos', async () => {
+		const hist = setupStubs('/app/products')
+		const r = new Navgo([['/products', {}]], { base: '/app' })
+		await r.init()
+		// move window scroll and then perform a shallow push
+		global.scrollTo(5, 123)
+		const calls = []
+		const orig = hist.replaceState
+		hist.replaceState = (s, t, u) => {
+			calls.push(s)
+			orig.call(hist, s, t, u)
+		}
+		r.push_state('/app/products?product=1')
+		expect(calls.length).toBeGreaterThan(0)
+		expect(calls.at(-1)?.__navgo?.pos).toEqual({ x: 5, y: 123 })
+		r.destroy()
+	})
+
+	it('popstate prefers ev.state.__navgo.pos', async () => {
+		setupStubs('/app/products')
+		const r = new Navgo([['/products', {}]], { base: '/app' })
+		await r.init()
+		global.scrollTo(0, 0)
+		const ev = new Event('popstate')
+		ev.state = { __navgo: { shallow: true, idx: 0, pos: { x: 11, y: 222 } } }
+		global.dispatchEvent(ev)
+		await tick()
+		expect(global.scrollX).toBe(11)
+		expect(global.scrollY).toBe(222)
+		r.destroy()
+	})
 })
 
 describe('stress and edge cases', () => {
