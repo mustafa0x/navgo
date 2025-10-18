@@ -1,8 +1,10 @@
 [tools]
 lefthook = 'latest'
 
-[tasks.work-check]
+[tasks.svcheck]
 run = '''
+uv run https://raw.githubusercontent.com/mustafa0x/util/main/svcheck.py
 pnpm exec prettier --write '**/*.{js,ts,svelte,json}' --write
-pnpm exec eslint --fix $(git diff --name-only HEAD)
+CHANGED=$(git diff --diff-filter=d --name-only HEAD)
+[ -z "$CHANGED" ] || pnpm exec eslint --fix $CHANGED
 '''
