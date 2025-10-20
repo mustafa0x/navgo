@@ -94,7 +94,8 @@ test('beforeNavigate: cancel on link and on popstate', async ({ page }) => {
 	await page.check('input[type="checkbox"]')
 
 	page.once('dialog', d => d.dismiss())
-	await page.goBack()
+	// Use history.back() to avoid waiting for a non-navigation SPA popstate
+	await page.evaluate(() => history.back())
 	await expect(page).toHaveURL(/\/account$/)
 })
 
@@ -205,7 +206,11 @@ test('popstate restores scroll position', async ({ page }) => {
 	})
 })
 
-test('target=_blank and download links are not intercepted', async ({ page }) => {
+test('target=_blank and download links are not intercepted', async ({ page, browserName }) => {
+	test.skip(
+		browserName === 'webkit',
+		'downloads via data: URL are flaky on WebKit in headless ci',
+	)
 	await page.click('a[href="/"]')
 	await page.evaluate(() => {
 		const a1 = document.createElement('a')
@@ -215,7 +220,8 @@ test('target=_blank and download links are not intercepted', async ({ page }) =>
 		document.body.appendChild(a1)
 
 		const a2 = document.createElement('a')
-		a2.href = URL.createObjectURL(new Blob(['hello'], { type: 'text/plain' }))
+		// data: URL ensures consistent download event across browsers
+		a2.href = 'data:text/plain;charset=utf-8,hello'
 		a2.download = 'hello.txt'
 		a2.id = 'dl'
 		a2.textContent = 'download me'

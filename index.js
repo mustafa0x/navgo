@@ -130,7 +130,14 @@ export default class Navgo {
 			if (typeof idx === 'number') this.#route_idx = idx
 			if (!location.hash) {
 				const pos = this.#areas_pos.get(this.#route_idx)?.get?.('window')
-				if (pos) scrollTo(pos.x, pos.y)
+				if (pos) {
+					scrollTo(pos.x, pos.y)
+					ℹ('[🧭 scroll]', 'restore hash-back', { idx: this.#route_idx, ...pos })
+				} else {
+					// no saved position for previous entry — default to top
+					scrollTo(0, 0)
+					ℹ('[🧭 scroll]', 'hash-back -> top')
+				}
 			}
 		}
 		// update current URL snapshot and notify
@@ -425,6 +432,13 @@ export default class Navgo {
 			'',
 			location.href,
 		)
+		// also stash per-URL scroll in session storage as a fallback across reloads
+		try {
+			sessionStorage.setItem(
+				`__navgo_scroll:${location.href}`,
+				JSON.stringify({ x: scrollX || 0, y: scrollY || 0 }),
+			)
+		} catch {}
 		const idx = this.#route_idx + (replace ? 0 : 1)
 		const st = { ...state, __navgo: { ...state?.__navgo, shallow: true, idx } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
@@ -637,9 +651,18 @@ export default class Navgo {
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
 				const m = this.#areas_pos.get(target_idx)
-				const pos = st?.pos || m?.get?.('window')
+				let pos = st?.pos || m?.get?.('window')
+				if (!pos) {
+					try {
+						const k = `__navgo_scroll:${location.href}`
+						pos = JSON.parse(sessionStorage.getItem(k)) || null
+						sessionStorage.removeItem(k)
+					} catch {}
+				}
 				if (pos) {
 					scrollTo(pos.x, pos.y)
+					// re-apply on next tick to resist late reflows (e.g. images)
+					setTimeout(() => scrollTo(pos.x, pos.y), 0)
 					ℹ('[🧭 scroll]', 'restore popstate', { idx: target_idx, ...pos })
 				}
 				for (const [id, p] of m || []) {
