@@ -4,6 +4,7 @@
 // These are compile-only tests; they should typecheck without emitting JS.
 
 import Navgo, { type RouteTuple, type Options, type Params, type MatchResult } from 'navgo'
+import type { Writable } from 'svelte/store'
 
 // Custom route metadata type for generics flow
 type Meta = {
@@ -62,3 +63,9 @@ router.replace_state('/app/foo', { x: 1 })
 // Static validator helpers
 const is_color = Navgo.validators.one_of(['red', 'green'])
 const ok: boolean = is_color('red')
+
+// route store typing checks
+type RouteState = { url: URL; route: RouteTuple<Meta> | null; params: Params }
+const route_store: Writable<RouteState> = router.route
+route_store.subscribe(() => {})
+route_store.set({ url: new URL('http://example.com/app'), route: routes[0], params: {} })

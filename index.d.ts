@@ -110,6 +110,12 @@ export default class Navgo<T = unknown> {
 	init(): Promise<void>
 	/** Remove listeners installed by `init()`. */
 	destroy(): void
+	/** Writable store with current { url, route, params }. */
+	readonly route: import('svelte/store').Writable<{
+		url: URL
+		route: RouteTuple<T> | null
+		params: Params
+	}>
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }

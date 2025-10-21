@@ -34,6 +34,9 @@
 	"dependencies": {
 		"regexparam": "^3.0.0"
 	},
+	"peerDependencies": {
+		"svelte": "5"
+	},
 	"devDependencies": {
 		"@eslint/js": "^9.37.0",
 		"@playwright/test": "^1.56.0",

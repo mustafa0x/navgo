@@ -60,7 +60,7 @@
 
     <main class="mx-auto max-w-3xl p-6">
         {#if Component}
-            <Component params={route.params} data={route_data} />
+            <Component params={$route.params} data={route_data} />
         {:else}
             <h1 class="mb-2 text-2xl font-semibold">Home</h1>
             <p class="opacity-80">Welcome. Use the navigation to try routes.</p>
@@ -113,7 +113,7 @@
                     <div><span class="font-mono">path</span>: {path}</div>
                     <div>
                         <span class="font-mono">params</span>:
-                        <span class="font-mono">{JSON.stringify(route.params)}</span>
+                        <span class="font-mono">{JSON.stringify($route.params)}</span>
                     </div>
                     <div><span class="font-mono">hash</span>: {location.hash}</div>
                 </div>
@@ -130,7 +130,6 @@
 <script module>
 import Navgo from '../../index.js'
 
-import {tick} from 'svelte'
 
 import * as ProductsRoute from './routes/Products.svelte'
 import * as PostsRoute from './routes/Posts.svelte'
@@ -158,16 +157,9 @@ const routes = [
 ]
 let Component = $state()
 let is_404 = $state(false)
-const route = $state({url: new URL(location.href), params: null})
-const path = $derived(route.url.pathname)
 let route_data = $state(null)
 
 const router = new Navgo(routes, {
-    tick,
-    url_changed(cur) {
-        route.url = cur.url
-        route.params = cur.params
-    },
     before_navigate(nav) {
         IS_FETCHING.set(true)
     },
@@ -185,21 +177,20 @@ const router = new Navgo(routes, {
 
         route_data = nav.to.data ?? null
         Component = nav.to.route?.[1]?.default || null
-        route.url = nav.to.url
-        route.params = nav.to.params
         // document.startViewTransition(() => {
         // })
     },
 })
 router.init()
-window['router'] = router
+window.navgo = router
+const {route} = router
 </script>
 
 <script>
-import {onDestroy, setContext} from 'svelte'
+import {onDestroy} from 'svelte'
 import {writable} from 'svelte/store'
-setContext('router', router)
-setContext('route', route)
+
+const path = $derived($route.url?.pathname)
 onDestroy(() => {
     router.destroy()
 })

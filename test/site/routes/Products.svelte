@@ -76,10 +76,9 @@ export async function loaders() {
 </script>
 
 <script>
-import {getContext} from 'svelte'
 let {params, data = null} = $props()
-const router = getContext('router')
-const route = getContext('route')
+const router = window.navgo
+const {route} = window.navgo
 
 // Prefer preloaded list; use fetched fallback when navigating directly
 let fetched = $state(null)
@@ -110,7 +109,7 @@ if (!data?.products) {
 // Open modal on landing via /products?product=...
 let last_pid = null
 $effect(() => {
-    const pid = route.url.searchParams.get('product')
+    const pid = $route.url.searchParams.get('product')
     if (pid && last_pid != pid) {
         const found = items.find(p => String(p.id) === String(pid))
         if (found)

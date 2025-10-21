@@ -91,6 +91,7 @@ describe('exports', () => {
 	})
 
 	it('new Navgo()', () => {
+		setupStubs('/')
 		let foo = new Navgo()
 		expect(typeof foo.format).toBe('function')
 		expect(typeof foo.init).toBe('function')

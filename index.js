@@ -1,4 +1,6 @@
 import { parse } from 'regexparam'
+import { tick } from 'svelte'
+import { writable } from 'svelte/store'
 
 const ℹ = (...args) => console.debug(...args)
 
@@ -11,7 +13,7 @@ export default class Navgo {
 		before_navigate: undefined,
 		after_navigate: undefined,
 		url_changed: undefined,
-		tick: undefined,
+		tick,
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
 	#routes = []
@@ -36,6 +38,7 @@ export default class Navgo {
 	#nav_active = 0
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
+	route = writable({ url: new URL(location.href), route: null, params: {} })
 
 	//
 	// Event listeners
@@ -99,7 +102,7 @@ export default class Navgo {
 			this.#current.url = target
 			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loaders')
 			this.#apply_scroll(ev)
-			this.#opts.url_changed?.(this.#current)
+			this.route.set(this.#current)
 			return
 		}
 		// Explicit shallow entries (pushState/replaceState) regardless of path
@@ -107,7 +110,7 @@ export default class Navgo {
 			this.#current.url = target
 			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loaders')
 			this.#apply_scroll(ev)
-			this.#opts.url_changed?.(this.#current)
+			this.route.set(this.#current)
 			return
 		}
 
@@ -142,7 +145,7 @@ export default class Navgo {
 		}
 		// update current URL snapshot and notify
 		this.#current.url = new URL(location.href)
-		this.#opts.url_changed?.(this.#current)
+		this.route.set(this.#current)
 	}
 
 	/** @type {any} */
@@ -417,7 +420,7 @@ export default class Navgo {
 		await this.#opts.tick?.()
 
 		this.#apply_scroll(nav)
-		this.#opts.url_changed?.(this.#current)
+		this.route.set(this.#current)
 	}
 
 	/**
@@ -455,7 +458,7 @@ export default class Navgo {
 		if (!replace) this.#clear_onward_history()
 		// update current URL snapshot and notify
 		this.#current.url = u
-		this.#opts.url_changed?.(this.#current)
+		this.route.set(this.#current)
 	}
 
 	/** @param {string|URL} [url] @param {any} [state] */
@@ -561,6 +564,11 @@ export default class Navgo {
 				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
 			pat.data = r // keep original tuple: [pattern, hooks, ...]
 			return pat
+		})
+
+		// TODO: deprecated, remove later
+		this.route.subscribe(() => {
+			this.#opts.url_changed?.(this.#current)
 		})
 
 		ℹ('[🧭 init]', {
