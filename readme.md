@@ -103,7 +103,7 @@ Notes:
 - `tick`: `() => void | Promise<void>`
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `url_changed`: `(snapshot: any) => void`
-  - Fires on every URL change — shallow `push_state`/`replace_state`, hash changes, `popstate` shallow entries, 404s, and full navigations.
+  - Fires on every URL change -- shallow `push_state`/`replace_state`, hash changes, `popstate` shallow entries, 404s, and full navigations. (deprecated; subscribe to `.route` instead.)
   - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
   - The snapshot type is intentionally `any` and may evolve without a breaking change.
 - `preload_delay`: `number` (default `20`)
@@ -112,6 +112,26 @@ Notes:
   - When `false`, disables hover/touch preloading.
 
 Important: Navgo only processes routes that match your `base` path.
+
+### Instance stores
+
+- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params }>`
+  - Readonly property that holds the current snapshot.
+  - Subscribe to react to changes; Navgo updates it on every URL change.
+- `router.is_navigating` -- `Writable<boolean>`
+  - `true` while a navigation is in flight (between start and completion/cancel).
+
+Example:
+
+```svelte
+Current path: {$route.path}
+<div class="request-indicator" class:active={$is_navigating}></div>
+
+<script>
+const router = new Navgo(...)
+const {route, is_navigating} = router
+</script>
+```
 
 ### Route Hooks
 
@@ -225,8 +245,8 @@ While listening, link clicks are intercepted and translated into `goto()` naviga
 
 In addition, `init()` wires preloading listeners (enabled by default) so route data can be fetched early:
 
-- `mousemove` (hover) — after a short delay, hovering an in-app link triggers `preload(href)`.
-- `touchstart` and `mousedown` (tap) — tapping or pressing on an in-app link also triggers `preload(href)`.
+- `mousemove` (hover) -- after a short delay, hovering an in-app link triggers `preload(href)`.
+- `touchstart` and `mousedown` (tap) -- tapping or pressing on an in-app link also triggers `preload(href)`.
 
 Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preload_delay` and `preload_on_hover` options.
 
@@ -287,10 +307,10 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 
 ### Navigation Types
 
-- `link` — user clicked an in-app `<a>` that matches `base`.
-- `goto` — programmatic navigation via `router.goto(...)`.
-- `popstate` — browser back/forward.
-- `leave` — page is unloading (refresh, external navigation, tab close) via `beforeunload`.
+- `link` -- user clicked an in-app `<a>` that matches `base`.
+- `goto` -- programmatic navigation via `router.goto(...)`.
+- `popstate` -- browser back/forward.
+- `leave` -- page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 
 The router passes the type to your route-level `before_route_leave(nav)` hook.
 
@@ -360,19 +380,19 @@ scroll flow
 
 ### Method-by-Method Semantics
 
-- `format(uri)` — normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
-- `match(uri)` — returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` — fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
-- `init()` — wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
-- `destroy()` — removes listeners added by `init()`.
-- `preload(uri)` — pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
-- `push_state(url?, state?)` — shallow push that updates the URL and `history.state` without route processing.
-- `replace_state(url?, state?)` — shallow replace that updates the URL and `history.state` without route processing.
+- `format(uri)` -- normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
+- `match(uri)` -- returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
+- `goto(uri, { replace? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
+- `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
+- `destroy()` -- removes listeners added by `init()`.
+- `preload(uri)` -- pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
+- `push_state(url?, state?)` -- shallow push that updates the URL and `history.state` without route processing.
+- `replace_state(url?, state?)` -- shallow replace that updates the URL and `history.state` without route processing.
 
 ### Built-in Validators
 
-- `Navgo.validators.int({ min?, max? })` — `true` iff the value is an integer within optional bounds.
-- `Navgo.validators.one_of(iterable)` — `true` iff the value is in the provided set.
+- `Navgo.validators.int({ min?, max? })` -- `true` iff the value is an integer within optional bounds.
+- `Navgo.validators.one_of(iterable)` -- `true` iff the value is in the provided set.
 
 Attach validators via a route tuple's `data.param_validators` to constrain matches.
 
@@ -380,6 +400,6 @@ Attach validators via a route tuple's `data.param_validators` to constrain match
 
 This router integrates ideas and small portions of code from these fantastic projects:
 
-- SvelteKit — https://github.com/sveltejs/kit
-- navaid — https://github.com/lukeed/navaid
-- TanStack Router — https://github.com/TanStack/router
+- SvelteKit -- https://github.com/sveltejs/kit
+- navaid -- https://github.com/lukeed/navaid
+- TanStack Router -- https://github.com/TanStack/router
