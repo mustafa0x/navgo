@@ -111,7 +111,7 @@ Notes:
 - `preload_on_hover`: `boolean` (default `true`)
   - When `false`, disables hover/touch preloading.
 - `attach_to_window`: `boolean` (default `true`)
-  - When `true`, `init()` attaches the instance to `window.navgo` for convenience (e.g., devtools, simple Svelte scripts).
+  - When `true`, `init()` attaches the instance to `window.navgo` for convenience.
 
 Important: Navgo only processes routes that match your `base` path.
 
