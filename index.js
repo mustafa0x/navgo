@@ -14,6 +14,7 @@ export default class Navgo {
 		after_navigate: undefined,
 		url_changed: undefined,
 		tick,
+		attach_to_window: true,
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
 	#routes = []
@@ -620,6 +621,7 @@ export default class Navgo {
 		}
 
 		ℹ('[🧭 init]', 'initial goto')
+		if (this.#opts.attach_to_window) window.navgo = this
 		return this.goto()
 	}
 	destroy() {

@@ -75,6 +75,8 @@ export interface Options {
 	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
 	preload_on_hover?: boolean
+	/** Attach instance to window as `window.navgo`. Default true. */
+	attach_to_window?: boolean
 	/** Global hook fired after per-route `before_route_leave`, before loaders/history change. Can cancel. */
 	before_navigate?(_nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */

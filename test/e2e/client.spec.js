@@ -50,12 +50,12 @@ test('spa links: navigate and update content without reload', async ({ page }) =
 test('programmatic nav + replace preserves history idx', async ({ page }) => {
 	// Already at '/' from ensure_app_ready; avoid clicking the Home link here
 	await expect(page).toHaveURL(/\/$/)
-	await page.evaluate(() => window.router.goto('/users/7'))
+	await page.evaluate(() => window.navgo.goto('/users/7'))
 	await expect(page).toHaveURL(/\/users\/7$/)
 	await expect(page.getByRole('heading', { level: 1, name: /User #7/ })).toBeVisible()
 
 	const idx_before = await page.evaluate(() => history.state?.__navgo?.idx ?? null)
-	await page.evaluate(() => window.router.goto('/products', { replace: true }))
+	await page.evaluate(() => window.navgo.goto('/products', { replace: true }))
 	await expect(page).toHaveURL(/\/products$/)
 	const idx_after = await page.evaluate(() => history.state?.__navgo?.idx ?? null)
 	expect(idx_after).toBe(idx_before)
@@ -66,12 +66,12 @@ test('shallow push/replace do not trigger routing', async ({ page }) => {
 	await expect(page.getByRole('heading', { level: 1, name: 'Products' })).toBeVisible()
 
 	const content_before = await page.locator('main').textContent()
-	await page.evaluate(() => window.router.push_state('/products?tab=info#top'))
+	await page.evaluate(() => window.navgo.push_state('/products?tab=info#top'))
 	await page.waitForTimeout(30)
 	expect(await page.evaluate(() => location.search + location.hash)).toBe('?tab=info#top')
 	await expect(page.locator('main')).toHaveText(content_before || '')
 
-	await page.evaluate(() => window.router.replace_state('/products?tab=overview'))
+	await page.evaluate(() => window.navgo.replace_state('/products?tab=overview'))
 	await page.waitForTimeout(30)
 	expect(await page.evaluate(() => location.search)).toBe('?tab=overview')
 	await expect(page.locator('main')).toHaveText(content_before || '')
@@ -100,7 +100,7 @@ test('beforeNavigate: cancel on link and on popstate', async ({ page }) => {
 })
 
 test('404 view when no route matches', async ({ page }) => {
-	await page.evaluate(() => window.router.goto('/totally-missing'))
+	await page.evaluate(() => window.navgo.goto('/totally-missing'))
 	await expect(page.locator('main')).toContainText('Page not found')
 })
 
@@ -121,7 +121,7 @@ test('hash navigation and scroll restoration', async ({ page }) => {
 	})
 
 	// navigate away via shallow push, then back
-	await page.evaluate(() => window.router.push_state('/products'))
+	await page.evaluate(() => window.navgo.push_state('/products'))
 	await expect(page).toHaveURL(/\/products$/)
 	await page.goBack()
 	await expect(page).toHaveURL(/\/about(?:#.*)?$/)
@@ -194,7 +194,7 @@ test('popstate restores scroll position', async ({ page }) => {
 	await expect(page).toHaveURL(/#bottom$/)
 
 	// navigate away via shallow push, then back
-	await page.evaluate(() => window.router.push_state('/products'))
+	await page.evaluate(() => window.navgo.push_state('/products'))
 	await expect(page).toHaveURL(/\/products$/)
 	await page.goBack()
 	await expect(page).toHaveURL(/\/about(?:#.*)?$/)
@@ -240,7 +240,7 @@ test('target=_blank and download links are not intercepted', async ({ page, brow
 })
 
 test('preload API resolves and hover kicks in', async ({ page }) => {
-	const ok = await page.evaluate(() => window.router.preload('/users/42').then(() => true))
+	const ok = await page.evaluate(() => window.navgo.preload('/users/42').then(() => true))
 	expect(ok).toBe(true)
 	await page.hover('a[href="/users/42"]')
 	await page.waitForTimeout(50)
@@ -266,9 +266,9 @@ test('shallow back/forward retains content', async ({ page }) => {
 	const content_before = await page.locator('main').textContent()
 	// add multiple shallow entries
 	await page.evaluate(() => {
-		window.router.push_state('/products?tab=one')
-		window.router.push_state('/products?tab=two')
-		window.router.push_state('/products?tab=three')
+		window.navgo.push_state('/products?tab=one')
+		window.navgo.push_state('/products?tab=two')
+		window.navgo.push_state('/products?tab=three')
 	})
 	await page.goBack()
 	await page.goBack()

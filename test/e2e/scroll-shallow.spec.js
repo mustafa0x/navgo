@@ -45,7 +45,7 @@ test.describe('rapid shallow clicks + reload preserves scroll/back/forward', () 
 		// reload at shallow entry, then Back repeatedly until the non-shallow list entry
 		await page.reload()
 		// ensure app reinitialized before Back
-		await page.waitForFunction(() => window.router && document.readyState === 'complete')
+		await page.waitForFunction(() => window.navgo && document.readyState === 'complete')
 		for (let i = 0; i < 20; i++) {
 			const hasProduct = await page.evaluate(() => location.search.includes('product='))
 			if (!hasProduct) break

@@ -159,6 +159,26 @@ describe('is_navigating store', () => {
 
 // ---
 
+describe('attach_to_window option', () => {
+	it('default true attaches instance', async () => {
+		setupStubs('/app/')
+		const r = new Navgo([['/', {}]], { base: '/app' })
+		await r.init()
+		expect(global.window.navgo).toBe(r)
+		r.destroy()
+	})
+
+	it('false disables attachment', async () => {
+		setupStubs('/app/')
+		const r = new Navgo([['/', {}]], { base: '/app', attach_to_window: false })
+		await r.init()
+		expect(global.window.navgo).not.toBe(r)
+		r.destroy()
+	})
+})
+
+// ---
+
 describe('$.format', () => {
 	it('empty base', () => {
 		let foo = new Navgo()
