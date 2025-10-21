@@ -39,6 +39,7 @@ export default class Navgo {
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
 	route = writable({ url: new URL(location.href), route: null, params: {} })
+	is_navigating = writable(false)
 
 	//
 	// Event listeners
@@ -299,6 +300,7 @@ export default class Navgo {
 			ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
 			return
 		}
+		this.is_navigating.set(true)
 		const { url, path } = info
 
 		const is_popstate = nav_type === 'popstate'
@@ -328,6 +330,7 @@ export default class Navgo {
 					}
 				}
 			}
+			if (nav_id === this.#nav_active) this.is_navigating.set(false)
 			ℹ('[🧭 goto]', 'cancelled by before_route_leave')
 			return
 		}
@@ -421,6 +424,7 @@ export default class Navgo {
 
 		this.#apply_scroll(nav)
 		this.route.set(this.#current)
+		if (nav_id === this.#nav_active) this.is_navigating.set(false)
 	}
 
 	/**

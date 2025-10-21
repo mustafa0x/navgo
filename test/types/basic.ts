@@ -69,3 +69,7 @@ type RouteState = { url: URL; route: RouteTuple<Meta> | null; params: Params }
 const route_store: Writable<RouteState> = router.route
 route_store.subscribe(() => {})
 route_store.set({ url: new URL('http://example.com/app'), route: routes[0], params: {} })
+
+// is_navigating typing checks
+const nav_store: Writable<boolean> = router.is_navigating
+nav_store.set(true)

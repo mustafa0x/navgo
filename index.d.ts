@@ -116,6 +116,8 @@ export default class Navgo<T = unknown> {
 		route: RouteTuple<T> | null
 		params: Params
 	}>
+	/** Writable store indicating active navigation. */
+	readonly is_navigating: import('svelte/store').Writable<boolean>
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }

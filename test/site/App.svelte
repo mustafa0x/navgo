@@ -125,7 +125,7 @@
         </div>
     </aside>
 </div>
-<div class="request-indicator" class:active={$IS_FETCHING}></div>
+<div class="request-indicator" class:active={$is_navigating}></div>
 
 <script module>
 import Navgo from '../../index.js'
@@ -139,8 +139,6 @@ import * as AccountRoute from './routes/Account.svelte'
 import * as UsersRoute from './routes/Users.svelte'
 import * as FilesRoute from './routes/Files.svelte'
 import * as ScrollRoute from './routes/Scroll.svelte'
-
-export const IS_FETCHING = writable(true)
 
 // prettier-ignore
 /** @type {Array<[string|RegExp, any]>} */
@@ -160,13 +158,7 @@ let is_404 = $state(false)
 let route_data = $state(null)
 
 const router = new Navgo(routes, {
-    before_navigate(nav) {
-        IS_FETCHING.set(true)
-    },
     async after_navigate(nav) {
-        setTimeout(() => {
-            IS_FETCHING.set(false)
-        }, 50)
         is_404 = nav.to?.data?.__error?.status === 404
         if (is_404) {
             console.log('404 for', nav.to.url.pathname)
@@ -184,11 +176,11 @@ const router = new Navgo(routes, {
 router.init()
 window.navgo = router
 const {route} = router
+const {is_navigating} = router
 </script>
 
 <script>
 import {onDestroy} from 'svelte'
-import {writable} from 'svelte/store'
 
 const path = $derived($route.url?.pathname)
 onDestroy(() => {

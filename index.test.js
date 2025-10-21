@@ -100,6 +100,65 @@ describe('exports', () => {
 
 // ---
 
+describe('is_navigating store', () => {
+	it('toggles true/false around goto', async () => {
+		setupStubs('/app/')
+		const events = []
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/foo',
+					{
+						loaders() {
+							return new Promise(res => setTimeout(res, 10))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		r.is_navigating.subscribe(v => events.push(v))
+		await r.init()
+		// flush initial goto events
+		events.length = 0
+		await r.goto('/app/foo')
+		// should have seen [true, false]
+		expect(events[0]).toBe(true)
+		expect(events.at(-1)).toBe(false)
+		r.destroy()
+	})
+
+	it('resets to false on cancel', async () => {
+		setupStubs('/app/')
+		const events = []
+		const r = new Navgo(
+			[
+				[
+					'/',
+					{
+						before_route_leave(nav) {
+							if (nav.type === 'goto') nav.cancel()
+						},
+					},
+				],
+				['/foo', {}],
+			],
+			{ base: '/app' },
+		)
+		r.is_navigating.subscribe(v => events.push(v))
+		await r.init()
+		events.length = 0
+		await r.goto('/app/foo')
+		// should have been set true then false despite cancellation
+		expect(events[0]).toBe(true)
+		expect(events.at(-1)).toBe(false)
+		r.destroy()
+	})
+})
+
+// ---
+
 describe('$.format', () => {
 	it('empty base', () => {
 		let foo = new Navgo()
