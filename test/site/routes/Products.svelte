@@ -1,9 +1,9 @@
 <h1 class="mb-2 text-2xl font-semibold">Products</h1>
 <p class="mb-4 opacity-80">A demo list fetched from DummyJSON products.</p>
 
-{#if items.length}
+{#if data.products.products.length}
     <ul class="grid gap-4 sm:grid-cols-2">
-        {#each items as p (p.id)}
+        {#each data.products.products as p (p.id)}
             <li class="flex gap-3 rounded-md border border-gray-200 bg-white p-3">
                 <button
                     class="flex gap-3 text-left"
@@ -69,20 +69,20 @@
 
 <script module>
 // Used by the router before navigating to /products
-export async function loader() {
-    // await new Promise(r => setTimeout(r, 1000))
-    return fetch('https://dummyjson.com/products').then(r => r.json())
+export function loader() {
+    return {
+        products: {
+            request: 'https://dummyjson.com/products',
+            parse: 'json',
+        },
+    }
 }
 </script>
 
 <script>
-let {params, data = null} = $props()
+let {data} = $props()
 const router = window.navgo
 const {route} = window.navgo
-
-// Prefer preloaded list; use fetched fallback when navigating directly
-let fetched = $state(null)
-const items = $derived(data?.products ?? fetched?.products ?? [])
 
 let selected = $state(null)
 let dlg
@@ -98,20 +98,12 @@ function closeProduct() {
     selected = null
 }
 
-if (!data?.products) {
-    loader()
-        .then(json => {
-            if (Array.isArray(json?.products)) data = json
-        })
-        .catch(() => {})
-}
-
 // Open modal on landing via /products?product=...
 let last_pid = null
 $effect(() => {
     const pid = $route.url.searchParams.get('product')
     if (pid && last_pid != pid) {
-        const found = items.find(p => String(p.id) === String(pid))
+        const found = data.products.products.find(p => String(p.id) === String(pid))
         if (found)
             setTimeout(() => {
                 openProduct(found)

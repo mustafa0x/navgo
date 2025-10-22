@@ -39,6 +39,10 @@ export default class Navgo {
 	#nav_active = 0
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
+	/** @type {AbortController|null} */
+	#loader_controller = null
+	#cache_name = 'navgo'
+
 	route = writable({ url: new URL(location.href), route: null, params: {} })
 	is_navigating = writable(false)
 
@@ -254,9 +258,117 @@ export default class Navgo {
 		return true
 	}
 
-	async #run_loader(route, params) {
-		const ret_val = route[1].loader?.(params)
-		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
+	#to_get_request(input, init) {
+		const req = input instanceof Request ? input : new Request(input, init)
+		return req.method === 'GET'
+			? req
+			: new Request(req.url, { ...init, headers: req.headers, method: 'GET' })
+	}
+
+	#read_meta(key) {
+		try {
+			return JSON.parse(sessionStorage.getItem('__navgo_meta:' + key)) || null
+		} catch {
+			return null
+		}
+	}
+	#write_meta(key, meta) {
+		try {
+			sessionStorage.setItem('__navgo_meta:' + key, JSON.stringify(meta))
+		} catch {}
+	}
+
+	async #cache_match(req) {
+		return (await caches.open(this.#cache_name)).match(req)
+	}
+	#parse(res, parse) {
+		if (!parse || parse === 'json') return res.json()
+		if (parse === 'text') return res.text()
+		if (parse === 'blob') return res.blob()
+		if (parse === 'arrayBuffer') return res.arrayBuffer()
+		return parse(res)
+	}
+
+	async #fetch_and_maybe_revalidate(req, sidecar, hints = {}, signal) {
+		const headers = new Headers()
+		if (sidecar?.etag) headers.set('If-None-Match', sidecar.etag)
+		if (sidecar?.last_modified) headers.set('If-Modified-Since', sidecar.last_modified)
+		const res = await fetch(req.url, { signal, headers })
+		if (res.status === 304) {
+			this.#write_meta(req.url, { ...sidecar, ts: Date.now() })
+			return (await this.#cache_match(req)) || res
+		}
+		if (res.ok) {
+			const clone = res.clone()
+			;(await caches.open(this.#cache_name)).put(req, clone)
+			const etag = res.headers.get('ETag')
+			const last_modified = res.headers.get('Last-Modified')
+			const meta = { ts: Date.now(), etag, last_modified, tags: hints?.tags || [] }
+			this.#write_meta(req.url, meta)
+		}
+		return res
+	}
+
+	async #run_loader(route, params, url) {
+		const controller = new AbortController()
+		this.#loader_controller?.abort?.()
+		this.#loader_controller = controller
+		const ctx = {
+			params,
+			url,
+			signal: controller.signal,
+			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
+			invalidate: x => this.invalidate(x),
+		}
+		const plan = (await route[1].loader?.(ctx)) || {}
+		const out = {}
+		const meta = {}
+		await Promise.all(
+			Object.entries(plan).map(async ([as, spec]) => {
+				const { request, init, parse = 'json', cache = {} } = spec || {}
+				const req = this.#to_get_request(request, init)
+				const side = this.#read_meta(req.url)
+				const entry = await this.#cache_match(req)
+				const strat = cache.strategy || 'swr'
+				const ttl = cache.ttl ?? 300000
+				const fresh = side && Date.now() - side.ts <= ttl
+				let res = null
+				let source = 'network'
+				if (strat === 'cache-first' && entry && fresh) {
+					res = entry.clone()
+					source = 'cache'
+				} else if (strat === 'swr' && entry) {
+					res = entry.clone()
+					source = fresh ? 'cache' : 'revalidated'
+					try {
+						await this.#fetch_and_maybe_revalidate(req, side, cache, controller.signal)
+					} catch {}
+				} else if (strat === 'no-store') {
+					res = await fetch(req.url, { signal: controller.signal })
+				} else {
+					res = await this.#fetch_and_maybe_revalidate(
+						req,
+						side,
+						cache,
+						controller.signal,
+					)
+				}
+				out[as] = await this.#parse(res, parse)
+				meta[as] = source
+			}),
+		)
+		return { ...out, __meta: { source: meta, at: Date.now() } }
+	}
+	async invalidate(keys_or_tags) {
+		const arr = Array.isArray(keys_or_tags) ? keys_or_tags : [keys_or_tags]
+		const cache = await caches.open(this.#cache_name)
+		for (const x of arr) {
+			const key = String(x)
+			// delete by exact key
+			const req = new Request(key, { method: 'GET' })
+			if (cache) await cache.delete(req)
+			sessionStorage.removeItem('__navgo_meta:' + key)
+		}
 	}
 
 	/**
@@ -355,7 +467,7 @@ export default class Navgo {
 			const pre = this.#preloads.get(path)
 			data =
 				pre?.data ??
-				(await (pre?.promise || this.#run_loader(hit.route, hit.params)).catch(e => ({
+				(await (pre?.promise || this.#run_loader(hit.route, hit.params, url)).catch(e => ({
 					__error: e,
 				})))
 			this.#preloads.delete(path)
@@ -504,7 +616,11 @@ export default class Navgo {
 		}
 
 		const entry = {}
-		entry.promise = this.#run_loader(hit.route, hit.params).then(data => {
+		entry.promise = this.#run_loader(
+			hit.route,
+			hit.params,
+			new URL(url_raw, location.href),
+		).then(data => {
 			entry.data = data
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })
