@@ -26,7 +26,7 @@
 {/if}
 
 <script module>
-export function loaders() {
+export function loader() {
     return fetch('https://jsonplaceholder.typicode.com/posts').then(r => r.json())
 }
 </script>
@@ -37,7 +37,7 @@ let fetched = $state(null)
 const items = $derived(Array.isArray(data) ? data : (fetched ?? []))
 
 if (!Array.isArray(data)) {
-    loaders()
+    loader()
         .then(json => {
             if (Array.isArray(json)) fetched = json
         })

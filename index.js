@@ -97,12 +97,12 @@ export default class Navgo {
 
 		const st = ev?.state?.__navgo
 		ℹ('[🧭 event:popstate]', st)
-		// Hash-only or state-only change: pathname+search unchanged -> skip loaders
+		// Hash-only or state-only change: pathname+search unchanged -> skip loader
 		const cur = this.#current.url
 		const target = new URL(location.href)
 		if (cur && target.pathname === cur.pathname) {
 			this.#current.url = target
-			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loaders')
+			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loader')
 			this.#apply_scroll(ev)
 			this.route.set(this.#current)
 			return
@@ -110,7 +110,7 @@ export default class Navgo {
 		// Explicit shallow entries (pushState/replaceState) regardless of path
 		if (st?.shallow) {
 			this.#current.url = target
-			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loaders')
+			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
 			this.#apply_scroll(ev)
 			this.route.set(this.#current)
 			return
@@ -254,8 +254,8 @@ export default class Navgo {
 		return true
 	}
 
-	async #run_loaders(route, params) {
-		const ret_val = route[1].loaders?.(params)
+	async #run_loader(route, params) {
+		const ret_val = route[1].loader?.(params)
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
@@ -348,18 +348,18 @@ export default class Navgo {
 		if (nav_id !== this.#nav_active) return
 
 		//
-		// loaders
+		// loader
 		//
 		let data
 		if (hit) {
 			const pre = this.#preloads.get(path)
 			data =
 				pre?.data ??
-				(await (pre?.promise || this.#run_loaders(hit.route, hit.params)).catch(e => ({
+				(await (pre?.promise || this.#run_loader(hit.route, hit.params)).catch(e => ({
 					__error: e,
 				})))
 			this.#preloads.delete(path)
-			ℹ('[🧭 loaders]', pre ? 'using preloaded data' : 'loaded', {
+			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
 				path,
 				preloaded: !!pre,
 				has_error: !!data?.__error,
@@ -476,7 +476,7 @@ export default class Navgo {
 	}
 
 	/**
-	 * Preload loaders for a URL (e.g. to prime cache).
+	 * Preload loader data for a URL (e.g. to prime cache).
 	 * Dedupes concurrent preloads for the same path.
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
@@ -504,7 +504,7 @@ export default class Navgo {
 		}
 
 		const entry = {}
-		entry.promise = this.#run_loaders(hit.route, hit.params).then(data => {
+		entry.promise = this.#run_loader(hit.route, hit.params).then(data => {
 			entry.data = data
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })

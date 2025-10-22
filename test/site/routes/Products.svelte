@@ -69,7 +69,7 @@
 
 <script module>
 // Used by the router before navigating to /products
-export async function loaders() {
+export async function loader() {
     // await new Promise(r => setTimeout(r, 1000))
     return fetch('https://dummyjson.com/products').then(r => r.json())
 }
@@ -99,7 +99,7 @@ function closeProduct() {
 }
 
 if (!data?.products) {
-    loaders()
+    loader()
         .then(json => {
             if (Array.isArray(json?.products)) data = json
         })
