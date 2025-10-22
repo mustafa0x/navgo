@@ -18,8 +18,8 @@ export interface ValidatorHelpers {
 export interface Hooks {
 	/** Validate params with custom per-param validators. Return `false` to skip a match. */
 	param_validators?: Record<string, (value: string | null | undefined) => boolean>
-	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
-	loader?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Declarative loader plan; see Loader types below. */
+	loader?(ctx: LoaderContext): LoaderPlan | Promise<LoaderPlan>
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
@@ -120,6 +120,40 @@ export default class Navgo<T = unknown> {
 	}>
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>
+	/** Invalidate cache entries by canonical keys or tags. */
+	invalidate(keys_or_tags: string | string[]): Promise<void>
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }
+
+// Cache + loader types
+export type CacheStrategy = 'swr' | 'cache-first' | 'network-first' | 'no-store'
+export interface CacheHints {
+	strategy?: CacheStrategy
+	ttl?: number
+	soft_ttl?: number
+	tags?: string[]
+	version?: string | number
+	allow_opaque?: boolean
+}
+export type Parser<T = unknown> =
+	| 'json'
+	| 'text'
+	| 'blob'
+	| 'arrayBuffer'
+	| ((res: Response) => Promise<T>)
+export interface ResourceSpec<T = unknown> {
+	request: string | URL | Request
+	init?: Omit<RequestInit, 'method' | 'body' | 'signal'>
+	parse?: Parser<T>
+	cache?: CacheHints
+	depends_on?: string[]
+}
+export interface LoaderContext {
+	params: Params
+	url: URL
+	signal: AbortSignal
+	fetch(input: RequestInfo, init?: RequestInit): Promise<Response>
+	invalidate(keys_or_tags: string | string[]): Promise<void>
+}
+export type LoaderPlan = Record<string, ResourceSpec>

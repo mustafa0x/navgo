@@ -104,6 +104,12 @@ describe('is_navigating store', () => {
 	it('toggles true/false around goto', async () => {
 		setupStubs('/app/')
 		const events = []
+		const prev_fetch = global.fetch
+		global.fetch = async (_i, _init) =>
+			new Response('ok', {
+				status: 200,
+				headers: { 'Content-Type': 'text/plain', ETag: '1' },
+			})
 		const r = new Navgo(
 			[
 				['/', {}],
@@ -111,7 +117,7 @@ describe('is_navigating store', () => {
 					'/foo',
 					{
 						loader() {
-							return new Promise(res => setTimeout(res, 10))
+							return { d: { request: 'http://example.com/api/d', parse: 'text' } }
 						},
 					},
 				],
@@ -127,6 +133,7 @@ describe('is_navigating store', () => {
 		expect(events[0]).toBe(true)
 		expect(events.at(-1)).toBe(false)
 		r.destroy()
+		global.fetch = prev_fetch
 	})
 
 	it('resets to false on cancel', async () => {
@@ -458,7 +465,7 @@ describe('preload behavior', () => {
 				{
 					loader() {
 						calls.root++
-						return { route: 'root' }
+						return { d: { request: 'http://example.com/api/root', parse: 'json' } }
 					},
 				},
 			],
@@ -467,7 +474,7 @@ describe('preload behavior', () => {
 				{
 					loader() {
 						calls.foo++
-						return { route: 'foo' }
+						return { d: { request: 'http://example.com/api/foo', parse: 'json' } }
 					},
 				},
 			],
@@ -484,6 +491,9 @@ describe('preload behavior', () => {
 
 	it('skips preloading current route and dedupes others', async () => {
 		setupStubs('/app/')
+		const prev_fetch = global.fetch
+		global.fetch = async () =>
+			new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })
 		const { router, calls, navs } = makeRouterWithLoader()
 		await router.init()
 
@@ -501,6 +511,7 @@ describe('preload behavior', () => {
 		// afterNavigate received completion nav for goto
 		expect(navs.at(-1)?.type).toBe('goto')
 		router.destroy()
+		global.fetch = prev_fetch
 	})
 })
 
@@ -591,14 +602,25 @@ describe('stress and edge cases', () => {
 	it('long preload chain: dedupe per path and resolve all', async () => {
 		setupStubs('/app/')
 		const calls = new Map()
+		const prev_fetch = global.fetch
+		global.fetch = async i =>
+			new Response('ok', {
+				status: 200,
+				headers: { 'Content-Type': 'text/plain', ETag: String(i) },
+			})
 		const r = new Navgo(
 			[
 				[
 					'/p/:id',
 					{
-						loader: p => {
-							calls.set(p.id, (calls.get(p.id) || 0) + 1)
-							return new Promise(res => setTimeout(res, 5))
+						loader: ({ params }) => {
+							calls.set(params.id, (calls.get(params.id) || 0) + 1)
+							return {
+								d: {
+									request: `http://example.com/api/${params.id}`,
+									parse: 'text',
+								},
+							}
 						},
 					},
 				],
@@ -614,6 +636,7 @@ describe('stress and edge cases', () => {
 		await Promise.all(urls.map(u => r.preload(u)))
 		for (const id of ids) expect(calls.get(id)).toBe(1)
 		r.destroy()
+		global.fetch = prev_fetch
 	})
 
 	it('hash-only popstate updates url without loader', async () => {
@@ -625,6 +648,8 @@ describe('stress and edge cases', () => {
 		}
 		let load_calls = 0
 		let changed = 0
+		const prev_fetch = global.fetch
+		global.fetch = async () => new Response('ok', { status: 200 })
 		const r = new Navgo(
 			[
 				[
@@ -632,7 +657,7 @@ describe('stress and edge cases', () => {
 					{
 						loader() {
 							load_calls++
-							return { ok: true }
+							return { d: { request: 'http://example.com/api', parse: 'text' } }
 						},
 					},
 				],
@@ -656,6 +681,7 @@ describe('stress and edge cases', () => {
 		expect(changed).toBeGreaterThan(0)
 		r.destroy()
 		global.document = prev_doc
+		global.fetch = prev_fetch
 	})
 
 	it('rapid shallow back/forward zig-zag triggers url_changed without loader', async () => {
@@ -669,6 +695,7 @@ describe('stress and edge cases', () => {
 					{
 						loader() {
 							loads++
+							return { d: { request: 'http://example.com/a', parse: 'text' } }
 						},
 					},
 				],
@@ -677,6 +704,7 @@ describe('stress and edge cases', () => {
 					{
 						loader() {
 							loads++
+							return { d: { request: 'http://example.com/b', parse: 'text' } }
 						},
 					},
 				],
