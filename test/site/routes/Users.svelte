@@ -5,7 +5,7 @@
 import Navgo from '../../../index.js'
 
 export const param_validators = {id: Navgo.validators.int({min: 1})}
-export function loaders(params) {
+export function loader(params) {
     return Promise.resolve({id: params.id, loaded: true})
 }
 </script>

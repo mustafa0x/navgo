@@ -9,7 +9,7 @@ import type { Writable } from 'svelte/store'
 // Custom route metadata type for generics flow
 type Meta = {
 	param_validators?: Record<string, (value: string | null | undefined) => boolean>
-	loaders?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	loader?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 }
 
 const routes: Array<RouteTuple<Meta>> = [

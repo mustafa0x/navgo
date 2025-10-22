@@ -450,13 +450,13 @@ describe('shallow popstate semantics', () => {
 })
 
 describe('preload behavior', () => {
-	function makeRouterWithLoaders() {
+	function makeRouterWithLoader() {
 		const calls = { root: 0, foo: 0 }
 		const routes = [
 			[
 				'/',
 				{
-					loaders() {
+					loader() {
 						calls.root++
 						return { route: 'root' }
 					},
@@ -465,7 +465,7 @@ describe('preload behavior', () => {
 			[
 				'/foo',
 				{
-					loaders() {
+					loader() {
 						calls.foo++
 						return { route: 'foo' }
 					},
@@ -484,7 +484,7 @@ describe('preload behavior', () => {
 
 	it('skips preloading current route and dedupes others', async () => {
 		setupStubs('/app/')
-		const { router, calls, navs } = makeRouterWithLoaders()
+		const { router, calls, navs } = makeRouterWithLoader()
 		await router.init()
 
 		await router.preload('/app/')
@@ -596,7 +596,7 @@ describe('stress and edge cases', () => {
 				[
 					'/p/:id',
 					{
-						loaders: p => {
+						loader: p => {
 							calls.set(p.id, (calls.get(p.id) || 0) + 1)
 							return new Promise(res => setTimeout(res, 5))
 						},
@@ -616,7 +616,7 @@ describe('stress and edge cases', () => {
 		r.destroy()
 	})
 
-	it('hash-only popstate updates url without loaders', async () => {
+	it('hash-only popstate updates url without loader', async () => {
 		setupStubs('/app/foo#top')
 		const prev_doc = global.document
 		global.document = {
@@ -630,7 +630,7 @@ describe('stress and edge cases', () => {
 				[
 					'/foo',
 					{
-						loaders() {
+						loader() {
 							load_calls++
 							return { ok: true }
 						},
@@ -658,7 +658,7 @@ describe('stress and edge cases', () => {
 		global.document = prev_doc
 	})
 
-	it('rapid shallow back/forward zig-zag triggers url_changed without loaders', async () => {
+	it('rapid shallow back/forward zig-zag triggers url_changed without loader', async () => {
 		setupStubs('/app/')
 		let changed = 0
 		let loads = 0
@@ -667,7 +667,7 @@ describe('stress and edge cases', () => {
 				[
 					'/foo',
 					{
-						loaders() {
+						loader() {
 							loads++
 						},
 					},

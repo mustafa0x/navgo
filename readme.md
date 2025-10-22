@@ -24,7 +24,7 @@ const routes = [
         /* id: Navgo.validators.int({ min: 1 }) */
       },
       // load data before URL changes; result goes to after_navigate(...)
-      loaders: params => fetch('/api/admin').then(r => r.json()),
+      loader: params => fetch('/api/admin').then(r => r.json()),
       // per-route guard; cancel synchronously to block nav
       before_route_leave(nav) {
         if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
@@ -97,7 +97,7 @@ Notes:
 - `base`: `string` (default `'/'`)
   - App base pathname. With or without leading/trailing slashes is accepted.
 - `before_navigate`: `(nav: Navigation) => void`
-  - App-level hook called once per navigation attempt after the per-route guard and before loaders/URL update. May call `nav.cancel()` synchronously to prevent navigation.
+  - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation) => void`
   - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `tick`: `() => void | Promise<void>`
@@ -139,7 +139,7 @@ const {route, is_navigating} = router
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
   - Validate params (e.g., `id: Navgo.validators.int({ min: 1 })`). Any `false` result skips the route.
-- loaders?(params): `unknown | Promise | Array<unknown|Promise>`
+- loader?(params): `unknown | Promise | Array<unknown|Promise>`
   - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
@@ -178,7 +178,7 @@ const routes = [
       param_validators: {
         /* ... */
       },
-      loaders: params => fetch('/api/admin/stats').then(r => r.json()),
+      loader: params => fetch('/api/admin/stats').then(r => r.json()),
       before_route_leave(nav) {
         if (nav.type === 'link' || nav.type === 'nav') {
           if (!confirm('Enter admin area?')) nav.cancel()
@@ -218,7 +218,7 @@ The path to format.
 
 Returns: `Promise<void>`
 
-Runs any matching route `loaders` before updating the URL and then updates history. Route processing triggers `after_navigate`. Use `replace: true` to replace the current history entry.
+Runs any matching route `loader` before updating the URL and then updates history. Route processing triggers `after_navigate`. Use `replace: true` to replace the current history entry.
 
 #### uri
 
@@ -284,8 +284,8 @@ Or with a custom id:
 
 Returns: `Promise<unknown | void>`
 
-Preload a route's `loaders` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
-Note: Resolves to `undefined` when the matched route has no `loaders`.
+Preload a route's `loader` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
+Note: Resolves to `undefined` when the matched route has no `loader`.
 
 ### push_state(url?, state?)
 
@@ -335,7 +335,7 @@ For `link` and `goto` navigations that match a route:
         → before_route_leave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
-            → no → run loaders(params)  // may be value, Promise, or Promise[]
+            → no → run loader(params)  // may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → after_navigate(nav)
@@ -344,7 +344,7 @@ For `link` and `goto` navigations that match a route:
 ```
 
 - If a loader throws/rejects, navigation continues and `after_navigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
-- For `popstate`, loaders run before completion so content matches the target entry; this improves scroll restoration. Errors are delivered via `after_navigate` with `nav.to.data = { __error }`.
+- For `popstate`, the route's `loader` runs before completion so content matches the target entry; this improves scroll restoration. Errors are delivered via `after_navigate` with `nav.to.data = { __error }`.
 
 ### Shallow Routing
 
@@ -384,10 +384,10 @@ scroll flow
 
 - `format(uri)` -- normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` -- returns a Promise of `{ route, params } | null` using string/RegExp patterns and validators. Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loaders, pushes/replaces, and completes via `after_navigate`.
+- `goto(uri, { replace? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
 - `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `destroy()` -- removes listeners added by `init()`.
-- `preload(uri)` -- pre-executes a route's `loaders` for a path and caches the result; concurrent calls are deduped.
+- `preload(uri)` -- pre-executes a route's `loader` for a path and caches the result; concurrent calls are deduped.
 - `push_state(url?, state?)` -- shallow push that updates the URL and `history.state` without route processing.
 - `replace_state(url?, state?)` -- shallow replace that updates the URL and `history.state` without route processing.
 
