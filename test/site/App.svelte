@@ -174,8 +174,7 @@ const router = new Navgo(routes, {
     },
 })
 router.init()
-const {route} = router
-const {is_navigating} = router
+const {route, is_navigating} = router
 </script>
 
 <script>
