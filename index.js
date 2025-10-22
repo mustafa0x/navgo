@@ -634,6 +634,7 @@ export default class Navgo {
 		removeEventListener('hashchange', this.#on_hashchange)
 		removeEventListener('scroll', this.#scroll_handler, { capture: true })
 		this.#areas_pos.clear()
+		delete window.navgo
 	}
 
 	#clear_onward_history() {
