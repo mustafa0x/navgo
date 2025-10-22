@@ -24,7 +24,12 @@ const routes = [
         /* id: Navgo.validators.int({ min: 1 }) */
       },
       // load data before URL changes; result goes to after_navigate(...)
-      loader: params => fetch('/api/admin').then(r => r.json()),
+      // loader returns a plan object: { key: { request, parse?, cache? } }
+      loader() {
+        return {
+          admin: { request: '/api/admin', parse: 'json' },
+        }
+      },
       // per-route guard; cancel synchronously to block nav
       before_route_leave(nav) {
         if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
@@ -139,8 +144,17 @@ const {route, is_navigating} = router
 
 - param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
   - Validate params (e.g., `id: Navgo.validators.int({ min: 1 })`). Any `false` result skips the route.
-- loader?(params): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
+- loader?(ctx): `LoaderPlan | Promise<LoaderPlan>`
+  - Declarative plan that Navgo executes and caches. Returns an object where keys become `nav.to.data[key]`.
+  - Shape: `{ [key]: { request: string|URL|Request, parse?: 'json'|'text'|'blob'|'arrayBuffer'|((res)=>Promise), cache?: { strategy?: 'swr'|'cache-first'|'network-first'|'no-store', ttl?: number, soft_ttl?: number, tags?: string[], version?: string|number } } }`
+  - `ctx` provides: `{ params, url, signal, fetch, invalidate }`.
+  - Defaults:
+    - `parse`: `'json'`
+    - `cache.strategy`: `'swr'`
+    - `cache.ttl`: `300000` ms (5 minutes)
+    - `cache.soft_ttl`: unset (optional)
+    - `cache.tags`: `[]`
+    - Request is coerced to `GET` (body ignored); ETag/Last-Modified used when present
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`
@@ -178,7 +192,11 @@ const routes = [
       param_validators: {
         /* ... */
       },
-      loader: params => fetch('/api/admin/stats').then(r => r.json()),
+      loader() {
+        return {
+          stats: { request: '/api/admin/stats', parse: 'json', cache: { strategy: 'swr', ttl: 300000 } },
+        }
+      },
       before_route_leave(nav) {
         if (nav.type === 'link' || nav.type === 'nav') {
           if (!confirm('Enter admin area?')) nav.cancel()
@@ -335,8 +353,8 @@ For `link` and `goto` navigations that match a route:
         → before_route_leave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
-            → no → run loader(params)  // may be value, Promise, or Promise[]
-            → cache data by formatted path
+            → no → run loader(ctx)   // returns { key: spec }
+            → cache/parse each spec into data
             → history.push/replaceState(new URL)
             → after_navigate(nav)
             → tick()?                 // optional app-provided await before scroll

@@ -9,7 +9,9 @@ import type { Writable } from 'svelte/store'
 // Custom route metadata type for generics flow
 type Meta = {
 	param_validators?: Record<string, (value: string | null | undefined) => boolean>
-	loader?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	loader?: (
+		ctx: import('navgo').LoaderContext,
+	) => import('navgo').LoaderPlan | Promise<import('navgo').LoaderPlan>
 }
 
 const routes: Array<RouteTuple<Meta>> = [
