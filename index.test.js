@@ -110,7 +110,7 @@ describe('is_navigating store', () => {
 				[
 					'/foo',
 					{
-						loaders() {
+						loader() {
 							return new Promise(res => setTimeout(res, 10))
 						},
 					},
@@ -651,7 +651,7 @@ describe('stress and edge cases', () => {
 		const ev = new Event('popstate')
 		ev.state = { __navgo: { idx: 0 } }
 		global.dispatchEvent(ev)
-		// loaders should not run, but url_changed should fire
+		// loader should not run, but url_changed should fire
 		expect(load_calls).toBe(1)
 		expect(changed).toBeGreaterThan(0)
 		r.destroy()
@@ -675,7 +675,7 @@ describe('stress and edge cases', () => {
 				[
 					'/bar',
 					{
-						loaders() {
+						loader() {
 							loads++
 						},
 					},
@@ -699,7 +699,7 @@ describe('stress and edge cases', () => {
 			ev.state = { __navgo: { idx, shallow: true } }
 			global.dispatchEvent(ev)
 		}
-		// no loaders should have executed (all shallow)
+		// no loader should have executed (all shallow)
 		expect(loads).toBe(0)
 		// url_changed fired for each popstate
 		expect(changed).toBeGreaterThanOrEqual(8)

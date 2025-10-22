@@ -39,7 +39,7 @@ const routes = [
 const router = new Navgo(routes, {
   base: '/',
   before_navigate(nav) {
-    // app-level hook before loaders/URL update; may cancel
+    // app-level hook before loader/URL update; may cancel
     console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
   },
   after_navigate(nav) {
