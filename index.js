@@ -429,7 +429,7 @@ export default class Navgo {
 	}
 
 	/**
-	 * Shallow push — updates the URL/state but DOES NOT call handlers or loaders.
+	 * Shallow push — updates the URL/state but DOES NOT call handlers or loader.
 	 */
 	#commit_shallow(url, state, replace) {
 		const u = new URL(url || location.href, location.href)
