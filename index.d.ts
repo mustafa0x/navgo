@@ -7,23 +7,23 @@ export type Params = Record<string, string | null | undefined>
 
 /** Built-in validator helpers shape. */
 export interface ValidatorHelpers {
-	int(_opts?: {
+	int(opts?: {
 		min?: number | null
 		max?: number | null
-	}): (_value: string | null | undefined) => boolean
-	one_of(_values: Iterable<string>): (_value: string | null | undefined) => boolean
+	}): (value: string | null | undefined) => boolean
+	one_of(values: Iterable<string>): (value: string | null | undefined) => boolean
 }
 
 /** Optional per-route hooks recognized by Navgo. */
 export interface Hooks {
 	/** Validate params with custom per-param validators. Return `false` to skip a match. */
-	param_validators?: Record<string, (_value: string | null | undefined) => boolean>
+	param_validators?: Record<string, (value: string | null | undefined) => boolean>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
-	loader?(_params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	loader?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
-	validate?(_params: Params): boolean | Promise<boolean>
+	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
-	before_route_leave?(_nav: Navigation): void
+	before_route_leave?(nav: Navigation): void
 }
 
 export interface NavigationTarget {
@@ -78,9 +78,9 @@ export interface Options {
 	/** Attach instance to window as `window.navgo`. Default true. */
 	attach_to_window?: boolean
 	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
-	before_navigate?(_nav: Navigation): void
+	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
-	after_navigate?(_nav: Navigation): void
+	after_navigate?(nav: Navigation): void
 	/** Optional hook awaited after `after_navigate` and before scroll handling.
 	 *  Useful for UI frameworks (e.g., Svelte) to flush DOM updates so anchor/top
 	 *  scrolling lands on the correct elements.
@@ -90,24 +90,24 @@ export interface Options {
 	 *  Triggers for shallow pushes/replaces, hash changes, popstate-shallow, 404s, and full navigations.
 	 *  Receives the router's current snapshot (eg `{ url: URL, route: RouteTuple|null, params: Params }`).
 	 */
-	url_changed?(_payload: any): void
+	url_changed?(payload: any): void
 }
 
 /** Navgo default export: class-based router. */
 export default class Navgo<T = unknown> {
-	constructor(_routes?: Array<RouteTuple<T>>, _opts?: Options)
+	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
 	/** Format `url` relative to the configured base. */
-	format(_url: string): string | false
+	format(url: string): string | false
 	/** SvelteKit-like navigation that runs `loader` before updating the URL. */
-	goto(_url: string, _opts?: { replace?: boolean }): Promise<void>
+	goto(url: string, opts?: { replace?: boolean }): Promise<void>
 	/** Shallow push — updates URL/state without triggering handlers. */
-	push_state(_url?: string | URL, _state?: any): void
+	push_state(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */
-	replace_state(_url?: string | URL, _state?: any): void
+	replace_state(url?: string | URL, state?: any): void
 	/** Manually preload `loader` for a URL (deduped). */
-	preload(_url: string): Promise<unknown | void>
+	preload(url: string): Promise<unknown | void>
 	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
-	match(_url: string): Promise<MatchResult<T> | null>
+	match(url: string): Promise<MatchResult<T> | null>
 	/** Attach history + click listeners and immediately process current location. */
 	init(): Promise<void>
 	/** Remove listeners installed by `init()`. */

@@ -9,7 +9,7 @@ export default defineConfig([
 	...tseslint.configs.recommended,
 	...svelte.configs['flat/recommended'],
 	{
-		ignores: ['dist/**', 'test-results/**', 'test/types/basic.ts'],
+		ignores: ['dist/**', 'test-results/**', 'test/types/basic.ts', '**/*.d.ts'],
 	},
 	{
 		files: ['playwright.config.*', 'test/server.js', 'index.test.js', 'eslint.config.*'],
