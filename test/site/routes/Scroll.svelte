@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Scroll — Navgo</title>
+  <meta name="description" content="Scroll restoration and hash navigation demo" />
+</svelte:head>
+
 <h1 class="mb-2 text-2xl font-semibold">Scroll Areas</h1>
 <p class="mb-4 opacity-80">Scroll the pane, navigate away, then use Back to verify restoration.</p>
 

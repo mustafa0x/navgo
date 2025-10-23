@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Posts — Navgo</title>
+  <meta name="description" content="Blog posts list and details example" />
+</svelte:head>
+
 <h1 class="mb-2 text-2xl font-semibold">Posts</h1>
 <p class="opacity-80">A demo list fetched from JSONPlaceholder posts.</p>
 

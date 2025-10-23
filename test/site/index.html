@@ -45,9 +45,9 @@
     }
   </style>
   <script type="module">
-    import {mount} from 'svelte'
+    import {hydrate} from 'svelte'
     import App from './App.svelte'
-    mount(App, {target: document.body})
+    hydrate(App, {target: document.body})
   </script>
 
   <body></body>
