@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Products — Navgo</title>
+  <meta name="description" content="Products grid with modal details and query params" />
+</svelte:head>
+
 <h1 class="mb-2 text-2xl font-semibold">Products</h1>
 <p class="mb-4 opacity-80">A demo list fetched from DummyJSON products.</p>
 

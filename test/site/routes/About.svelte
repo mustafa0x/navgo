@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>About — Navgo</title>
+  <meta name="description" content="About page with anchors and sections" />
+</svelte:head>
+
 <h1 class="mb-4 text-2xl font-semibold" id="top">About</h1>
 <p class="mb-4 opacity-80">
     This page includes anchors and extra content to test scroll restoration and hash navigation.

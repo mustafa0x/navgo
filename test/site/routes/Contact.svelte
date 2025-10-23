@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Contact — Navgo</title>
+  <meta name="description" content="Contact form demo with basic validation" />
+</svelte:head>
+
 <h1 class="mb-4 text-2xl font-semibold">Contact</h1>
 
 {#if submitted}

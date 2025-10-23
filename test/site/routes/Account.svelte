@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Account — Navgo</title>
+  <meta name="description" content="Account route showing a simple leave guard" />
+</svelte:head>
+
 <h1 class="mb-2 text-2xl font-semibold">Account</h1>
 <p class="mb-4 opacity-80">
     This route demonstrates a simple confirmation guard via <code>before_route_leave</code>.

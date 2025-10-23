@@ -1,3 +1,8 @@
+<svelte:head>
+  <title>Users — Navgo</title>
+  <meta name="description" content="User detail page with :id param validation" />
+</svelte:head>
+
 <h1 class="mb-2 text-2xl font-semibold">User #{params.id}</h1>
 <p class="opacity-80">This page validates the <code>:id</code> param via a validator.</p>
 
