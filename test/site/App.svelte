@@ -60,7 +60,9 @@
 
     <main class="mx-auto max-w-3xl p-6">
         {#if Component}
-            <Component params={$route.params} data={route_data} />
+            {#key path}
+                <Component params={$route.params} data={route_data} />
+            {/key}
         {:else}
             <h1 class="mb-2 text-2xl font-semibold">Home</h1>
             <p class="opacity-80">Welcome. Use the navigation to try routes.</p>
@@ -127,61 +129,13 @@
 </div>
 <div class="request-indicator" class:active={$is_navigating}></div>
 
-<script module>
-import Navgo from '../../index.js'
-
-
-import * as ProductsRoute from './routes/Products.svelte'
-import * as PostsRoute from './routes/Posts.svelte'
-import * as ContactRoute from './routes/Contact.svelte'
-import * as AboutRoute from './routes/About.svelte'
-import * as AccountRoute from './routes/Account.svelte'
-import * as UsersRoute from './routes/Users.svelte'
-import * as FilesRoute from './routes/Files.svelte'
-import * as ScrollRoute from './routes/Scroll.svelte'
-
-// prettier-ignore
-/** @type {Array<[string|RegExp, any]>} */
-const routes = [
-  ['/', {}],
-  ['/products', ProductsRoute],
-  ['/posts', PostsRoute],
-  ['/contact', ContactRoute],
-  ['/about', AboutRoute],
-  ['/account', AccountRoute],
-  ['/users/:id', UsersRoute],
-  ['/files/*', FilesRoute],
-  ['/scroll', ScrollRoute],
-]
-let Component = $state()
-let is_404 = $state(false)
-let route_data = $state(null)
-
-const router = new Navgo(routes, {
-    async after_navigate(nav) {
-        is_404 = nav.to?.data?.__error?.status === 404
-        if (is_404) {
-            console.log('404 for', nav.to.url.pathname)
-            return
-        }
-        console.log('afterNavigate', nav)
-        const uri = router.format(nav.to.url.pathname)
-
-        route_data = nav.to.data ?? null
-        Component = nav.to.route?.[1]?.default || null
-        // document.startViewTransition(() => {
-        // })
-    },
-})
-router.init()
-const {route, is_navigating} = router
-</script>
-
 <script>
 import {onDestroy} from 'svelte'
 
+let {Component = null, route_data = null, is_404 = false} = $props()
+const router = window.navgo
+const {route, is_navigating} = router
 const path = $derived($route.url?.pathname)
-onDestroy(() => {
-    router.destroy()
-})
+
+onDestroy(() => router.destroy())
 </script>
