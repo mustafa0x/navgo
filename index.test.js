@@ -4,8 +4,35 @@ import Navgo from './index.js'
 
 global.history = {}
 
+function install_caches_mock() {
+	const buckets = new Map() // cacheName -> Map<url, Response>
+	if (!global.caches) {
+		global.caches = {
+			open: async name => {
+				const bucket =
+					buckets.get(name) || (buckets.set(name, new Map()), buckets.get(name))
+				return {
+					async match(req) {
+						const url = req instanceof Request ? req.url : String(req)
+						return bucket.get(url) // undefined when miss
+					},
+					async put(req, res) {
+						const url = req instanceof Request ? req.url : String(req)
+						bucket.set(url, res.clone())
+					},
+					async delete(req) {
+						const url = req instanceof Request ? req.url : String(req)
+						return bucket.delete(url)
+					},
+				}
+			},
+		}
+	}
+}
+
 // Shared test stubs for browser-ish globals
 function setupStubs(base = '/') {
+	install_caches_mock()
 	const listeners = new Map()
 	// emulate window alias in Node env for code paths that reference it
 	// tests assume browser-only library; alias keeps code minimal
@@ -511,6 +538,130 @@ describe('preload behavior', () => {
 		// afterNavigate received completion nav for goto
 		expect(navs.at(-1)?.type).toBe('goto')
 		router.destroy()
+		global.fetch = prev_fetch
+	})
+})
+
+describe('SWR revalidate delivery', () => {
+	it('notifies on_revalidate and updates nav.to.data for active route', async () => {
+		setupStubs('/app/')
+		// seed cache with v1
+		const url = 'http://example.com/api/foo'
+		const cache = await global.caches.open('navgo')
+		await cache.put(
+			url,
+			new Response('{"v":1}', {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}),
+		)
+		global.sessionStorage.setItem(
+			'__navgo_meta:' + url,
+			JSON.stringify({ ts: Date.now() - 1000 }),
+		)
+
+		// network returns v2
+		const prev_fetch = global.fetch
+		global.fetch = async () =>
+			new Response('{"v":2}', {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+
+		let updates = 0
+		let latest = null
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { d: { request: url, parse: 'json' } }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav, on_revalidate) {
+					latest = nav.to?.data?.d?.v
+					on_revalidate?.(() => {
+						updates++
+						latest = nav.to?.data?.d?.v
+					})
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		expect(latest).toBe(1)
+		await tick(2)
+		expect(updates).toBeGreaterThanOrEqual(1)
+		expect(latest).toBe(2)
+		r.destroy()
+		global.fetch = prev_fetch
+	})
+
+	it('does not notify after navigating away (out-of-order safe)', async () => {
+		setupStubs('/app/')
+		const url = 'http://example.com/api/slow'
+		const cache = await global.caches.open('navgo')
+		await cache.put(
+			url,
+			new Response('{"v":1}', {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			}),
+		)
+		global.sessionStorage.setItem(
+			'__navgo_meta:' + url,
+			JSON.stringify({ ts: Date.now() - 1000 }),
+		)
+
+		const prev_fetch = global.fetch
+		global.fetch = async () =>
+			new Promise(res =>
+				setTimeout(
+					() =>
+						res(
+							new Response('{"v":9}', {
+								status: 200,
+								headers: { 'Content-Type': 'application/json' },
+							}),
+						),
+					20,
+				),
+			)
+
+		let updates = 0
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { d: { request: url, parse: 'json' } }
+						},
+					},
+				],
+				['/bar', {}],
+			],
+			{
+				base: '/app',
+				after_navigate(_nav, on_revalidate) {
+					on_revalidate?.(() => {
+						updates++
+					})
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		// navigate away before slow revalidate completes
+		await r.goto('/app/bar')
+		await tick(3)
+		expect(updates).toBe(0)
+		r.destroy()
 		global.fetch = prev_fetch
 	})
 })

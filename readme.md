@@ -47,7 +47,7 @@ const router = new Navgo(routes, {
     // app-level hook before loader/URL update; may cancel
     console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
   },
-  after_navigate(nav) {
+  after_navigate(nav, on_revalidate) {
     // called after routing completes; nav.to.data holds loader result
     if (nav.to?.data?.__error?.status === 404) {
       console.log('404 for', nav.to.url.pathname)
@@ -55,6 +55,11 @@ const router = new Navgo(routes, {
     }
 
     console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
+
+    // optional: subscribe to SWR revalidate for this navigation
+    on_revalidate?.(() => {
+      console.log('revalidated', nav.to?.url.pathname, nav.to?.data)
+    })
   },
   // let your framework flush DOM before scroll
   // e.g. in Svelte: `import { tick } from 'svelte'`

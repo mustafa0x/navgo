@@ -11,7 +11,7 @@ export default class Navgo {
 		preload_delay: 20,
 		preload_on_hover: true,
 		before_navigate: undefined,
-		after_navigate: undefined,
+		after_navigate: () => {},
 		url_changed: undefined,
 		tick,
 		attach_to_window: true,
@@ -42,6 +42,7 @@ export default class Navgo {
 	/** @type {AbortController|null} */
 	#loader_controller = null
 	#cache_name = 'navgo'
+	#revalidation = null
 
 	route = writable({ url: new URL(location.href), route: null, params: {} })
 	is_navigating = writable(false)
@@ -281,13 +282,6 @@ export default class Navgo {
 	async #cache_match(req) {
 		return (await caches.open(this.#cache_name)).match(req)
 	}
-	#parse(res, parse) {
-		if (!parse || parse === 'json') return res.json()
-		if (parse === 'text') return res.text()
-		if (parse === 'blob') return res.blob()
-		if (parse === 'arrayBuffer') return res.arrayBuffer()
-		return parse(res)
-	}
 
 	async #fetch_and_maybe_revalidate(req, sidecar, hints = {}, signal) {
 		const headers = new Headers()
@@ -309,7 +303,7 @@ export default class Navgo {
 		return res
 	}
 
-	async #run_loader(route, params, url) {
+	async #run_loader(route, params, url, nav_id) {
 		const controller = new AbortController()
 		this.#loader_controller?.abort?.()
 		this.#loader_controller = controller
@@ -340,9 +334,10 @@ export default class Navgo {
 				} else if (strat === 'swr' && entry) {
 					res = entry.clone()
 					source = fresh ? 'cache' : 'revalidated'
-					try {
-						await this.#fetch_and_maybe_revalidate(req, side, cache, controller.signal)
-					} catch {}
+					this.#fetch_and_maybe_revalidate(req, side, cache, controller.signal)
+						.then(r => r[parse]())
+						.then(v => this.#emit_revalidate(nav_id, as, v))
+						.catch(() => {})
 				} else if (strat === 'no-store') {
 					res = await fetch(req.url, { signal: controller.signal })
 				} else {
@@ -353,11 +348,23 @@ export default class Navgo {
 						controller.signal,
 					)
 				}
-				out[as] = await this.#parse(res, parse)
+				out[as] = await res[parse]()
 				meta[as] = source
 			}),
 		)
 		return { ...out, __meta: { source: meta, at: Date.now() } }
+	}
+	#emit_revalidate(id, as, value) {
+		const r = this.#revalidation
+		if (id !== this.#nav_active || !r || r.id !== id || !r.nav?.to?.data) return
+		try {
+			r.nav.to.data[as] = value
+			r.updated = true
+			for (const fn of r.cbs || [])
+				try {
+					fn()
+				} catch {}
+		} catch {}
 	}
 	async invalidate(keys_or_tags) {
 		const arr = Array.isArray(keys_or_tags) ? keys_or_tags : [keys_or_tags]
@@ -406,6 +413,7 @@ export default class Navgo {
 	 * @returns {Promise<void>}
 	 */
 	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
+		this.#revalidation = null
 		const nav_id = ++this.#nav_seq
 		this.#nav_active = nav_id
 		const info = this.#resolve_url_and_path(url_raw)
@@ -467,9 +475,11 @@ export default class Navgo {
 			const pre = this.#preloads.get(path)
 			data =
 				pre?.data ??
-				(await (pre?.promise || this.#run_loader(hit.route, hit.params, url)).catch(e => ({
-					__error: e,
-				})))
+				(await (pre?.promise || this.#run_loader(hit.route, hit.params, url, nav_id)).catch(
+					e => ({
+						__error: e,
+					}),
+				))
 			this.#preloads.delete(path)
 			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
 				path,
@@ -521,8 +531,14 @@ export default class Navgo {
 			},
 			event: ev_param,
 		})
+		// revalidation subscription for this nav
+		this.#revalidation = { id: nav_id, nav, cbs: new Set(), updated: false }
 		// await so that apply_scroll is after potential async work
-		await this.#opts.after_navigate?.(nav)
+		await this.#opts.after_navigate(nav, cb => {
+			if (nav_id !== this.#nav_active) return
+			this.#revalidation?.cbs?.add?.(cb)
+			if (this.#revalidation?.updated) queueMicrotask?.(cb)
+		})
 
 		if (nav_id !== this.#nav_active) return
 		ℹ('[🧭 navigate]', hit ? 'done' : 'done (404)', {
