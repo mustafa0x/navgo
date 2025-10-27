@@ -80,7 +80,7 @@ export interface Options {
 	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
 	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
-	after_navigate?(nav: Navigation): void
+	after_navigate?(nav: Navigation, on_revalidate?: (cb: () => void) => void): void | Promise<void>
 	/** Optional hook awaited after `after_navigate` and before scroll handling.
 	 *  Useful for UI frameworks (e.g., Svelte) to flush DOM updates so anchor/top
 	 *  scrolling lands on the correct elements.
