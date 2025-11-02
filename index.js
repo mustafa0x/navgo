@@ -409,6 +409,8 @@ export default class Navgo {
 			},
 			event: ev_param,
 		})
+		this.route.set(this.#current)
+
 		// await so that apply_scroll is after potential async work
 		await this.#opts.after_navigate?.(nav)
 
@@ -424,7 +426,6 @@ export default class Navgo {
 		await this.#opts.tick?.()
 
 		this.#apply_scroll(nav)
-		this.route.set(this.#current)
 		if (nav_id === this.#nav_active) this.is_navigating.set(false)
 	}
 
