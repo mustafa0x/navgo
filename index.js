@@ -426,7 +426,7 @@ export default class Navgo {
 		await this.#opts.tick?.()
 
 		this.#apply_scroll(nav)
-		if (nav_id === this.#nav_active) this.is_navigating.set(false)
+		this.is_navigating.set(false)
 	}
 
 	/**
