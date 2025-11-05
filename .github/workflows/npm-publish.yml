@@ -1,0 +1,40 @@
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jdx/mise-action@v3
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+
+      - name: Determine dist-tag
+        id: tag
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-beta.* ]]; then
+            echo "value=beta" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "value=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm (Trusted Publishing)
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+        run: |
+          npm publish --access public --provenance --tag "${{ steps.tag.outputs.value }}"
