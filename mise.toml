@@ -1,5 +1,7 @@
 [tools]
 lefthook = 'latest'
+node = '24'
+pnpm = '10'
 
 [tasks.svcheck]
 run = '''
