@@ -255,7 +255,7 @@ export default class Navgo {
 	}
 
 	async #run_loader(route, params) {
-		const ret_val = route[1].loader?.(params)
+		const ret_val = route[1].loader?.(params, route)
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
