@@ -596,8 +596,9 @@ describe('stress and edge cases', () => {
 				[
 					'/p/:id',
 					{
-						loader: p => {
-							calls.set(p.id, (calls.get(p.id) || 0) + 1)
+						loader: loader_ctx => {
+							const id = loader_ctx.params.id
+							calls.set(id, (calls.get(id) || 0) + 1)
 							return new Promise(res => setTimeout(res, 5))
 						},
 					},

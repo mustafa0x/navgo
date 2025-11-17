@@ -254,8 +254,8 @@ export default class Navgo {
 		return true
 	}
 
-	async #run_loader(route, params) {
-		const ret_val = route[1].loader?.(params, route)
+	async #run_loader(route, url, params) {
+		const ret_val = route[1].loader?.({ route_entry: route, url, params })
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
@@ -355,7 +355,7 @@ export default class Navgo {
 			const pre = this.#preloads.get(path)
 			data =
 				pre?.data ??
-				(await (pre?.promise || this.#run_loader(hit.route, hit.params)).catch(e => ({
+				(await (pre?.promise || this.#run_loader(hit.route, url, hit.params)).catch(e => ({
 					__error: e,
 				})))
 			this.#preloads.delete(path)
@@ -482,7 +482,7 @@ export default class Navgo {
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
 	async preload(url_raw) {
-		const { path } = this.#resolve_url_and_path(url_raw) || {}
+		const { path, url } = this.#resolve_url_and_path(url_raw) || {}
 		if (!path) {
 			ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
 			return Promise.resolve()
@@ -505,7 +505,7 @@ export default class Navgo {
 		}
 
 		const entry = {}
-		entry.promise = this.#run_loader(hit.route, hit.params).then(data => {
+		entry.promise = this.#run_loader(hit.route, url, hit.params).then(data => {
 			entry.data = data
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })
