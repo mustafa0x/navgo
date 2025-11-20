@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      es-toolkit:
+        specifier: ^1.42.0
+        version: 1.42.0
       regexparam:
         specifier: ^3.0.0
         version: 3.0.0
@@ -782,6 +785,9 @@ packages:
 
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
+
+  es-toolkit@1.42.0:
+    resolution: {integrity: sha512-SLHIyY7VfDJBM8clz4+T2oquwTQxEzu263AyhVK4jREOAwJ+8eebaa4wM3nlvnAqhDrMm2EsA6hWHaQsMPQ1nA==}
 
   esbuild@0.25.10:
     resolution: {integrity: sha512-9RiGKvCwaqxO2owP61uQ4BgNborAQskMR6QusfWzQqv7AZOg5oGehdY2pRJMTKuwxd1IDBP4rSbI5lHzU7SMsQ==}
@@ -2211,6 +2217,8 @@ snapshots:
       tapable: 2.2.3
 
   es-module-lexer@1.7.0: {}
+
+  es-toolkit@1.42.0: {}
 
   esbuild@0.25.10:
     optionalDependencies:

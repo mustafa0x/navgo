@@ -1,3 +1,4 @@
+import { throttle } from 'es-toolkit'
 import { parse } from 'regexparam'
 import { tick } from 'svelte'
 import { writable } from 'svelte/store'
@@ -733,27 +734,6 @@ export default class Navgo {
 			const set = new Set(values)
 			return v => set.has(v)
 		},
-	}
-}
-
-function throttle(fn, ms) {
-	let t,
-		last = 0
-	return e => {
-		const now = Date.now()
-		if (now - last >= ms) {
-			last = now
-			fn(e)
-		} else {
-			clearTimeout(t)
-			t = setTimeout(
-				() => {
-					last = Date.now()
-					fn(e)
-				},
-				ms - (now - last),
-			)
-		}
 	}
 }
 
