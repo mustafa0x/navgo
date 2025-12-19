@@ -747,6 +747,33 @@ describe('tick option', () => {
 	})
 })
 
+describe('scroll_to_top option', () => {
+	it('skips default top scroll when disabled', async () => {
+		setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{ base: '/app', scroll_to_top: false },
+		)
+		await r.init()
+		const prev_scroll = global.scrollTo
+		prev_scroll(0, 321)
+		let scroll_calls = 0
+		global.scrollTo = (x = 0, y = 0) => {
+			scroll_calls++
+			prev_scroll(x, y)
+		}
+		await r.goto('/app/foo')
+		await tick(2)
+		expect(scroll_calls).toBe(0)
+		expect(global.scrollY).toBe(321)
+		global.scrollTo = prev_scroll
+		r.destroy()
+	})
+})
+
 function make_pane() {
 	const listeners = new Map()
 	return {

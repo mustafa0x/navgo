@@ -102,6 +102,8 @@ Notes:
   - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
 - `tick`: `() => void | Promise<void>`
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
+- `scroll_to_top`: `boolean` (default `true`)
+  - When `false`, skips the default top scroll for non-hash navigations.
 - `url_changed`: `(snapshot: any) => void`
   - Fires on every URL change -- shallow `push_state`/`replace_state`, hash changes, `popstate` shallow entries, 404s, and full navigations. (deprecated; subscribe to `.route` instead.)
   - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.

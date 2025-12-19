@@ -86,6 +86,8 @@ export interface Options {
 	 *  scrolling lands on the correct elements.
 	 */
 	tick?: () => void | Promise<void>
+	/** When `false`, do not scroll to top on non-hash navigations. Default true. */
+	scroll_to_top?: boolean
 	/** Global hook fired whenever the URL changes.
 	 *  Triggers for shallow pushes/replaces, hash changes, popstate-shallow, 404s, and full navigations.
 	 *  Receives the router's current snapshot (eg `{ url: URL, route: RouteTuple|null, params: Params }`).

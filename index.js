@@ -15,6 +15,7 @@ export default class Navgo {
 		after_navigate: undefined,
 		url_changed: undefined,
 		tick,
+		scroll_to_top: true,
 		attach_to_window: true,
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
@@ -139,7 +140,7 @@ export default class Navgo {
 				if (pos) {
 					scrollTo(pos.x, pos.y)
 					ℹ('[🧭 scroll]', 'restore hash-back', { idx: this.#route_idx, ...pos })
-				} else {
+				} else if (this.#opts.scroll_to_top) {
 					// no saved position for previous entry — default to top
 					scrollTo(0, 0)
 					ℹ('[🧭 scroll]', 'hash-back -> top')
@@ -700,8 +701,10 @@ export default class Navgo {
 				return
 			}
 			// 3) Default: scroll to top for new navigations
-			scrollTo(0, 0)
-			ℹ('[🧭 scroll]', 'top')
+			if (this.#opts.scroll_to_top) {
+				scrollTo(0, 0)
+				ℹ('[🧭 scroll]', 'top')
+			}
 		})
 	}
 
