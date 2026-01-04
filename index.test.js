@@ -352,6 +352,48 @@ describe('$.match', () => {
 		if (!res) throw new Error('expected a match')
 		if (res.route !== r2) throw new Error('async validate(false) did not skip the route')
 	})
+
+	it('params validators run before coercers; validate sees coerced params', async () => {
+		const r1 = [
+			'users/:id',
+			{
+				param_rules: {
+					id: { validator: v => typeof v === 'string', coercer: v => Number(v) },
+				},
+				validate: p => typeof p.id === 'number' && p.id > 5,
+			},
+		]
+		const r2 = ['users/:id', {}]
+		const ctx = new Navgo([r1, r2])
+
+		const a = await ctx.match('/users/6')
+		if (!a) throw new Error('expected a match')
+		expect(a.route).toBe(r1)
+		expect(a.params.id).toBe(6)
+
+		const b = await ctx.match('/users/3')
+		if (!b) throw new Error('expected a match')
+		expect(b.route).toBe(r2)
+	})
+
+	it('param coercers apply to RegExp named groups', async () => {
+		const r = [
+			/^\/articles\/(?<year>[0-9]{4})$/,
+			{ param_rules: { year: { coercer: v => Number(v) } } },
+		]
+		const ctx = new Navgo([r])
+		const res = await ctx.match('/articles/2024')
+		if (!res) throw new Error('expected a match')
+		expect(res.params.year).toBe(2024)
+	})
+
+	it('merges route hooks and prefers third item', async () => {
+		const r = ['users/:id', { validate: () => false }, { validate: () => true }]
+		const ctx = new Navgo([r])
+		const res = await ctx.match('/users/3')
+		if (!res) throw new Error('expected a match')
+		expect(res.route).toBe(r)
+	})
 })
 
 describe('before_route_leave', () => {

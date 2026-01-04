@@ -202,7 +202,7 @@ export default class Navgo {
 			will_unload: true,
 			event: ev,
 		})
-		this.#current.route?.[1]?.before_route_leave?.(nav)
+		this.#get_hooks(this.#current.route)?.before_route_leave?.(nav)
 		if (nav.cancelled) {
 			ℹ('[🧭 navigate]', 'cancelled by before_route_leave during unload')
 			ev.preventDefault()
@@ -247,17 +247,19 @@ export default class Navgo {
 			: null
 	}
 
-	#check_param_validators(param_validators, params) {
-		for (const k in param_validators) {
-			const fn = param_validators[k]
-			if (typeof fn !== 'function') continue
-			if (!fn(params[k])) return false
-		}
-		return true
+	#get_hooks(route) {
+		if (!route) return {}
+		const a = route[1]
+		const b = route[2]
+		if (!b) return a || {}
+		const hooks = { ...(a || {}), ...b }
+		if (a?.param_rules || b?.param_rules)
+			hooks.param_rules = { ...a?.param_rules, ...b?.param_rules }
+		return hooks
 	}
 
 	async #run_loader(route, url, params) {
-		const ret_val = route[1].loader?.({ route_entry: route, url, params })
+		const ret_val = this.#get_hooks(route)?.loader?.({ route_entry: route, url, params })
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
@@ -318,7 +320,7 @@ export default class Navgo {
 		//
 		// before_route_leave
 		//
-		this.#current.route?.[1]?.before_route_leave?.(nav)
+		this.#get_hooks(this.#current.route)?.before_route_leave?.(nav)
 		if (nav.cancelled) {
 			// use history.go to cancel the nav, and jump back to where we are
 			if (is_popstate) {
@@ -537,15 +539,28 @@ export default class Navgo {
 			}
 
 			// per-route validators and optional async validate()
-			const hooks = obj.data[1]
-			if (
-				hooks.param_validators &&
-				!this.#check_param_validators(hooks.param_validators, params)
-			) {
-				ℹ('[🧭 match]', 'skip: param_validators', {
-					pattern: obj.data?.[0],
-				})
-				continue
+			const hooks = this.#get_hooks(obj.data)
+			if (hooks.param_rules) {
+				let ok = true
+				for (const k in hooks.param_rules) {
+					const param_rule = hooks.param_rules[k]
+					const param_validator =
+						typeof param_rule === 'function' ? param_rule : param_rule?.validator
+					if (typeof param_validator === 'function' && !param_validator(params[k])) {
+						ok = false
+						break
+					}
+				}
+				if (!ok) {
+					ℹ('[🧭 match]', 'skip: param_rules', { pattern: obj.data?.[0] })
+					continue
+				}
+				for (const k in hooks.param_rules) {
+					const param_rule = hooks.param_rules[k]
+					const param_coercer =
+						typeof param_rule === 'function' ? null : param_rule?.coercer
+					if (typeof param_coercer === 'function') params[k] = param_coercer(params[k])
+				}
 			}
 			if (hooks.validate && !(await hooks.validate(params))) {
 				ℹ('[🧭 match]', 'skip: validate', { pattern: obj.data?.[0] })

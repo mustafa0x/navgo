@@ -3,23 +3,31 @@
  * For string patterns, missing optional params are `null`.
  * For RegExp named groups, missing groups may be `undefined`.
  */
-export type Params = Record<string, string | null | undefined>
+export type RawParam = string | null | undefined
+export type Params = Record<string, any>
 
 /** Built-in validator helpers shape. */
 export interface ValidatorHelpers {
-	int(opts?: {
-		min?: number | null
-		max?: number | null
-	}): (value: string | null | undefined) => boolean
-	one_of(values: Iterable<string>): (value: string | null | undefined) => boolean
+	int(opts?: { min?: number | null; max?: number | null }): (value: RawParam) => boolean
+	one_of(values: Iterable<string>): (value: RawParam) => boolean
+}
+
+export type ParamRule =
+	| ((value: RawParam) => boolean)
+	| { validator?: (value: RawParam) => boolean; coercer?: (value: RawParam) => any }
+
+export interface LoaderArgs {
+	route_entry: RouteTuple
+	url: URL
+	params: Params
 }
 
 /** Optional per-route hooks recognized by Navgo. */
 export interface Hooks {
-	/** Validate params with custom per-param validators. Return `false` to skip a match. */
-	param_validators?: Record<string, (value: string | null | undefined) => boolean>
+	/** Validate and/or coerce params (validator runs before coercer). */
+	param_rules?: Record<string, ParamRule>
 	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
-	loader?(params: Params): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	loader?(args: LoaderArgs): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
@@ -46,8 +54,8 @@ export interface Navigation {
 	cancel(): void
 }
 
-/** A route tuple: [pattern, data?]. The `data` may include {@link Hooks}. */
-export type RouteTuple<T = unknown> = [pattern: string | RegExp, data: T]
+/** A route tuple: [pattern, data?, extra?]. The `data`/`extra` may include {@link Hooks}. */
+export type RouteTuple<T = unknown, U = unknown> = [pattern: string | RegExp, data?: T, extra?: U]
 
 /** Result of calling `router.match(url)` */
 export interface MatchResult<T = unknown> {

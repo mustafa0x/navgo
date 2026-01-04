@@ -139,6 +139,7 @@ import * as AccountRoute from './routes/Account.svelte'
 import * as UsersRoute from './routes/Users.svelte'
 import * as FilesRoute from './routes/Files.svelte'
 import * as ScrollRoute from './routes/Scroll.svelte'
+import * as CoerceRoute from './routes/Coerce.svelte'
 
 // prettier-ignore
 /** @type {Array<[string|RegExp, any]>} */
@@ -150,6 +151,16 @@ const routes = [
   ['/about', AboutRoute],
   ['/account', AccountRoute],
   ['/users/:id', UsersRoute],
+  [
+    '/coerce/:id',
+    CoerceRoute,
+    {
+      validate: () => true,
+      param_rules: {
+        id: {validator: Navgo.validators.int({min: 1}), coercer: v => (v == null ? v : Number(v))},
+      },
+    },
+  ],
   ['/files/*', FilesRoute],
   ['/scroll', ScrollRoute],
 ]

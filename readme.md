@@ -17,17 +17,17 @@ const routes = [
   [/articles\/(?<year>[0-9]{4})/, {}],
   [/privacy|privacy-policy/, {}],
   [
-    '/admin',
+    '/admin/:id',
     {
-      // constrain params with built-ins or your own
-      param_validators: {
-        /* id: Navgo.validators.int({ min: 1 }) */
+      // constrain/coerce params
+      param_rules: {
+        id: { validator: Navgo.validators.int({ min: 1 }), coercer: Number },
       },
       // load data before URL changes; result goes to after_navigate(...)
-      loader: params => fetch('/api/admin').then(r => r.json()),
+      loader: ({ params }) => fetch(`/api/admin/${params.id}`).then(r => r.json()),
       // per-route guard; cancel synchronously to block nav
       before_route_leave(nav) {
-        if ((nav.type === 'link' || nav.type === 'nav') && !confirm('Enter admin?')) {
+        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
           nav.cancel()
         }
       },
@@ -74,9 +74,9 @@ Returns: `Router`
 
 #### `routes`
 
-Type: `Array<[pattern: string | RegExp, data: any]>`
+Type: `Array<[pattern: string | RegExp, data?: any, extra?: any]>`
 
-Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). Pass `{}` when no hooks are needed. Navgo returns this tuple back to you unchanged via `onRoute`.
+Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). The optional third item is extra hooks and is merged with the second item (third wins; `param_rules` are merged by key).
 
 Supported pattern types:
 
@@ -139,9 +139,10 @@ const {route, is_navigating} = router
 
 ### Route Hooks
 
-- param_validators?: `Record<string, (value: string|null|undefined) => boolean>`
-  - Validate params (e.g., `id: Navgo.validators.int({ min: 1 })`). Any `false` result skips the route.
-- loader?(params): `unknown | Promise | Array<unknown|Promise>`
+- param_rules?: `Record<string, ((value: string|null|undefined) => boolean) | { validator?: (value: string|null|undefined) => boolean; coercer?: (value: string|null|undefined) => any }>`
+  - Single place for param rules. If the value is a function, it is treated as a validator.
+  - Validators run on raw params; coercers run after validators and may transform params before `validate(...)`/`loader`.
+- loader?({ params }): `unknown | Promise | Array<unknown|Promise>`
   - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
@@ -152,7 +153,7 @@ The `Navigation` object contains:
 
 ```ts
 {
-  type: 'link' | 'nav' | 'popstate' | 'leave',
+  type: 'link' | 'goto' | 'popstate' | 'leave',
   from: { url, params, route } | null,
   to:   { url, params, route } | null,
   will_unload: boolean,
@@ -177,12 +178,12 @@ const routes = [
   [
     '/admin',
     {
-      param_validators: {
-        /* ... */
+      param_rules: {
+        /* id: Navgo.validators.int({ min: 1 }) */
       },
-      loader: params => fetch('/api/admin/stats').then(r => r.json()),
+      loader: ({ params }) => fetch('/api/admin/stats').then(r => r.json()),
       before_route_leave(nav) {
-        if (nav.type === 'link' || nav.type === 'nav') {
+        if (nav.type === 'link' || nav.type === 'goto') {
           if (!confirm('Enter admin area?')) nav.cancel()
         }
       },
@@ -325,7 +326,7 @@ The router passes the type to your route-level `before_route_leave(nav)` hook.
 - Named params from string patterns populate `params` with `string` values; optional params that do not appear are `null`.
 - Wildcards use the `'*'` key.
 - RegExp named groups also populate `params`; omitted groups can be `undefined`.
-- If `data.param_validators` is present, each `params[k]` is validated; any `false` result skips that route.
+- If `data.param_rules` is present, each `params[k]` validator runs first, then coercers run to transform params.
 - If `data.validate(params)` returns or resolves to `false`, the route is also skipped.
 
 ### Data Flow
@@ -337,7 +338,7 @@ For `link` and `goto` navigations that match a route:
         → before_route_leave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
-            → no → run loader(params)  // may be value, Promise, or Promise[]
+            → no → run loader({ params })  // may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → after_navigate(nav)
@@ -398,7 +399,7 @@ scroll flow
 - `Navgo.validators.int({ min?, max? })` -- `true` iff the value is an integer within optional bounds.
 - `Navgo.validators.one_of(iterable)` -- `true` iff the value is in the provided set.
 
-Attach validators via a route tuple's `data.param_validators` to constrain matches.
+Attach validators via a route tuple's `data.param_rules` rules.
 
 # Credits
 

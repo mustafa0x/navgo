@@ -3,18 +3,25 @@
 // Type-level smoke tests for the public API using the new class-based signature.
 // These are compile-only tests; they should typecheck without emitting JS.
 
-import Navgo, { type RouteTuple, type Options, type Params, type MatchResult } from 'navgo'
+import Navgo, {
+	type RouteTuple,
+	type Options,
+	type Params,
+	type MatchResult,
+	type RawParam,
+	type LoaderArgs,
+} from 'navgo'
 import type { Writable } from 'svelte/store'
 
 // Custom route metadata type for generics flow
 type Meta = {
-	param_validators?: Record<string, (value: string | null | undefined) => boolean>
-	loader?: (params: Params) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	param_rules?: Record<string, (value: RawParam) => boolean>
+	loader?: (args: LoaderArgs) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
 }
 
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
-	['users/:id', { param_validators: { id: Navgo.validators.int({ min: 1 }) } }],
+	['users/:id', { param_rules: { id: Navgo.validators.int({ min: 1 }) } }],
 	[/^\/posts\/(?<slug>[^/]+)$/, {}],
 ]
 
