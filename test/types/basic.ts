@@ -39,11 +39,6 @@ const opts: Options = {
 		const p: Params = to.params
 		const d: unknown = to.data
 	},
-	url_changed(cur) {
-		const u: URL = cur.url
-		const m: RouteTuple<Meta> | null = cur.route
-		const p: Params = cur.params
-	},
 }
 
 // New class-based constructor

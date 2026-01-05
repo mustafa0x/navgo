@@ -682,7 +682,7 @@ describe('stress and edge cases', () => {
 			querySelector: () => null,
 		}
 		let load_calls = 0
-		let changed = 0
+		let changes = 0
 		const r = new Navgo(
 			[
 				[
@@ -695,30 +695,30 @@ describe('stress and edge cases', () => {
 					},
 				],
 			],
-			{
-				base: '/app',
-				url_changed() {
-					changed++
-				},
-			},
+			{ base: '/app' },
 		)
+		const unsub = r.route.subscribe(() => {
+			changes++
+		})
 		await r.init()
+		changes = 0
 		expect(load_calls).toBe(1)
 		// simulate hash-only change on same path
 		global.location = new URL('http://example.com/app/foo#bar')
 		const ev = new Event('popstate')
 		ev.state = { __navgo: { idx: 0 } }
 		global.dispatchEvent(ev)
-		// loader should not run, but url_changed should fire
+		// loader should not run, but route store should update
 		expect(load_calls).toBe(1)
-		expect(changed).toBeGreaterThan(0)
+		expect(changes).toBeGreaterThan(0)
+		unsub()
 		r.destroy()
 		global.document = prev_doc
 	})
 
-	it('rapid shallow back/forward zig-zag triggers url_changed without loader', async () => {
+	it('rapid shallow back/forward zig-zag updates route store without loader', async () => {
 		setupStubs('/app/')
-		let changed = 0
+		let changes = 0
 		let loads = 0
 		const r = new Navgo(
 			[
@@ -739,18 +739,17 @@ describe('stress and edge cases', () => {
 					},
 				],
 			],
-			{
-				base: '/app',
-				url_changed() {
-					changed++
-				},
-			},
+			{ base: '/app' },
 		)
+		const unsub = r.route.subscribe(() => {
+			changes++
+		})
 		await r.init()
 		// add three shallow entries
 		r.push_state('/app/foo') // idx 1
 		r.push_state('/app/bar') // idx 2
 		r.push_state('/app/foo') // idx 3
+		changes = 0
 		// zig-zag between 1 and 2 repeatedly via popstate
 		for (const idx of [2, 1, 2, 1, 2, 1, 2, 1]) {
 			const ev = new Event('popstate')
@@ -759,8 +758,9 @@ describe('stress and edge cases', () => {
 		}
 		// no loader should have executed (all shallow)
 		expect(loads).toBe(0)
-		// url_changed fired for each popstate
-		expect(changed).toBeGreaterThanOrEqual(8)
+		// route store should update for each popstate
+		expect(changes).toBeGreaterThanOrEqual(8)
+		unsub()
 		r.destroy()
 	})
 })

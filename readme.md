@@ -54,11 +54,6 @@ const router = new Navgo(routes, {
   // let your framework flush DOM before scroll
   // e.g. in Svelte: `import { tick } from 'svelte'`
   tick: tick,
-  url_changed(cur) {
-    // fires on shallow/hash/popstate-shallow/404 and full navigations
-    // `cur` is the router snapshot: { url: URL, route, params }
-    console.log('url_changed', cur.url.href)
-  },
 })
 
 // Long-lived router: history + <a> bindings
@@ -104,10 +99,6 @@ Notes:
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `scroll_to_top`: `boolean` (default `true`)
   - When `false`, skips the default top scroll for non-hash navigations.
-- `url_changed`: `(snapshot: any) => void`
-  - Fires on every URL change -- shallow `push_state`/`replace_state`, hash changes, `popstate` shallow entries, 404s, and full navigations. (deprecated; subscribe to `.route` instead.)
-  - Receives the router's current snapshot: an object like `{ url: URL, route: RouteTuple|null, params: Params }`.
-  - The snapshot type is intentionally `any` and may evolve without a breaking change.
 - `preload_delay`: `number` (default `20`)
   - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)
@@ -143,7 +134,7 @@ const {route, is_navigating} = router
   - Single place for param rules. If the value is a function, it is treated as a validator.
   - Validators run on raw params; coercers run after validators and may transform params before `validate(...)`/`loader`.
 - loader?({ params }): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`nav`. Results are cached per formatted path and forwarded to `after_navigate`.
+  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `after_navigate`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`
@@ -167,7 +158,7 @@ The `Navigation` object contains:
 
 - Router calls `before_navigate` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
-  - For `link`/`nav`, it stops before URL change.
+  - For `link`/`goto`, it stops before URL change.
   - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
   - For `leave`, cancellation triggers the native “Leave site?” dialog (behavior is browser-controlled).
 
@@ -370,7 +361,7 @@ To enable `popstate` cancellation, Navgo stores a monotonic `idx` in `history.st
 Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
 
 - Saves the current scroll position for the active history index.
-- On `link`/`nav` (after route commit):
+- On `link`/`goto` (after route commit):
   - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
   - Otherwise, scroll to the top `(0, 0)`.
 - On `popstate`: restore the saved position for the target history index; if not found but there is a `#hash`, scroll to the anchor instead.

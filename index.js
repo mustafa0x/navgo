@@ -13,7 +13,6 @@ export default class Navgo {
 		preload_on_hover: true,
 		before_navigate: undefined,
 		after_navigate: undefined,
-		url_changed: undefined,
 		tick,
 		scroll_to_top: true,
 		attach_to_window: true,
@@ -594,11 +593,6 @@ export default class Navgo {
 				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
 			pat.data = r // keep original tuple: [pattern, hooks, ...]
 			return pat
-		})
-
-		// TODO: deprecated, remove later
-		this.route.subscribe(() => {
-			this.#opts.url_changed?.(this.#current)
 		})
 
 		ℹ('[🧭 init]', {
