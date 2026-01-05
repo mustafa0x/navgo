@@ -15,6 +15,7 @@ export default class Navgo {
 		after_navigate: undefined,
 		tick,
 		scroll_to_top: true,
+		aria_current: false,
 		attach_to_window: true,
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
@@ -106,6 +107,7 @@ export default class Navgo {
 			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loader')
 			this.#apply_scroll(ev)
 			this.route.set(this.#current)
+			this.#update_active_links()
 			return
 		}
 		// Explicit shallow entries (pushState/replaceState) regardless of path
@@ -114,6 +116,7 @@ export default class Navgo {
 			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
 			this.#apply_scroll(ev)
 			this.route.set(this.#current)
+			this.#update_active_links()
 			return
 		}
 
@@ -149,6 +152,7 @@ export default class Navgo {
 		// update current URL snapshot and notify
 		this.#current.url = new URL(location.href)
 		this.route.set(this.#current)
+		this.#update_active_links()
 	}
 
 	/** @type {any} */
@@ -244,6 +248,19 @@ export default class Navgo {
 			this.#base_rgx.test(a.pathname)
 			? { a, href }
 			: null
+	}
+
+	#update_active_links() {
+		if (!this.#opts.aria_current) return
+		const cur = this.format(this.#current.url?.pathname)
+		if (!cur) return
+		for (const a of document.querySelectorAll('a[href]')) {
+			const href = a.getAttribute('href')
+			if (href[0] === '#') continue
+			const link_path = href && this.#resolve_url_and_path(href)?.path
+			if (link_path === cur) a.setAttribute('aria-current', 'page')
+			else if (a.getAttribute('aria-current') === 'page') a.removeAttribute('aria-current')
+		}
 	}
 
 	#get_hooks(route) {
@@ -435,6 +452,7 @@ export default class Navgo {
 		// allow frameworks to flush DOM before scrolling
 		await this.#opts.tick?.()
 
+		this.#update_active_links()
 		this.#apply_scroll(nav)
 		this.is_navigating.set(false)
 	}
@@ -475,6 +493,7 @@ export default class Navgo {
 		// update current URL snapshot and notify
 		this.#current.url = u
 		this.route.set(this.#current)
+		this.#update_active_links()
 	}
 
 	/** @param {string|URL} [url] @param {any} [state] */

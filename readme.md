@@ -99,6 +99,8 @@ Notes:
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `scroll_to_top`: `boolean` (default `true`)
   - When `false`, skips the default top scroll for non-hash navigations.
+- `aria_current`: `boolean` (default `false`)
+  - When `true`, sets `aria-current="page"` on active in-app links.
 - `preload_delay`: `number` (default `20`)
   - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)

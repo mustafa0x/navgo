@@ -96,6 +96,8 @@ export interface Options {
 	tick?: () => void | Promise<void>
 	/** When `false`, do not scroll to top on non-hash navigations. Default true. */
 	scroll_to_top?: boolean
+	/** When `true`, sets `aria-current="page"` on active in-app links. Default false. */
+	aria_current?: boolean
 }
 
 /** Navgo default export: class-based router. */

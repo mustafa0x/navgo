@@ -3,39 +3,27 @@
         <nav class="mx-auto flex max-w-3xl items-center justify-center gap-1 p-3">
             <a
                 href="/"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Home</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Home</a
             >
             <a
                 href="/products"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/products'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Products</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Products</a
             >
             <a
                 href="/posts"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/posts'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Posts</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Posts</a
             >
             <a
                 href="/contact"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/contact'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Contact</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Contact</a
             >
             <a
                 href="/about"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/about'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">About</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">About</a
             >
             <a
                 href="/account"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/account'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Account</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Account</a
             >
             <a
                 href="/users/42"
@@ -51,9 +39,7 @@
             >
             <a
                 href="/scroll"
-                class="rounded-md px-3 py-1.5 hover:bg-gray-100 {path === '/scroll'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700'}">Scroll</a
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Scroll</a
             >
         </nav>
     </header>
@@ -78,6 +64,7 @@
         <div class="grid gap-4 sm:grid-cols-2">
             <section class="rounded-md border border-gray-200 bg-white p-4">
                 <h2 class="mb-2 font-semibold">Programmatic</h2>
+                <p class="mb-2 text-xs opacity-70">aria-current is enabled for active links.</p>
                 <div class="flex flex-wrap gap-2">
                     <button
                         class="rounded bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700"
@@ -183,6 +170,7 @@ const router = new Navgo(routes, {
         // document.startViewTransition(() => {
         // })
     },
+    aria_current: true,
 })
 router.init()
 const {route, is_navigating} = router
@@ -196,3 +184,14 @@ onDestroy(() => {
     router.destroy()
 })
 </script>
+
+<style>
+    :global(nav a[aria-current='page']) {
+        text-decoration: underline;
+        text-decoration-thickness: 2px;
+        text-underline-offset: 4px;
+        /* bg-blue-50 text-blue-700 */
+        background-color: #eff6ff;
+        color: #1d4ed8;
+    }
+</style>

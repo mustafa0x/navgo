@@ -179,6 +179,49 @@ describe('attach_to_window option', () => {
 
 // ---
 
+describe('aria_current option', () => {
+	it('sets aria-current on active link when enabled', async () => {
+		setupStubs('/')
+		const make_link = path => {
+			const url = new URL(path, 'http://example.com')
+			const attrs = { href: url.pathname }
+			return {
+				host: url.host,
+				pathname: url.pathname,
+				target: '',
+				download: '',
+				getAttribute: k => attrs[k] ?? null,
+				setAttribute: (k, v) => (attrs[k] = String(v)),
+				removeAttribute: k => delete attrs[k],
+			}
+		}
+		const links = [make_link('/'), make_link('/foo'), make_link('/bar')]
+		const prev_doc = global.document
+		global.document = {
+			...prev_doc,
+			querySelectorAll: () => links,
+		}
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+				['/bar', {}],
+			],
+			{ aria_current: true },
+		)
+		await r.init()
+		expect(links[0].getAttribute('aria-current')).toBe('page')
+		expect(links[1].getAttribute('aria-current')).toBe(null)
+		await r.goto('/foo')
+		expect(links[1].getAttribute('aria-current')).toBe('page')
+		expect(links[0].getAttribute('aria-current')).toBe(null)
+		r.destroy()
+		global.document = prev_doc
+	})
+})
+
+// ---
+
 describe('$.format', () => {
 	it('empty base', () => {
 		let foo = new Navgo()
