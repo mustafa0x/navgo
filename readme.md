@@ -8,16 +8,22 @@ $ pnpm install --dev navgo
 
 ```js
 import Navgo from 'navgo'
+import {mount} from 'svelte'
 
-// Define routes up front (strings or RegExp)
+import App from './App.svelte'
+import * as HomeRoute from './routes/Home.svelte'
+import * as ReaderRoute from './routes/Reader.svelte'
+import * as AccountRoute from './routes/Account.svelte'
+import * as AdminRoute from './routes/Admin.svelte'
+import * as DebugRoute from './routes/Debug.svelte'
+
 const routes = [
-  ['/', {}],
-  ['/users/:username', {}],
-  ['/books/*', {}],
-  [/articles\/(?<year>[0-9]{4})/, {}],
-  [/privacy|privacy-policy/, {}],
+  ['/', HomeRoute],
+  ['/:book_id', ReaderRoute],
+  ['/account', AccountRoute],
   [
     '/admin/:id',
+    AdminRoute,
     {
       // constrain/coerce params
       param_rules: {
@@ -34,31 +40,32 @@ const routes = [
     },
   ],
 ]
+if (window.__DEBUG__) routes.push(['/debug', DebugRoute])
 
-// Create router with options + callbacks
+const props = $state({
+  component: null,
+  route_data: null,
+  is_404: false,
+})
+
+function after_navigate(nav) {
+  props.is_404 = nav.to?.data?.__error?.status === 404
+  props.route_data = nav.to?.data ?? null
+  props.component = nav.to?.route?.[1]?.default || null
+}
+
 const router = new Navgo(routes, {
-  base: '/',
   before_navigate(nav) {
     // app-level hook before loader/URL update; may cancel
     console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
   },
-  after_navigate(nav) {
-    // called after routing completes; nav.to.data holds loader result
-    if (nav.to?.data?.__error?.status === 404) {
-      console.log('404 for', nav.to.url.pathname)
-      return
-    }
-
-    console.log('after_navigate', nav.to?.url.pathname, nav.to?.data)
-  },
-  // let your framework flush DOM before scroll
-  // e.g. in Svelte: `import { tick } from 'svelte'`
-  tick: tick,
+  after_navigate,
 })
 
 // Long-lived router: history + <a> bindings
 // Also immediately processes the current location
 router.init()
+mount(App, {target: document.body, props})
 ```
 
 ## API
@@ -169,15 +176,15 @@ Example:
 ```js
 const routes = [
   [
-    '/admin',
+    '/account/:account_id',
     {
       param_rules: {
-        /* id: Navgo.validators.int({ min: 1 }) */
+        account_id: {validator: Navgo.validators.int({min: 1}), coercer: Number},
       },
-      loader: ({ params }) => fetch('/api/admin/stats').then(r => r.json()),
+      loader: ({params}) => fetch(`/api/account/${params.account_id}`).then(r => r.json()),
       before_route_leave(nav) {
         if (nav.type === 'link' || nav.type === 'goto') {
-          if (!confirm('Enter admin area?')) nav.cancel()
+          if (!confirm('Leave account settings?')) nav.cancel()
         }
       },
     },
