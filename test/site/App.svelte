@@ -142,7 +142,7 @@ import * as ScrollRoute from './routes/Scroll.svelte'
 import * as CoerceRoute from './routes/Coerce.svelte'
 
 // prettier-ignore
-/** @type {Array<[string|RegExp, any]>} */
+/** @type {Array<[string|RegExp, any, any?]>} */
 const routes = [
   ['/', {}],
   ['/products', ProductsRoute],

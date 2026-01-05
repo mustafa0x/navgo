@@ -387,6 +387,21 @@ describe('$.match', () => {
 		expect(res.params.year).toBe(2024)
 	})
 
+	it('merges param_rules fields for same key', async () => {
+		const r = [
+			'users/:id',
+			{ param_rules: { id: v => typeof v === 'string' && /^\d+$/.test(v) } },
+			{ param_rules: { id: { coercer: Number } } },
+		]
+		const ctx = new Navgo([r])
+		const a = await ctx.match('/users/7')
+		if (!a) throw new Error('expected a match')
+		expect(a.params.id).toBe(7)
+
+		const b = await ctx.match('/users/nope')
+		expect(b).toBe(null)
+	})
+
 	it('merges route hooks and prefers third item', async () => {
 		const r = ['users/:id', { validate: () => false }, { validate: () => true }]
 		const ctx = new Navgo([r])

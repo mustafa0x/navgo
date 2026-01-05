@@ -253,8 +253,15 @@ export default class Navgo {
 		const b = route[2]
 		if (!b) return a || {}
 		const hooks = { ...(a || {}), ...b }
-		if (a?.param_rules || b?.param_rules)
-			hooks.param_rules = { ...a?.param_rules, ...b?.param_rules }
+		const ar = a?.param_rules
+		const br = b?.param_rules
+		if (ar || br) {
+			const out = {}
+			const norm = r => (typeof r === 'function' ? { validator: r } : r || {})
+			for (const k in ar || {}) out[k] = norm(ar[k])
+			for (const k in br || {}) out[k] = { ...out[k], ...norm(br[k]) }
+			hooks.param_rules = out
+		}
 		return hooks
 	}
 
