@@ -11,6 +11,7 @@ import Navgo from 'navgo'
 import {mount} from 'svelte'
 
 import App from './App.svelte'
+import * as AppLayout from './layouts/App.svelte'
 import * as HomeRoute from './routes/Home.svelte'
 import * as ReaderRoute from './routes/Reader.svelte'
 import * as AccountRoute from './routes/Account.svelte'
@@ -18,40 +19,46 @@ import * as AdminRoute from './routes/Admin.svelte'
 import * as DebugRoute from './routes/Debug.svelte'
 
 const routes = [
-  ['/', HomeRoute],
-  ['/:book_id', ReaderRoute],
-  ['/account', AccountRoute],
-  [
-    '/admin/:id',
-    AdminRoute,
-    {
-      // constrain/coerce params
-      param_rules: {
-        id: { validator: Navgo.validators.int({ min: 1 }), coercer: Number },
-      },
-      // load data before URL changes; result goes to after_navigate(...)
-      loader: ({ params }) => fetch(`/api/admin/${params.id}`).then(r => r.json()),
-      // per-route guard; cancel synchronously to block nav
-      before_route_leave(nav) {
-        if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
-          nav.cancel()
-        }
-      },
-    },
-  ],
+  {
+    // optional layout wrapper (router just forwards it via nav.to.matches)
+    layout: AppLayout,
+    // optional shared loader for all children
+    loader: () => fetch('/api/session').then(r => r.json()),
+    routes: [
+      ['/', HomeRoute],
+      ['/:book_id', ReaderRoute],
+      ['/account', AccountRoute],
+      [
+        '/admin/:id',
+        AdminRoute,
+        {
+          // constrain/coerce params
+          param_rules: {
+            id: { validator: Navgo.validators.int({ min: 1 }), coercer: Number },
+          },
+          // load data before URL changes; result goes to after_navigate(...)
+          loader: ({ params }) => fetch(`/api/admin/${params.id}`).then(r => r.json()),
+          // per-route guard; cancel synchronously to block nav
+          before_route_leave(nav) {
+            if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
+              nav.cancel()
+            }
+          },
+        },
+      ],
+    ],
+  },
 ]
-if (window.__DEBUG__) routes.push(['/debug', DebugRoute])
+if (window.__DEBUG__) routes[0].routes.push(['/debug', DebugRoute])
 
 const props = $state({
-  component: null,
-  route_data: null,
+  matches: [],
   is_404: false,
 })
 
 function after_navigate(nav) {
   props.is_404 = nav.to?.data?.__error?.status === 404
-  props.route_data = nav.to?.data ?? null
-  props.component = nav.to?.route?.[1]?.default || null
+  props.matches = nav.to?.matches ?? []
 }
 
 const router = new Navgo(routes, {
@@ -76,9 +83,30 @@ Returns: `Router`
 
 #### `routes`
 
-Type: `Array<[pattern: string | RegExp, data?: any, extra?: any]>`
+Type: `Array<RouteTuple | RouteGroup>`
 
-Each route is a tuple whose first item is the pattern and whose second item is hooks (see “Route Hooks”). The optional third item is extra hooks and is merged with the second item (third wins; `param_rules` are merged by key).
+Navgo accepts **flat** routes (tuples) _and/or_ nested **route groups** (objects) for layouts + shared loaders.
+
+**RouteTuple**
+
+Each route tuple is `[pattern, data?, extra?]` whose first item is the pattern and whose second item is hooks (see “Route Hooks”). The optional third item is extra hooks and is merged with the second item (third wins; `param_rules` are merged by key).
+
+**RouteGroup**
+
+Each route group is an object:
+
+```js
+{
+  layout?: any,
+  loader?: (args) => unknown | Promise | Array<unknown|Promise>,
+  before_route_leave?: (nav) => void,
+  routes: Array<RouteTuple|RouteGroup>
+}
+```
+
+- `layout` is forwarded into `nav.to.matches` (the router does not render anything).
+- `loader` runs for every matched child route in the group.
+- `before_route_leave` runs when leaving a matched route within the group.
 
 Supported pattern types:
 
@@ -119,7 +147,7 @@ Important: Navgo only processes routes that match your `base` path.
 
 ### Instance stores
 
-- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params }>`
+- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[] }>`
   - Readonly property that holds the current snapshot.
   - Subscribe to react to changes; Navgo updates it on every URL change.
 - `router.is_navigating` -- `Writable<boolean>`
@@ -154,8 +182,8 @@ The `Navigation` object contains:
 ```ts
 {
   type: 'link' | 'goto' | 'popstate' | 'leave',
-  from: { url, params, route } | null,
-  to:   { url, params, route } | null,
+  from: { url, params, route, matches } | null,
+  to:   { url, params, route, matches, data } | null,
   will_unload: boolean,
   cancelled: boolean,
   event?: Event,
@@ -163,9 +191,18 @@ The `Navigation` object contains:
 }
 ```
 
+`nav.to.matches` is ordered **outer → inner** and contains both layouts and the final route:
+
+```js
+for (const m of nav.to?.matches || []) {
+  if (m.type === 'layout') console.log('layout', m.layout, m.data)
+  if (m.type === 'route') console.log('route', m.route?.[0], m.data)
+}
+```
+
 #### Order & cancellation:
 
-- Router calls `before_navigate` on the current route (leave).
+- Router calls `before_route_leave` on the current route (leave).
 - Call `nav.cancel()` synchronously to cancel.
   - For `link`/`goto`, it stops before URL change.
   - For `popstate`, cancellation causes an automatic `history.go(...)` to revert to the previous index.
@@ -317,11 +354,11 @@ This section explains, in detail, how navigation is processed: matching, hooks, 
 - `popstate` -- browser back/forward.
 - `leave` -- page is unloading (refresh, external navigation, tab close) via `beforeunload`.
 
-The router passes the type to your route-level `before_route_leave(nav)` hook.
+The router passes the type to your `before_route_leave(nav)` hooks (route tuples and route groups).
 
 ### Matching and Params
 
-- A route is a `[pattern, data?]` tuple.
+- A matchable route is a `[pattern, data?]` tuple. Route groups are wrappers that add layouts/shared loaders.
 - `pattern` can be a string (compiled with `regexparam`) or a `RegExp`.
 - Named params from string patterns populate `params` with `string` values; optional params that do not appear are `null`.
 - Wildcards use the `'*'` key.
@@ -338,7 +375,7 @@ For `link` and `goto` navigations that match a route:
         → before_route_leave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
-            → no → run loader({ params })  // may be value, Promise, or Promise[]
+            → no → run loaders (layouts → route)  // each may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → after_navigate(nav)

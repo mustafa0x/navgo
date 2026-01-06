@@ -22,6 +22,36 @@ export interface LoaderArgs {
 	params: Params
 }
 
+export interface Match<T = unknown> {
+	/** Matched layout/group wrapper or the final route tuple. */
+	type: 'layout' | 'route'
+	/** Present when `type === 'layout'`. */
+	layout?: any
+	/** Present when `type === 'route'`. */
+	route?: RouteTuple<T>
+	/** Loader result for this match when available (e.g. on navigation completion). */
+	data?: unknown
+}
+
+export interface RouteGroup<T = unknown> {
+	/** Optional layout component/module (router does not render; it just forwards this). */
+	layout?: any
+	/** Shared loader for all child routes. Same args/return shape as route loader. */
+	loader?(args: LoaderArgs): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Optional guard, called when leaving a matched route within this group. */
+	before_route_leave?(nav: Navigation): void
+	/** Nested routes (route tuples and/or more groups). */
+	routes: Array<RouteEntry<T>>
+}
+
+/** A route config entry: either a route tuple, or a group wrapper. */
+export type RouteEntry<T = unknown> = RouteTuple<T> | RouteGroup<T>
+
+export interface PreloadBundle<T = unknown> {
+	matches: Match<T>[]
+	data?: unknown
+}
+
 /** Optional per-route hooks recognized by Navgo. */
 export interface Hooks {
 	/** Validate and/or coerce params (validator runs before coercer). */
@@ -34,11 +64,13 @@ export interface Hooks {
 	before_route_leave?(nav: Navigation): void
 }
 
-export interface NavigationTarget {
+export interface NavigationTarget<T = unknown> {
 	url: URL
 	params: Params
 	/** The matched route tuple from your original `routes` list; `null` when unmatched (e.g. external). */
-	route: RouteTuple | null
+	route: RouteTuple<T> | null
+	/** Ordered matches for nested layouts and the final route (outer → inner). */
+	matches?: Match<T>[]
 	/** Optional data from route loader when available. */
 	data?: unknown
 }
@@ -61,6 +93,7 @@ export type RouteTuple<T = unknown, U = unknown> = [pattern: string | RegExp, da
 export interface MatchResult<T = unknown> {
 	route: RouteTuple<T>
 	params: Params
+	matches: Match<T>[]
 }
 
 // For convenience in docs/types, alias the class instance type
@@ -102,7 +135,7 @@ export interface Options {
 
 /** Navgo default export: class-based router. */
 export default class Navgo<T = unknown> {
-	constructor(routes?: Array<RouteTuple<T>>, opts?: Options)
+	constructor(routes?: Array<RouteEntry<T>>, opts?: Options)
 	/** Format `url` relative to the configured base. */
 	format(url: string): string | false
 	/** SvelteKit-like navigation that runs `loader` before updating the URL. */
@@ -124,6 +157,7 @@ export default class Navgo<T = unknown> {
 		url: URL
 		route: RouteTuple<T> | null
 		params: Params
+		matches: Match<T>[]
 	}>
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>

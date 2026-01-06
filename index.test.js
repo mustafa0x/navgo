@@ -604,6 +604,135 @@ describe('preload behavior', () => {
 	})
 })
 
+// ---
+
+describe('layouts and shared loaders', () => {
+	it('match returns ordered matches for nested groups', async () => {
+		const ctx = new Navgo([
+			{
+				layout: { default: 'L1' },
+				routes: [
+					['/', {}],
+					{
+						layout: { default: 'L2' },
+						routes: [['/foo', {}]],
+					},
+				],
+			},
+		])
+		const res = await ctx.match('/foo')
+		if (!res) throw new Error('expected a match')
+		expect(res.matches.length).toBe(3)
+		expect(res.matches[0].type).toBe('layout')
+		expect(res.matches[0].layout?.default).toBe('L1')
+		expect(res.matches[1].layout?.default).toBe('L2')
+		expect(res.matches[2].type).toBe('route')
+		expect(res.matches[2].route?.[0]).toBe('/foo')
+	})
+
+	it('runs layout loaders and forwards data into nav.to.matches', async () => {
+		setupStubs('/app/')
+		const calls = []
+		const navs = []
+		const r = new Navgo(
+			[
+				{
+					layout: { default: 'Root' },
+					loader() {
+						calls.push('root')
+						return { root: true }
+					},
+					routes: [
+						['/', {}],
+						{
+							layout: { default: 'Inner' },
+							loader() {
+								calls.push('inner')
+								return { inner: true }
+							},
+							routes: [
+								[
+									'/foo',
+									{
+										loader() {
+											calls.push('page')
+											return { page: true }
+										},
+									},
+								],
+							],
+						},
+					],
+				},
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					navs.push(nav)
+				},
+			},
+		)
+		await r.init()
+		calls.length = 0
+		navs.length = 0
+
+		await r.goto('/app/foo')
+		expect(calls).toEqual(['root', 'inner', 'page'])
+		const m = navs.at(-1)?.to?.matches || []
+		expect(m.length).toBe(3)
+		expect(m[0].type).toBe('layout')
+		expect(m[0].data).toEqual({ root: true })
+		expect(m[1].data).toEqual({ inner: true })
+		expect(m[2].type).toBe('route')
+		expect(m[2].route?.[0]).toBe('/foo')
+		expect(m[2].data).toEqual({ page: true })
+		// leaf convenience stays on nav.to.data
+		expect(navs.at(-1)?.to?.data).toEqual({ page: true })
+		r.destroy()
+	})
+
+	it('preload runs full loader chain and goto uses it', async () => {
+		setupStubs('/app/')
+		const calls = { root: 0, page: 0 }
+		const r = new Navgo(
+			[
+				{
+					loader() {
+						calls.root++
+					},
+					routes: [
+						['/', {}],
+						[
+							'/foo',
+							{
+								loader() {
+									calls.page++
+								},
+							},
+						],
+					],
+				},
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+		calls.root = 0
+		calls.page = 0
+
+		const p1 = r.preload('/app/foo')
+		const p2 = r.preload('/app/foo')
+		await Promise.all([p1, p2])
+		expect(calls.root).toBe(1)
+		expect(calls.page).toBe(1)
+
+		await r.goto('/app/foo')
+		// goto should use preloaded results (no extra loader calls)
+		expect(calls.root).toBe(1)
+		expect(calls.page).toBe(1)
+		r.destroy()
+	})
+})
+
 describe('scroll restore persistence', () => {
 	it('stores position on beforeunload and restores on next run', async () => {
 		// const hist = setupStubs('/app/foo')

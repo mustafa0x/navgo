@@ -5,6 +5,53 @@ import { writable } from 'svelte/store'
 
 const ℹ = (...args) => console.debug(...args)
 
+/** @param {any} x @returns {x is RouteTuple} */
+function is_route_tuple(x) {
+	return Array.isArray(x) && (typeof x[0] === 'string' || x[0] instanceof RegExp)
+}
+
+/** @param {any} x @returns {x is RouteGroup} */
+function is_route_group(x) {
+	return !!x && typeof x === 'object' && Array.isArray(x.routes)
+}
+
+/**
+ * Flatten nested route groups into a list of matchable routes.
+ *
+ * @param {RouteEntry[]} entries
+ * @param {RouteGroup[]} stack
+ * @returns {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>}
+ */
+function compile_routes(entries, stack = []) {
+	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>} */
+	const out = []
+	for (const e of entries || []) {
+		if (is_route_tuple(e)) {
+			const pat_or_rx = e[0]
+			const pat =
+				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
+			pat.data = e // keep original tuple: [pattern, hooks, ...]
+			pat.stack = stack
+			out.push(pat)
+			continue
+		}
+		if (is_route_group(e)) {
+			out.push(...compile_routes(e.routes, stack.concat(e)))
+			continue
+		}
+	}
+	return out
+}
+
+/**
+ * Create a match descriptor.
+ * Uses a non-enumerable `__entry` field for internal references.
+ */
+function make_match(obj, entry) {
+	if (entry) Object.defineProperty(obj, '__entry', { value: entry })
+	return obj
+}
+
 export default class Navgo {
 	/** @type {Options} */
 	#opts = {
@@ -18,16 +65,16 @@ export default class Navgo {
 		aria_current: false,
 		attach_to_window: true,
 	}
-	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple }>} */
+	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>} */
 	#routes = []
 	/** @type {string} */
 	#base = '/'
 	/** @type {RegExp} */
 	#base_rgx = /^\/+/
-	/** @type {Map<string, { promise?: Promise<any>, data?: any }>} */
+	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
-	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params }} */
-	#current = { url: null, route: null, params: {} }
+	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[] }} */
+	#current = { url: null, route: null, params: {}, matches: [] }
 	/** @type {number} */
 	#route_idx = 0
 	/** @type {boolean} */
@@ -41,7 +88,7 @@ export default class Navgo {
 	#nav_active = 0
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
-	route = writable({ url: new URL(location.href), route: null, params: {} })
+	route = writable({ url: new URL(location.href), route: null, params: {}, matches: [] })
 	is_navigating = writable(false)
 
 	//
@@ -205,7 +252,7 @@ export default class Navgo {
 			will_unload: true,
 			event: ev,
 		})
-		this.#get_hooks(this.#current.route)?.before_route_leave?.(nav)
+		this.#run_before_route_leave(nav)
 		if (nav.cancelled) {
 			ℹ('[🧭 navigate]', 'cancelled by before_route_leave during unload')
 			ev.preventDefault()
@@ -286,6 +333,42 @@ export default class Navgo {
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
+	async #run_group_loader(group, route, url, params) {
+		const ret_val = group?.loader?.({ route_entry: route, url, params })
+		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
+	}
+
+	#run_before_route_leave(nav) {
+		const matches = this.#current.matches || []
+		for (let i = matches.length - 1; i >= 0; i--) {
+			const m = matches[i]
+			if (m.type === 'route') this.#get_hooks(m.route)?.before_route_leave?.(nav)
+			else m.__entry?.before_route_leave?.(nav)
+			if (nav.cancelled) break
+		}
+	}
+
+	#build_matches(route, stack) {
+		const out = []
+		for (const g of stack || []) out.push(make_match({ type: 'layout', layout: g.layout }, g))
+		out.push(make_match({ type: 'route', route }, null))
+		return out
+	}
+
+	async #load_hit(hit, url) {
+		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
+		const ps = matches.map(m => {
+			const p =
+				m.type === 'route'
+					? this.#run_loader(m.route, url, hit.params)
+					: this.#run_group_loader(m.__entry, hit.route, url, hit.params)
+			return Promise.resolve(p).catch(e => ({ __error: e }))
+		})
+		const datas = await Promise.all(ps)
+		for (let i = 0; i < matches.length; i++) matches[i].data = datas[i]
+		return { matches, data: datas[datas.length - 1] }
+	}
+
 	/**
 	 * @returns {Navigation}
 	 */
@@ -298,6 +381,7 @@ export default class Navgo {
 							url: this.#current.url,
 							params: this.#current.params || {},
 							route: this.#current.route,
+							matches: this.#current.matches || [],
 						}
 					: null
 		return {
@@ -343,7 +427,7 @@ export default class Navgo {
 		//
 		// before_route_leave
 		//
-		this.#get_hooks(this.#current.route)?.before_route_leave?.(nav)
+		this.#run_before_route_leave(nav)
 		if (nav.cancelled) {
 			// use history.go to cancel the nav, and jump back to where we are
 			if (is_popstate) {
@@ -377,19 +461,21 @@ export default class Navgo {
 		//
 		// loader
 		//
-		let data
+		let bundle
 		if (hit) {
 			const pre = this.#preloads.get(path)
-			data =
+			bundle =
 				pre?.data ??
-				(await (pre?.promise || this.#run_loader(hit.route, url, hit.params)).catch(e => ({
-					__error: e,
+				(await (pre?.promise || this.#load_hit(hit, url)).catch(e => ({
+					matches: [],
+					data: { __error: e },
 				})))
 			this.#preloads.delete(path)
+			const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
 			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
 				path,
 				preloaded: !!pre,
-				has_error: !!data?.__error,
+				has_error,
 			})
 		}
 		if (nav_id !== this.#nav_active) return
@@ -416,7 +502,9 @@ export default class Navgo {
 		if (nav_id !== this.#nav_active) return
 
 		const prev = this.#current
-		this.#current = { url, route: hit?.route || null, params: hit?.params || {} }
+		const matches = hit ? bundle?.matches || [] : []
+		const data = hit ? bundle?.data : { __error: { status: 404 } }
+		this.#current = { url, route: hit?.route || null, params: hit?.params || {}, matches }
 
 		// Build a completion nav using the previous route as `from`
 		nav = this.#make_nav({
@@ -426,13 +514,15 @@ export default class Navgo {
 						url: prev.url,
 						params: prev.params || {},
 						route: prev.route,
+						matches: prev.matches || [],
 					}
 				: null,
 			to: {
 				url: new URL(location.href),
 				params: hit?.params || {},
 				route: hit?.route || null,
-				data: hit ? data : { __error: { status: 404 } },
+				matches,
+				data,
 			},
 			event: ev_param,
 		})
@@ -530,18 +620,18 @@ export default class Navgo {
 		if (this.#preloads.has(path)) {
 			const p = this.#preloads.get(path)
 			ℹ('[🧭 preload]', 'dedupe', { path })
-			return p.promise || Promise.resolve(p.data)
+			return p.promise ? p.promise.then(b => b?.data) : Promise.resolve(p.data?.data)
 		}
 
 		const entry = {}
-		entry.promise = this.#run_loader(hit.route, url, hit.params).then(data => {
-			entry.data = data
+		entry.promise = this.#load_hit(hit, url).then(bundle => {
+			entry.data = bundle
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })
-			return data
+			return bundle
 		})
 		this.#preloads.set(path, entry)
-		return entry.promise
+		return entry.promise.then(b => b?.data)
 	}
 
 	//
@@ -593,26 +683,24 @@ export default class Navgo {
 			}
 
 			ℹ('[🧭 match]', 'hit', { pattern: obj.data?.[0], params })
-			return { route: obj.data || null, params }
+			return {
+				route: obj.data || null,
+				params,
+				matches: this.#build_matches(obj.data, obj.stack),
+			}
 		}
 		ℹ('[🧭 match]', 'miss', { url: url_raw })
 		return null
 	}
 
-	/** @param {RouteTuple[]} [routes] @param {Options} [opts] */
+	/** @param {RouteEntry[]} [routes] @param {Options} [opts] */
 	constructor(routes = [], opts) {
 		this.#opts = { ...this.#opts, ...opts }
 		this.#base = this.#normalize(this.#opts.base || '/')
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
-		this.#routes = routes.map(r => {
-			const pat_or_rx = r[0]
-			const pat =
-				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
-			pat.data = r // keep original tuple: [pattern, hooks, ...]
-			return pat
-		})
+		this.#routes = compile_routes(routes)
 
 		ℹ('[🧭 init]', {
 			base: this.#base,
@@ -776,6 +864,10 @@ export default class Navgo {
 }
 
 /** @typedef {import('./index.d.ts').Options} Options */
+/** @typedef {import('./index.d.ts').RouteEntry} RouteEntry */
+/** @typedef {import('./index.d.ts').RouteGroup} RouteGroup */
+/** @typedef {import('./index.d.ts').Match} Match */
+/** @typedef {import('./index.d.ts').PreloadBundle} PreloadBundle */
 /** @typedef {import('./index.d.ts').RouteTuple} RouteTuple */
 /** @typedef {import('./index.d.ts').MatchResult} MatchResult */
 /** @typedef {import('./index.d.ts').ValidatorHelpers} ValidatorHelpers */
