@@ -595,6 +595,53 @@ describe('shallow popstate semantics', () => {
 	})
 })
 
+describe('loader args', () => {
+	it('marks preload calls', async () => {
+		setupStubs('/app/')
+		const flags = []
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader(loader_ctx) {
+							flags.push(loader_ctx.preload)
+							return { ok: true }
+						},
+					},
+				],
+			],
+			{ base: '/app', preload_on_hover: false },
+		)
+		await r.init()
+		await r.preload('/app/foo')
+		expect(flags.at(-1)).toBe(true)
+		r.destroy()
+	})
+
+	it('marks goto calls as not preload', async () => {
+		setupStubs('/app/')
+		const flags = []
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader(loader_ctx) {
+							flags.push(loader_ctx.preload)
+						},
+					},
+				],
+			],
+			{ base: '/app', preload_on_hover: false },
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		expect(flags.at(-1)).toBe(false)
+		r.destroy()
+	})
+})
+
 describe('preload behavior', () => {
 	function makeRouterWithLoader() {
 		const calls = { root: 0, foo: 0 }

@@ -20,6 +20,7 @@ export interface LoaderArgs {
 	route_entry: RouteTuple
 	url: URL
 	params: Params
+	preload: boolean
 }
 
 /** Optional per-route hooks recognized by Navgo. */

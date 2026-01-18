@@ -142,8 +142,8 @@ const {route, is_navigating} = router
 - param_rules?: `Record<string, ((value: string|null|undefined) => boolean) | { validator?: (value: string|null|undefined) => boolean; coercer?: (value: string|null|undefined) => any }>`
   - Single place for param rules. If the value is a function, it is treated as a validator.
   - Validators run on raw params; coercers run after validators and may transform params before `validate(...)`/`loader`.
-- loader?({ params }): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `after_navigate`.
+- loader?({ params, preload }): `unknown | Promise | Array<unknown|Promise>`
+  - Run before URL changes on `link`/`goto`. `preload` is `true` when called via `preload()`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`
