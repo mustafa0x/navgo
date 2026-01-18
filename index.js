@@ -380,23 +380,11 @@ export default class Navgo {
 		let data
 		if (hit) {
 			const pre = this.#preloads.get(path)
-			try {
-				data =
-					pre?.data ??
-					(await (pre?.promise || this.#run_loader(hit.route, url, hit.params)))
-			} catch (e) {
-				this.#preloads.delete(path)
-				ℹ('[🧭 loader]', 'error; abort', { path, error: e })
-				if (is_popstate) {
-					const new_idx = ev_param?.state?.__navgo?.idx
-					if (new_idx != null) {
-						const delta = new_idx - this.#route_idx
-						if (delta) history.go(-delta)
-					}
-				}
-				if (nav_id === this.#nav_active) this.is_navigating.set(false)
-				return
-			}
+			data =
+				pre?.data ??
+				(await (pre?.promise || this.#run_loader(hit.route, url, hit.params)).catch(e => ({
+					__error: e,
+				})))
 			this.#preloads.delete(path)
 			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
 				path,

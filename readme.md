@@ -346,8 +346,8 @@ For `link` and `goto` navigations that match a route:
             → scroll restore/hash/top
 ```
 
-- If a loader throws/rejects, navigation aborts (no URL/history change, no `after_navigate`).
-- For `popstate`, the route's `loader` runs before completion so content matches the target entry; this improves scroll restoration. If the loader throws, the popstate is reverted.
+- If a loader throws/rejects, navigation continues and `after_navigate(..., with nav.to.data = { __error })` is delivered so UI can render an error state.
+- For `popstate`, the route's `loader` runs before completion so content matches the target entry; this improves scroll restoration. Errors are delivered via `after_navigate` with `nav.to.data = { __error }`.
 
 ### Shallow Routing
 
