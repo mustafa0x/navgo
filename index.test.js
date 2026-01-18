@@ -159,6 +159,52 @@ describe('is_navigating store', () => {
 
 // ---
 
+describe('loader errors', () => {
+	it('aborts navigation on throw', async () => {
+		const hist = setupStubs('/app/')
+		let after_calls = 0
+		let last_route = null
+		let nav_state = null
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/foo',
+					{
+						loader() {
+							throw new Error('nope')
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate() {
+					after_calls++
+				},
+			},
+		)
+		r.route.subscribe(v => {
+			last_route = v
+		})
+		r.is_navigating.subscribe(v => {
+			nav_state = v
+		})
+		await r.init()
+		after_calls = 0
+		const prev_href = last_route?.url?.href
+		const prev_idx = hist.state?.__navgo?.idx
+		await r.goto('/app/foo')
+		expect(after_calls).toBe(0)
+		expect(last_route?.url?.href).toBe(prev_href)
+		expect(hist.state?.__navgo?.idx).toBe(prev_idx)
+		expect(nav_state).toBe(false)
+		r.destroy()
+	})
+})
+
+// ---
+
 describe('attach_to_window option', () => {
 	it('default true attaches instance', async () => {
 		setupStubs('/app/')
