@@ -281,13 +281,8 @@ export default class Navgo {
 		return hooks
 	}
 
-	async #run_loader(route, url, params, preload = false) {
-		const ret_val = this.#get_hooks(route)?.loader?.({
-			route_entry: route,
-			url,
-			params,
-			preload,
-		})
+	async #run_loader(route, url, params) {
+		const ret_val = this.#get_hooks(route)?.loader?.({ route_entry: route, url, params })
 		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
 	}
 
@@ -388,7 +383,7 @@ export default class Navgo {
 			try {
 				data =
 					pre?.data ??
-					(await (pre?.promise || this.#run_loader(hit.route, url, hit.params, false)))
+					(await (pre?.promise || this.#run_loader(hit.route, url, hit.params)))
 			} catch (e) {
 				this.#preloads.delete(path)
 				ℹ('[🧭 loader]', 'error; abort', { path, error: e })
@@ -551,7 +546,7 @@ export default class Navgo {
 		}
 
 		const entry = {}
-		entry.promise = this.#run_loader(hit.route, url, hit.params, true).then(data => {
+		entry.promise = this.#run_loader(hit.route, url, hit.params).then(data => {
 			entry.data = data
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })
