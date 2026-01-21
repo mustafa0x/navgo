@@ -64,6 +64,10 @@ export default class Navgo {
 		scroll_to_top: true,
 		aria_current: false,
 		attach_to_window: true,
+		load_plan_defaults: {
+			parse: 'json',
+			cache: { strategy: 'swr', ttl: 300000 },
+		},
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>} */
 	#routes = []
@@ -290,8 +294,9 @@ export default class Navgo {
 		if (url_raw[0] == '/' && !this.#base_rgx.test(url_raw)) url_raw = this.#base + url_raw
 		const url = new URL(url_raw, location.href)
 		const path = this.format(url.pathname).match?.(/[^?#]*/)?.[0]
+		const load_key = path && path + url.search
 		ℹ('[🧭 resolve]', { url_in: url_raw, url: url.href, path })
-		return path ? { url, path } : null
+		return path ? { url, path, load_key } : null
 	}
 
 	#link_from_event(e, check_button = false) {
@@ -408,12 +413,13 @@ export default class Navgo {
 		const cache = await caches.open(this.#cache_name)
 		const out = {}
 		const sources = {}
+		const defaults = this.#opts.load_plan_defaults || {}
 		await Promise.all(
 			Object.entries(plan || {}).map(async ([as, raw]) => {
 				const spec = typeof raw === 'string' ? { request: raw } : raw || {}
 				const req = this.#to_get_request(spec.request, spec.init)
-				const parse = spec.parse || 'json'
-				const cache_hints = spec.cache || {}
+				const parse = spec.parse || defaults.parse || 'json'
+				const cache_hints = { ...(defaults.cache || {}), ...(spec.cache || {}) }
 				const strategy = cache_hints.strategy || 'swr'
 				const ttl = cache_hints.ttl ?? 300000
 				const tags = cache_hints.tags || []
@@ -596,7 +602,7 @@ export default class Navgo {
 			return
 		}
 		this.is_navigating.set(true)
-		const { url, path } = info
+		const { url, path, load_key } = info
 		this.#revalidation = {
 			id: nav_id,
 			nav: null,
@@ -656,14 +662,14 @@ export default class Navgo {
 		//
 		let bundle
 		if (hit) {
-			const pre = this.#preloads.get(path)
+			const pre = this.#preloads.get(load_key)
 			bundle =
 				pre?.data ??
 				(await (pre?.promise || this.#load_hit(hit, url, controller, nav_id)).catch(e => ({
 					matches: [],
 					data: { __error: e },
 				})))
-			this.#preloads.delete(path)
+			this.#preloads.delete(load_key)
 			const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
 			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
 				path,
@@ -854,13 +860,16 @@ export default class Navgo {
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
 	async preload(url_raw) {
-		const { path, url } = this.#resolve_url_and_path(url_raw) || {}
+		const { path, url, load_key } = this.#resolve_url_and_path(url_raw) || {}
 		if (!path) {
 			ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
 			return Promise.resolve()
 		}
 		// Do not preload if we're already at this path
-		if (this.format(this.#current.url?.pathname) === path) {
+		if (
+			this.format(this.#current.url?.pathname) + (this.#current.url?.search || '') ===
+			load_key
+		) {
 			ℹ('[🧭 preload]', 'skip current path', { path })
 			return Promise.resolve()
 		}
@@ -870,8 +879,8 @@ export default class Navgo {
 			return Promise.resolve()
 		}
 
-		if (this.#preloads.has(path)) {
-			const p = this.#preloads.get(path)
+		if (this.#preloads.has(load_key)) {
+			const p = this.#preloads.get(load_key)
 			ℹ('[🧭 preload]', 'dedupe', { path })
 			return p.promise ? p.promise.then(b => b?.data) : Promise.resolve(p.data?.data)
 		}
@@ -884,7 +893,7 @@ export default class Navgo {
 			ℹ('[🧭 preload]', 'done', { path })
 			return bundle
 		})
-		this.#preloads.set(path, entry)
+		this.#preloads.set(load_key, entry)
 		return entry.promise.then(b => b?.data)
 	}
 

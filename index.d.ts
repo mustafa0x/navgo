@@ -42,6 +42,11 @@ export type FetchSpec<T = unknown> =
 
 export type LoadPlan = Record<string, FetchSpec>
 
+export interface LoadPlanDefaults {
+	parse?: Parser
+	cache?: CacheOptions
+}
+
 export interface LoaderContext {
 	route_entry: RouteTuple
 	url: URL
@@ -160,6 +165,8 @@ export interface Options {
 	scroll_to_top?: boolean
 	/** When `true`, sets `aria-current="page"` on active in-app links. Default false. */
 	aria_current?: boolean
+	/** Defaults for LoadPlan entries (parse/cache). */
+	load_plan_defaults?: LoadPlanDefaults
 }
 
 /** Navgo default export: class-based router. */

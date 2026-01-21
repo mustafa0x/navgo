@@ -143,6 +143,8 @@ Notes:
   - When `false`, disables hover/touch preloading.
 - `attach_to_window`: `boolean` (default `true`)
   - When `true`, `init()` attaches the instance to `window.navgo` for convenience.
+- `load_plan_defaults`: `{ parse?: Parser; cache?: { strategy?: CacheStrategy; ttl?: number; tags?: string[] } }`
+  - Defaults applied to LoadPlan entries when `parse`/`cache` are omitted.
 
 Important: Navgo only processes routes that match your `base` path.
 
@@ -186,6 +188,17 @@ function loader({params}) {
 async function loader(ctx) {
   return {session: await ctx.fetch('/api/session').then(r => r.json())}
 }
+```
+
+Global defaults for LoadPlans can be set in `options`:
+
+```js
+const router = new Navgo(routes, {
+  load_plan_defaults: {
+    parse: 'json',
+    cache: { strategy: 'swr', ttl: 60_000 },
+  },
+})
 ```
 
 See `examples.md` for more setups.

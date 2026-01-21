@@ -624,6 +624,17 @@ describe('preload behavior', () => {
 		expect(navs.at(-1)?.type).toBe('goto')
 		router.destroy()
 	})
+
+	it('preload treats search params as distinct', async () => {
+		setupStubs('/app/')
+		const { router, calls } = makeRouterWithLoader()
+		await router.init()
+
+		await router.preload('/app/foo?x=1')
+		await router.preload('/app/foo?x=2')
+		expect(calls.foo).toBe(2)
+		router.destroy()
+	})
 })
 
 // ---
@@ -756,6 +767,68 @@ describe('layouts and shared loaders', () => {
 })
 
 describe('load plan caching', () => {
+	it('load plan defaults apply to parse', async () => {
+		setupStubs('/app/foo')
+		global.fetch = async () => new Response('ok', { status: 200 })
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { data: 'https://example.com/data' }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				load_plan_defaults: { parse: 'text' },
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(last.to.data.data).toBe('ok')
+		r.destroy()
+	})
+
+	it('load plan defaults apply to cache strategy and ttl', async () => {
+		setupStubs('/app/foo')
+		let fetch_calls = 0
+		global.fetch = async () => {
+			fetch_calls++
+			return new Response(JSON.stringify({ n: fetch_calls }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		}
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { data: 'https://example.com/data' }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				load_plan_defaults: { cache: { strategy: 'cache-first', ttl: 1 } },
+			},
+		)
+		await r.init()
+		expect(fetch_calls).toBe(1)
+		await new Promise(r => setTimeout(r, 5))
+		await r.goto('/app/foo')
+		expect(fetch_calls).toBe(2)
+		r.destroy()
+	})
+
 	it('caches and serves from cache when fresh', async () => {
 		setupStubs('/app/foo')
 		let fetch_calls = 0
