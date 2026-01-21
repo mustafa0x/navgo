@@ -9,14 +9,24 @@ import Navgo, {
 	type Params,
 	type MatchResult,
 	type RawParam,
-	type LoaderArgs,
+	type LoaderContext,
+	type LoadPlan,
 } from 'navgo'
 import type { Writable } from 'svelte/store'
 
 // Custom route metadata type for generics flow
 type Meta = {
 	param_rules?: Record<string, (value: RawParam) => boolean>
-	loader?: (args: LoaderArgs) => unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	loader?: (ctx: LoaderContext) => LoadPlan | Promise<unknown>
+}
+
+// LoadPlan typing checks
+const plan: LoadPlan = {
+	products: 'https://dummyjson.com/products',
+	user: {
+		request: 'https://dummyjson.com/users/1',
+		cache: { strategy: 'cache-first', ttl: 1000 },
+	},
 }
 
 const routes: Array<RouteTuple<Meta>> = [
@@ -61,6 +71,7 @@ expectsPromise(router.preload('/users/1'))
 // Shallow history helpers
 router.push_state('/app/foo', { x: 1 })
 router.replace_state('/app/foo', { x: 1 })
+router.invalidate(['https://dummyjson.com/products', 'products'])
 
 // Static validator helpers
 const is_color = Navgo.validators.one_of(['red', 'green'])

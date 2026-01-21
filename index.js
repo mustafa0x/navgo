@@ -88,6 +88,10 @@ export default class Navgo {
 	#nav_active = 0
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
+	/** @type {AbortController|null} */
+	#loader_controller = null
+	#cache_name = 'navgo'
+	#revalidation = null
 	route = writable({ url: new URL(location.href), route: null, params: {}, matches: [] })
 	is_navigating = writable(false)
 
@@ -149,22 +153,30 @@ export default class Navgo {
 		// Hash-only or state-only change: pathname+search unchanged -> skip loader
 		const cur = this.#current.url
 		const target = new URL(location.href)
-		if (cur && target.pathname === cur.pathname) {
-			this.#current.url = target
+		if (cur && target.pathname === cur.pathname && target.search === cur.search) {
+			const next_current = { ...this.#current, url: target }
+			this.#current = next_current
 			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loader')
 			this.#apply_scroll(ev)
-			this.route.set(this.#current)
+			this.route.set(next_current)
 			this.#update_active_links()
 			return
 		}
-		// Explicit shallow entries (pushState/replaceState) regardless of path
+		// Explicit shallow entries (pushState/replaceState).
+		// Only treat as shallow if it was created from the pathname that's currently rendered.
+		// This prevents shallow history entries from keeping the wrong component after a reload
+		// or after navigating to a different route and coming back via Back/Forward.
 		if (st?.shallow) {
-			this.#current.url = target
-			ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
-			this.#apply_scroll(ev)
-			this.route.set(this.#current)
-			this.#update_active_links()
-			return
+			const from = typeof st.from === 'string' ? st.from : null
+			if (!from || (cur && from === cur.pathname)) {
+				const next_current = { ...this.#current, url: target }
+				this.#current = next_current
+				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
+				this.#apply_scroll(ev)
+				this.route.set(next_current)
+				this.#update_active_links()
+				return
+			}
 		}
 
 		ℹ('  - [🧭 event:popstate]', { idx: st?.idx })
@@ -328,14 +340,178 @@ export default class Navgo {
 		return hooks
 	}
 
-	async #run_loader(route, url, params) {
-		const ret_val = this.#get_hooks(route)?.loader?.({ route_entry: route, url, params })
-		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
+	#is_promise(x) {
+		return !!x && typeof x === 'object' && typeof x.then === 'function'
 	}
 
-	async #run_group_loader(group, route, url, params) {
-		const ret_val = group?.loader?.({ route_entry: route, url, params })
-		return Array.isArray(ret_val) ? Promise.all(ret_val) : ret_val
+	#to_get_request(input, init) {
+		const base = input instanceof Request ? input : new Request(input, init)
+		const headers = new Headers(base.headers)
+		if (init?.headers) {
+			for (const [k, v] of new Headers(init.headers)) headers.set(k, v)
+		}
+		return new Request(base.url, { ...init, method: 'GET', headers })
+	}
+
+	#meta_key(url) {
+		return '__navgo_meta:' + url
+	}
+	#read_meta(url) {
+		try {
+			return JSON.parse(sessionStorage.getItem(this.#meta_key(url)) || 'null')
+		} catch {
+			return null
+		}
+	}
+	#write_meta(url, meta) {
+		try {
+			sessionStorage.setItem(this.#meta_key(url), JSON.stringify(meta))
+		} catch {}
+	}
+
+	#same_value(a, b) {
+		try {
+			return JSON.stringify(a) === JSON.stringify(b)
+		} catch {
+			return a === b
+		}
+	}
+
+	async #fetch_and_cache(req, cache, side, tags, signal) {
+		const headers = new Headers(req.headers)
+		if (side?.etag) headers.set('If-None-Match', side.etag)
+		if (side?.last_modified) headers.set('If-Modified-Since', side.last_modified)
+		const res = await fetch(new Request(req, { headers }), { signal })
+		if (res.status === 304) {
+			this.#write_meta(req.url, { ...side, ts: Date.now() })
+			return (await cache.match(req)) || res
+		}
+		if (res.ok) {
+			await cache.put(req, res.clone())
+			this.#write_meta(req.url, {
+				ts: Date.now(),
+				etag: res.headers.get('ETag'),
+				last_modified: res.headers.get('Last-Modified'),
+				tags: tags || [],
+			})
+		}
+		return res
+	}
+
+	async #parse_response(res, parse) {
+		if (typeof parse === 'function') return parse(res)
+		return res[parse || 'json']()
+	}
+
+	async #run_plan(plan, controller, nav_id) {
+		if (!globalThis.caches) throw new Error('CacheStorage is required for load plans')
+		const cache = await caches.open(this.#cache_name)
+		const out = {}
+		const sources = {}
+		await Promise.all(
+			Object.entries(plan || {}).map(async ([as, raw]) => {
+				const spec = typeof raw === 'string' ? { request: raw } : raw || {}
+				const req = this.#to_get_request(spec.request, spec.init)
+				const parse = spec.parse || 'json'
+				const cache_hints = spec.cache || {}
+				const strategy = cache_hints.strategy || 'swr'
+				const ttl = cache_hints.ttl ?? 300000
+				const tags = cache_hints.tags || []
+				const side = this.#read_meta(req.url)
+				const entry = await cache.match(req)
+				const fresh = !!(side && typeof side.ts === 'number' && Date.now() - side.ts <= ttl)
+				let res
+				let source = 'network'
+				if (strategy === 'no-store') {
+					res = await fetch(req, { signal: controller.signal })
+				} else if (strategy === 'cache-first' && entry && fresh) {
+					res = entry
+					source = 'cache'
+				} else if (strategy === 'swr' && entry) {
+					res = entry
+					source = fresh ? 'cache' : 'stale'
+					if (!fresh) {
+						this.#fetch_and_cache(req, cache, side, tags, controller.signal)
+							.then(r => this.#parse_response(r.clone ? r.clone() : r, parse))
+							.then(v => this.#emit_revalidate(nav_id, as, v))
+							.catch(() => {})
+					}
+				} else if (strategy === 'network-first') {
+					try {
+						res = await this.#fetch_and_cache(req, cache, side, tags, controller.signal)
+					} catch (e) {
+						if (entry) {
+							res = entry
+							source = fresh ? 'cache' : 'stale'
+						} else throw e
+					}
+				} else {
+					res = await this.#fetch_and_cache(req, cache, side, tags, controller.signal)
+				}
+				out[as] = await this.#parse_response(res.clone ? res.clone() : res, parse)
+				sources[as] = source
+			}),
+		)
+		return { ...out, __meta: { source: sources, at: Date.now() } }
+	}
+
+	#emit_revalidate(id, as, value) {
+		const r = this.#revalidation
+		if (id !== this.#nav_active || !r || r.id !== id) return
+		const data = r.nav?.to?.data
+		// Revalidate results can arrive before `after_navigate` and before `r.nav` is wired.
+		// Buffer them and flush once navigation commits.
+		if (!data || typeof data !== 'object') {
+			r.pending?.set(as, value)
+			return
+		}
+		if (this.#same_value(data[as], value)) return
+		try {
+			data[as] = value
+			if (data.__meta?.source) data.__meta.source[as] = 'revalidated'
+			r.updated = true
+			this.route.set(this.#current)
+			for (const fn of r.cbs || [])
+				try {
+					fn()
+				} catch {}
+		} catch {}
+	}
+
+	async #run_loader(route, url, params, controller, nav_id) {
+		const loader = this.#get_hooks(route)?.loader
+		if (!loader) return undefined
+		const ctx = {
+			route_entry: route,
+			url,
+			params,
+			signal: controller.signal,
+			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
+			invalidate: x => this.invalidate(x),
+		}
+		const ret = loader(ctx)
+		if (this.#is_promise(ret)) return ret
+		if (ret && typeof ret === 'object' && !Array.isArray(ret))
+			return this.#run_plan(ret, controller, nav_id)
+		return ret
+	}
+
+	async #run_group_loader(group, route, url, params, controller, nav_id) {
+		const loader = group?.loader
+		if (!loader) return undefined
+		const ctx = {
+			route_entry: route,
+			url,
+			params,
+			signal: controller.signal,
+			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
+			invalidate: x => this.invalidate(x),
+		}
+		const ret = loader(ctx)
+		if (this.#is_promise(ret)) return ret
+		if (ret && typeof ret === 'object' && !Array.isArray(ret))
+			return this.#run_plan(ret, controller, nav_id)
+		return ret
 	}
 
 	#run_before_route_leave(nav) {
@@ -355,13 +531,20 @@ export default class Navgo {
 		return out
 	}
 
-	async #load_hit(hit, url) {
+	async #load_hit(hit, url, controller, nav_id) {
 		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
 		const ps = matches.map(m => {
 			const p =
 				m.type === 'route'
-					? this.#run_loader(m.route, url, hit.params)
-					: this.#run_group_loader(m.__entry, hit.route, url, hit.params)
+					? this.#run_loader(m.route, url, hit.params, controller, nav_id)
+					: this.#run_group_loader(
+							m.__entry,
+							hit.route,
+							url,
+							hit.params,
+							controller,
+							nav_id,
+						)
 			return Promise.resolve(p).catch(e => ({ __error: e }))
 		})
 		const datas = await Promise.all(ps)
@@ -414,6 +597,16 @@ export default class Navgo {
 		}
 		this.is_navigating.set(true)
 		const { url, path } = info
+		this.#revalidation = {
+			id: nav_id,
+			nav: null,
+			cbs: new Set(),
+			updated: false,
+			pending: new Map(),
+		}
+		this.#loader_controller?.abort?.()
+		const controller = new AbortController()
+		this.#loader_controller = controller
 
 		const is_popstate = nav_type === 'popstate'
 		let nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
@@ -466,7 +659,7 @@ export default class Navgo {
 			const pre = this.#preloads.get(path)
 			bundle =
 				pre?.data ??
-				(await (pre?.promise || this.#load_hit(hit, url)).catch(e => ({
+				(await (pre?.promise || this.#load_hit(hit, url, controller, nav_id)).catch(e => ({
 					matches: [],
 					data: { __error: e },
 				})))
@@ -489,7 +682,7 @@ export default class Navgo {
 				history.state && typeof history.state == 'object' ? history.state : {}
 			const next_state = {
 				...prev_state,
-				__navgo: { ...prev_state.__navgo, idx: next_idx, type: nav_type },
+				__navgo: { idx: next_idx, type: nav_type },
 			}
 			history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
 			ℹ('[🧭 history]', opts.replace ? 'replaceState' : 'pushState', {
@@ -526,10 +719,36 @@ export default class Navgo {
 			},
 			event: ev_param,
 		})
-		this.route.set(this.#current)
 
+		// Wire up revalidation tracking early (revalidate fetches can resolve before after_navigate runs).
+		const reval = this.#revalidation
+		if (reval && reval.id === nav_id) {
+			reval.nav = nav
+			const nav_data = nav.to?.data
+			if (nav_data && typeof nav_data === 'object' && reval.pending?.size) {
+				for (const [as, value] of reval.pending) {
+					if (!this.#same_value(nav_data[as], value)) {
+						nav_data[as] = value
+						if (nav_data.__meta?.source) nav_data.__meta.source[as] = 'revalidated'
+						reval.updated = true
+					}
+				}
+				reval.pending.clear()
+			}
+		}
+
+		this.route.set(this.#current)
 		// await so that apply_scroll is after potential async work
-		await this.#opts.after_navigate?.(nav)
+		await this.#opts.after_navigate?.(nav, cb => {
+			if (nav_id !== this.#nav_active) return
+			const r = this.#revalidation
+			if (!r || r.id !== nav_id) return
+			r.cbs.add(cb)
+			if (r.updated) {
+				if (typeof queueMicrotask === 'function') queueMicrotask(cb)
+				else setTimeout(cb, 0)
+			}
+		})
 
 		if (nav_id !== this.#nav_active) return
 		ℹ('[🧭 navigate]', hit ? 'done' : 'done (404)', {
@@ -567,7 +786,8 @@ export default class Navgo {
 			)
 		} catch {}
 		const idx = this.#route_idx + (replace ? 0 : 1)
-		const st = { ...state, __navgo: { ...state?.__navgo, shallow: true, idx } }
+		const from = this.#current.url?.pathname || location.pathname
+		const st = { ...state, __navgo: { shallow: true, idx, from } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
 		ℹ('[🧭 history]', replace ? 'replace_state(shallow)' : 'push_state(shallow)', {
 			idx,
@@ -593,6 +813,39 @@ export default class Navgo {
 	/** @param {string|URL} [url] @param {any} [state] */
 	replace_state(url, state) {
 		this.#commit_shallow(url, state, true)
+	}
+
+	/**
+	 * Invalidate cache entries by canonical keys (URLs) or tags.
+	 * @param {string|string[]} keys_or_tags
+	 */
+	async invalidate(keys_or_tags) {
+		if (!globalThis.caches) throw new Error('CacheStorage is required for invalidation')
+		const arr = Array.isArray(keys_or_tags) ? keys_or_tags : [keys_or_tags]
+		const cache = await caches.open(this.#cache_name)
+		const prefix = '__navgo_meta:'
+		const to_delete = []
+		for (const x of arr) {
+			const str = String(x)
+			const is_key = str.includes('://') || str.startsWith('/')
+			if (is_key) {
+				to_delete.push(str)
+				continue
+			}
+			// treat as tag
+			for (let i = 0; i < sessionStorage.length; i++) {
+				const k = sessionStorage.key(i)
+				if (!k || !k.startsWith(prefix)) continue
+				try {
+					const meta = JSON.parse(sessionStorage.getItem(k) || 'null')
+					if (meta?.tags?.includes?.(str)) to_delete.push(k.slice(prefix.length))
+				} catch {}
+			}
+		}
+		for (const url of new Set(to_delete)) {
+			await cache.delete(new Request(url, { method: 'GET' }))
+			sessionStorage.removeItem(prefix + url)
+		}
 	}
 
 	/**
@@ -624,7 +877,8 @@ export default class Navgo {
 		}
 
 		const entry = {}
-		entry.promise = this.#load_hit(hit, url).then(bundle => {
+		const controller = new AbortController()
+		entry.promise = this.#load_hit(hit, url, controller, 0).then(bundle => {
 			entry.data = bundle
 			delete entry.promise
 			ℹ('[🧭 preload]', 'done', { path })

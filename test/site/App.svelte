@@ -14,6 +14,10 @@
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Posts</a
             >
             <a
+                href="/cache"
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Cache</a
+            >
+            <a
                 href="/contact"
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Contact</a
             >
@@ -56,7 +60,7 @@
             <AdminLayoutCmp data={admin_layout_data} />
         {/if}
         {#if Component}
-            <Component params={$route.params} data={route_data} />
+            <Component params={$route.params} data={route_data} {router} />
         {:else}
             <h1 class="mb-2 text-2xl font-semibold">Home</h1>
             <p class="opacity-80">Welcome. Use the navigation to try routes.</p>
@@ -113,6 +117,13 @@
                         <span class="font-mono">{JSON.stringify($route.params)}</span>
                     </div>
                     <div><span class="font-mono">hash</span>: {location.hash}</div>
+                    <div><span class="font-mono">revalidations</span>: {revalidate_count}</div>
+                    {#if route_data?.__meta}
+                        <div>
+                            <span class="font-mono">sources</span>:
+                            <span class="font-mono">{JSON.stringify(route_data.__meta.source)}</span>
+                        </div>
+                    {/if}
                     <div class="pt-1">
                         <span class="font-mono">layout data</span>:
                         <div class="mt-1 space-y-1 text-xs">
@@ -141,7 +152,10 @@
 import Navgo from '../../index.js'
 
 import * as ProductsRoute from './routes/Products.svelte'
+import * as ProductRoute from './routes/Product.svelte'
 import * as PostsRoute from './routes/Posts.svelte'
+import * as PostRoute from './routes/Post.svelte'
+import * as CacheRoute from './routes/Cache.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
 import * as AccountRoute from './routes/Account.svelte'
@@ -160,11 +174,15 @@ import AdminLayoutCmp from './layouts/Admin.svelte'
 const routes = [
   {
     layout: AppLayout,
-    loader: () => ({session: {user: 'Zara', plan: 'pro'}}),
+    // note: loaders return a Promise for plain data; returning a plain object is treated as a load plan
+    loader: async () => ({session: {user: 'Zara', plan: 'pro'}}),
     routes: [
       ['/', {}],
+      ['/cache', CacheRoute],
       ['/products', ProductsRoute],
+      ['/products/:id', ProductRoute],
       ['/posts', PostsRoute],
+      ['/posts/:id', PostRoute],
       ['/contact', ContactRoute],
       ['/about', AboutRoute],
       ['/account', AccountRoute],
@@ -181,7 +199,7 @@ const routes = [
       ],
       {
         layout: AdminLayout,
-        loader: ({params}) => ({section: 'admin', admin_id: params?.id ?? null}),
+        loader: async ({params}) => ({section: 'admin', admin_id: params?.id ?? null}),
         routes: [
           [
             '/admin/:id',
@@ -192,7 +210,7 @@ const routes = [
                 id: {validator: Navgo.validators.int({min: 1}), coercer: Number},
               },
               // load data before URL changes; result goes to after_navigate(...)
-              loader: ({params}) => ({audit: 'ok', admin_id: params.id}),
+              loader: async ({params}) => ({audit: 'ok', admin_id: params.id}),
               // per-route guard; cancel synchronously to block nav
               before_route_leave(nav) {
                 if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Exit admin?')) {
@@ -216,28 +234,33 @@ let app_layout_data = $state(null)
 let admin_layout_data = $state(null)
 let app_layout_active = $state(false)
 let admin_layout_active = $state(false)
+let revalidate_count = $state(0)
+
+function sync_from_nav(nav) {
+	route_data = nav.to?.data ?? null
+	const layout_matches = nav.to?.matches?.filter(m => m.layout) ?? []
+	app_layout_data = layout_matches[0]?.data ?? null
+	admin_layout_data = layout_matches[1]?.data ?? null
+	app_layout_active = !!layout_matches[0]?.layout
+	admin_layout_active = !!layout_matches[1]?.layout
+	Component = nav.to?.route?.[1]?.default || null
+}
 
 const router = new Navgo(routes, {
-    async after_navigate(nav) {
-        is_404 = nav.to?.data?.__error?.status === 404
-        if (is_404) {
-            console.log('404 for', nav.to.url.pathname)
-            return
-        }
-        console.log('afterNavigate', nav)
-        const uri = router.format(nav.to.url.pathname)
+	async after_navigate(nav, on_revalidate) {
+		is_404 = nav.to?.data?.__error?.status === 404
+		if (is_404) {
+			console.log('404 for', nav.to.url.pathname)
+			return
+		}
+		sync_from_nav(nav)
 
-        route_data = nav.to.data ?? null
-        const layout_matches = nav.to?.matches?.filter(m => m.layout) ?? []
-        app_layout_data = layout_matches[0]?.data ?? null
-        admin_layout_data = layout_matches[1]?.data ?? null
-        app_layout_active = !!layout_matches[0]?.layout
-        admin_layout_active = !!layout_matches[1]?.layout
-        Component = nav.to.route?.[1]?.default || null
-        // document.startViewTransition(() => {
-        // })
-    },
-    aria_current: true,
+		on_revalidate?.(() => {
+			revalidate_count += 1
+			sync_from_nav(nav)
+		})
+	},
+	aria_current: true,
 })
 router.init()
 const {route, is_navigating} = router

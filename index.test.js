@@ -48,7 +48,29 @@ function setupStubs(base = '/') {
 		setItem: (k, v) => sess.set(k, String(v)),
 		removeItem: k => sess.delete(k),
 		clear: () => sess.clear(),
+		get length() {
+			return sess.size
+		},
+		key: i => Array.from(sess.keys())[i] || null,
 	}
+
+	// minimal CacheStorage mock (used by load plans)
+	const cacheStores = new Map()
+	global.caches = {
+		open: async name => {
+			if (!cacheStores.has(name)) cacheStores.set(name, new Map())
+			const store = cacheStores.get(name)
+			return {
+				match: async req => {
+					const r = store.get(req.url)
+					return r ? r.clone() : undefined
+				},
+				put: async (req, res) => store.set(req.url, res.clone()),
+				delete: async req => store.delete(req.url),
+			}
+		},
+	}
+
 	// minimal document stub for anchor scrolling in router
 	if (!global.document) {
 		global.document = {
@@ -556,7 +578,7 @@ describe('preload behavior', () => {
 			[
 				'/',
 				{
-					loader() {
+					async loader() {
 						calls.root++
 						return { route: 'root' }
 					},
@@ -565,7 +587,7 @@ describe('preload behavior', () => {
 			[
 				'/foo',
 				{
-					loader() {
+					async loader() {
 						calls.foo++
 						return { route: 'foo' }
 					},
@@ -638,7 +660,7 @@ describe('layouts and shared loaders', () => {
 			[
 				{
 					layout: { default: 'Root' },
-					loader() {
+					async loader() {
 						calls.push('root')
 						return { root: true }
 					},
@@ -646,7 +668,7 @@ describe('layouts and shared loaders', () => {
 						['/', {}],
 						{
 							layout: { default: 'Inner' },
-							loader() {
+							async loader() {
 								calls.push('inner')
 								return { inner: true }
 							},
@@ -654,7 +676,7 @@ describe('layouts and shared loaders', () => {
 								[
 									'/foo',
 									{
-										loader() {
+										async loader() {
 											calls.push('page')
 											return { page: true }
 										},
@@ -697,7 +719,7 @@ describe('layouts and shared loaders', () => {
 		const r = new Navgo(
 			[
 				{
-					loader() {
+					async loader() {
 						calls.root++
 					},
 					routes: [
@@ -729,6 +751,143 @@ describe('layouts and shared loaders', () => {
 		// goto should use preloaded results (no extra loader calls)
 		expect(calls.root).toBe(1)
 		expect(calls.page).toBe(1)
+		r.destroy()
+	})
+})
+
+describe('load plan caching', () => {
+	it('caches and serves from cache when fresh', async () => {
+		setupStubs('/app/foo')
+		let fetch_calls = 0
+		global.fetch = async () => {
+			fetch_calls++
+			return new Response(JSON.stringify({ n: fetch_calls }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json', ETag: 'v' + fetch_calls },
+			})
+		}
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { data: 'https://example.com/data' }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(fetch_calls).toBe(1)
+		expect(last.to.data.data).toEqual({ n: 1 })
+		expect(last.to.data.__meta.source.data).toBe('network')
+
+		await r.goto('/app/foo')
+		expect(fetch_calls).toBe(1)
+		expect(last.to.data.data).toEqual({ n: 1 })
+		expect(last.to.data.__meta.source.data).toBe('cache')
+		r.destroy()
+	})
+
+	it('stale-while-revalidate only updates when value changes', async () => {
+		setupStubs('/app/foo')
+		let fetch_calls = 0
+		const payloads = [{ v: 1 }, { v: 1 }, { v: 2 }]
+		global.fetch = async () => {
+			const idx = Math.min(fetch_calls, payloads.length - 1)
+			fetch_calls++
+			return new Response(JSON.stringify(payloads[idx]), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json', ETag: 'v' + fetch_calls },
+			})
+		}
+		let revals = 0
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return {
+								data: {
+									request: 'https://example.com/data',
+									cache: { strategy: 'swr', ttl: 0 },
+								},
+							}
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav, on_revalidate) {
+					last = nav
+					on_revalidate?.(() => {
+						revals++
+					})
+				},
+			},
+		)
+		await r.init()
+		expect(last.to.data.data).toEqual({ v: 1 })
+		expect(fetch_calls).toBe(1)
+
+		// stale (ttl=0), but value unchanged => no revalidate callback
+		await new Promise(r => setTimeout(r, 2))
+		await r.goto('/app/foo')
+		await tick(3)
+		expect(fetch_calls).toBe(2)
+		expect(revals).toBe(0)
+		expect(last.to.data.data).toEqual({ v: 1 })
+
+		// next revalidate returns different value => callback fires + data updates
+		await new Promise(r => setTimeout(r, 2))
+		await r.goto('/app/foo')
+		await tick(3)
+		expect(fetch_calls).toBe(3)
+		expect(revals).toBe(1)
+		expect(last.to.data.data).toEqual({ v: 2 })
+		r.destroy()
+	})
+
+	it('invalidate removes entries so next nav refetches', async () => {
+		setupStubs('/app/foo')
+		let fetch_calls = 0
+		global.fetch = async () => {
+			fetch_calls++
+			return new Response(JSON.stringify({ n: fetch_calls }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		}
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { data: 'https://example.com/data' }
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		expect(fetch_calls).toBe(1)
+		await r.invalidate('https://example.com/data')
+		await r.goto('/app/foo')
+		expect(fetch_calls).toBe(2)
 		r.destroy()
 	})
 })
@@ -860,7 +1019,7 @@ describe('stress and edge cases', () => {
 				[
 					'/foo',
 					{
-						loader() {
+						async loader() {
 							load_calls++
 							return { ok: true }
 						},

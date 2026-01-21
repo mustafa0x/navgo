@@ -23,7 +23,7 @@ const routes = [
     // optional layout wrapper (router just forwards it via nav.to.matches)
     layout: AppLayout,
     // optional shared loader for all children
-    loader: () => fetch('/api/session').then(r => r.json()),
+    loader: async (ctx) => ctx.fetch('/api/session').then(r => r.json()),
     routes: [
       ['/', HomeRoute],
       ['/:book_id', ReaderRoute],
@@ -37,7 +37,7 @@ const routes = [
             id: { validator: Navgo.validators.int({ min: 1 }), coercer: Number },
           },
           // load data before URL changes; result goes to after_navigate(...)
-          loader: ({ params }) => fetch(`/api/admin/${params.id}`).then(r => r.json()),
+          loader: ({ params }) => ({ admin: `/api/admin/${params.id}` }),
           // per-route guard; cancel synchronously to block nav
           before_route_leave(nav) {
             if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
@@ -98,7 +98,7 @@ Each route group is an object:
 ```js
 {
   layout?: any,
-  loader?: (args) => unknown | Promise | Array<unknown|Promise>,
+  loader?: (ctx) => LoadPlan | Promise<unknown>,
   before_route_leave?: (nav) => void,
   routes: Array<RouteTuple|RouteGroup>
 }
@@ -128,8 +128,9 @@ Notes:
   - App base pathname. With or without leading/trailing slashes is accepted.
 - `before_navigate`: `(nav: Navigation) => void`
   - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` synchronously to prevent navigation.
-- `after_navigate`: `(nav: Navigation) => void`
+- `after_navigate`: `(nav: Navigation, on_revalidate?: (cb: () => void) => void) => void | Promise<void>`
   - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+  - If the active route uses SWR and a stale entry is revalidated in the background, register a callback via `on_revalidate(cb)` to refresh UI.
 - `tick`: `() => void | Promise<void>`
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `scroll_to_top`: `boolean` (default `true`)
@@ -167,11 +168,36 @@ const {route, is_navigating} = router
 
 ### Route Hooks
 
+Load plans let you define one or more fetches that Navgo can cache via the CacheStorage API.
+
+```js
+// sync => treated as a LoadPlan
+function loader({params}) {
+  return {
+    product: `https://dummyjson.com/products/${params.id}`,
+    reviews: {
+      request: `https://example.com/reviews/${params.id}`,
+      cache: {strategy: 'cache-first', ttl: 60_000, tags: ['reviews']},
+    },
+  }
+}
+
+// async => treated as plain data
+async function loader(ctx) {
+  return {session: await ctx.fetch('/api/session').then(r => r.json())}
+}
+```
+
+See `examples.md` for more setups.
+
+
 - param_rules?: `Record<string, ((value: string|null|undefined) => boolean) | { validator?: (value: string|null|undefined) => boolean; coercer?: (value: string|null|undefined) => any }>`
   - Single place for param rules. If the value is a function, it is treated as a validator.
   - Validators run on raw params; coercers run after validators and may transform params before `validate(...)`/`loader`.
-- loader?({ params }): `unknown | Promise | Array<unknown|Promise>`
-  - Run before URL changes on `link`/`goto`. Results are cached per formatted path and forwarded to `after_navigate`.
+- loader?(ctx: LoaderContext): `LoadPlan | Promise<unknown>`
+  - If you return a **non-Promise object**, it is treated as a `LoadPlan` and executed (each entry can be cached).
+  - If you return a **Promise**, it is awaited and the resolved value becomes `nav.to.data`.
+  - To return a plain object as data, make the loader `async`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`

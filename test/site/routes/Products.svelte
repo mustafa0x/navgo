@@ -1,123 +1,119 @@
 <h1 class="mb-2 text-2xl font-semibold">Products</h1>
-<p class="mb-4 opacity-80">A demo list fetched from DummyJSON products.</p>
+<p class="opacity-80">
+	Loaded from DummyJSON with caching. Click a product to open a shallow modal (URL updates via
+	<span class="font-mono">push_state</span>/<span class="font-mono">replace_state</span>).
+</p>
 
-{#if items.length}
-    <ul class="grid gap-4 sm:grid-cols-2">
-        {#each items as p (p.id)}
-            <li class="flex gap-3 rounded-md border border-gray-200 bg-white p-3">
-                <button
-                    class="flex gap-3 text-left"
-                    onclick={() => router.push_state(`?product=${p?.id}`)}
-                    aria-label={`View ${p.title}`}
-                >
-                    <img
-                        alt={p.title}
-                        src={p.thumbnail || p.images?.[0]}
-                        width="96"
-                        height="96"
-                        class="h-24 w-24 rounded bg-gray-100 object-cover"
-                        loading="lazy"
-                    />
-                    <div class="min-w-0">
-                        <h3 class="truncate font-medium">{p.title}</h3>
-                        <p class="line-clamp-2 text-sm opacity-80">{p.description}</p>
-                        <div class="mt-2 font-mono text-sm">
-                            <span class="font-semibold">${p.price}</span>
-                            <span class="ml-2 opacity-70">⭐ {p.rating}</span>
-                        </div>
-                    </div>
-                </button>
-            </li>
-        {/each}
-    </ul>
-{:else}
-    <p class="opacity-70">No projects loaded.</p>
+{#if data?.__meta}
+	<div class="mt-4 rounded-md border border-gray-200 bg-white p-4 text-sm">
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="font-mono">sources</span>:
+			<span class="font-mono">{JSON.stringify(data.__meta.source)}</span>
+		</div>
+		<div class="mt-2 flex flex-wrap gap-2">
+			<button
+				class="rounded bg-amber-600 px-3 py-1.5 text-white hover:bg-amber-700"
+				onclick={() => router.invalidate('products')}>invalidate('products')</button
+			>
+		</div>
+	</div>
 {/if}
 
-<dialog bind:this={dlg} class="w-[92vw] max-w-lg rounded-md p-0 shadow-xl">
-    {#if selected}
-        <header class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-            <h3 class="truncate pr-2 font-semibold">{selected.title}</h3>
-            <button
-                class="rounded px-2 py-1 text-sm hover:bg-gray-100"
-                onclick={() => router.replace_state('/products')}
-                aria-label="Close">✕</button
-            >
-        </header>
-        <div class="grid gap-3 p-4">
-            <img
-                alt={selected.title}
-                src={selected.thumbnail || selected.images?.[0]}
-                class="w-full rounded bg-gray-100 object-cover"
-                loading="lazy"
-            />
-            <p class="text-sm opacity-80">{selected.description}</p>
-            <div class="font-mono text-sm">
-                <span class="font-semibold">${selected.price}</span>
-                <span class="ml-2 opacity-70">⭐ {selected.rating}</span>
-                <span class="ml-2 opacity-70">ID: {selected.id}</span>
-            </div>
-        </div>
-        <footer class="flex justify-end border-t border-gray-200 px-4 py-3">
-            <button
-                class="rounded bg-gray-800 px-3 py-1.5 text-white hover:bg-black"
-                onclick={() => router.replace_state('/products')}>Close</button
-            >
-        </footer>
-    {/if}
+<ul class="mt-6 grid gap-4 sm:grid-cols-2">
+	{#each items as p (p.id)}
+		<li class="rounded-md border border-gray-200 bg-white p-3">
+			<button
+				class="flex w-full gap-3 text-left"
+				onclick={() => open_product(p.id)}
+				aria-label={`View ${p.title}`}>
+				<img
+					class="h-20 w-20 flex-none rounded object-cover"
+					src={p.thumbnail}
+					alt={p.title}
+					loading="lazy" />
+				<div class="min-w-0">
+					<h2 class="truncate font-semibold">{p.title}</h2>
+					<p class="mt-1 line-clamp-3 text-sm opacity-80">{p.description}</p>
+					<div class="mt-2 flex flex-wrap gap-2 text-xs">
+						<span class="rounded bg-gray-100 px-2 py-1">${p.price}</span>
+						<span class="rounded bg-gray-100 px-2 py-1">⭐ {p.rating}</span>
+					</div>
+				</div>
+			</button>
+		</li>
+	{/each}
+</ul>
+
+<dialog
+	bind:this={dlg}
+	class="fixed w-[92vw] max-w-lg rounded-md p-0 shadow-xl"
+	onclose={close_modal}>
+	{#if selected}
+		<div class="grid gap-4 p-4">
+			<div class="flex items-start justify-between gap-3">
+				<h2 class="text-lg font-semibold">{selected.title}</h2>
+				<button
+					class="rounded bg-gray-100 px-3 py-1 text-sm hover:bg-gray-200"
+					onclick={close_modal}>
+					Close
+				</button>
+			</div>
+			<img
+				class="aspect-video w-full rounded object-cover"
+				src={selected.thumbnail}
+				alt={selected.title} />
+			<p class="text-sm opacity-80">{selected.description}</p>
+			<div class="flex flex-wrap gap-2 text-xs">
+				<span class="rounded bg-gray-100 px-2 py-1">price: ${selected.price}</span>
+				<span class="rounded bg-gray-100 px-2 py-1">rating: {selected.rating}</span>
+			</div>
+			<div class="pt-2">
+				<a class="text-blue-700 hover:underline" href={`/products/${selected.id}`}>
+					Go to /products/{selected.id}
+				</a>
+			</div>
+		</div>
+	{/if}
 </dialog>
 
 <script module>
-// Used by the router before navigating to /products
-export async function loader() {
-    // await new Promise(r => setTimeout(r, 1000))
-    return fetch('https://dummyjson.com/products').then(r => r.json())
+const PRODUCTS_URL =
+	'https://dummyjson.com/products?limit=30&select=title,description,price,rating,thumbnail,images'
+
+export function loader() {
+	return {
+		products: {
+			request: PRODUCTS_URL,
+			cache: {strategy: 'swr', ttl: 10_000, tags: ['products']},
+		},
+	}
 }
 </script>
 
 <script>
-let {params, data = null} = $props()
-const router = window.navgo
-const {route} = window.navgo
+let {data = null, router} = $props()
+const {route} = router
 
-// Prefer preloaded list; use fetched fallback when navigating directly
-let fetched = $state(null)
-const items = $derived(data?.products ?? fetched?.products ?? [])
+let dlg = $state(null)
 
-let selected = $state(null)
-let dlg
+const items = $derived(data?.products?.products ?? [])
+const product_id = $derived($route.url?.searchParams.get('product') ?? '')
+const selected = $derived(items.find(p => String(p.id) === product_id) ?? null)
 
-function openProduct(p) {
-    selected = p
-    dlg?.showModal?.()
+function open_product(id) {
+	router.push_state(`?product=${id}`)
 }
 
-function closeProduct() {
-    if (dlg?.open) dlg.close()
-    // router.replace_state('/products')
-    selected = null
+function close_modal() {
+	router.replace_state('/products')
 }
 
-if (!data?.products) {
-    loader()
-        .then(json => {
-            if (Array.isArray(json?.products)) data = json
-        })
-        .catch(() => {})
-}
-
-// Open modal on landing via /products?product=...
-let last_pid = null
 $effect(() => {
-    const pid = $route.url.searchParams.get('product')
-    if (pid && last_pid != pid) {
-        const found = items.find(p => String(p.id) === String(pid))
-        if (found)
-            setTimeout(() => {
-                openProduct(found)
-            })
-    }
-    last_pid = pid
-    if (!pid && selected) closeProduct()
+	if (!dlg) return
+	if (product_id) {
+		if (!dlg.open) dlg.showModal()
+	} else {
+		if (dlg.open) dlg.close()
+	}
 })
 </script>

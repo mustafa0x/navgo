@@ -16,10 +16,39 @@ export type ParamRule =
 	| ((value: RawParam) => boolean)
 	| { validator?: (value: RawParam) => boolean; coercer?: (value: RawParam) => any }
 
-export interface LoaderArgs {
+export type CacheStrategy = 'swr' | 'cache-first' | 'network-first' | 'no-store'
+
+export interface CacheOptions {
+	strategy?: CacheStrategy
+	ttl?: number
+	tags?: string[]
+}
+
+export type Parser<T = unknown> =
+	| 'json'
+	| 'text'
+	| 'blob'
+	| 'arrayBuffer'
+	| ((res: Response) => Promise<T>)
+
+export type FetchSpec<T = unknown> =
+	| string
+	| {
+			request: string | URL | Request
+			init?: Omit<RequestInit, 'method' | 'body' | 'signal'>
+			parse?: Parser<T>
+			cache?: CacheOptions
+	  }
+
+export type LoadPlan = Record<string, FetchSpec>
+
+export interface LoaderContext {
 	route_entry: RouteTuple
 	url: URL
 	params: Params
+	signal: AbortSignal
+	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
+	invalidate(keys_or_tags: string | string[]): Promise<void>
 }
 
 export interface Match<T = unknown> {
@@ -36,8 +65,8 @@ export interface Match<T = unknown> {
 export interface RouteGroup<T = unknown> {
 	/** Optional layout component/module (router does not render; it just forwards this). */
 	layout?: any
-	/** Shared loader for all child routes. Same args/return shape as route loader. */
-	loader?(args: LoaderArgs): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Load data for this layout group. Return a LoadPlan (object) or a Promise for arbitrary data. */
+	loader?(ctx: LoaderContext): LoadPlan | Promise<unknown>
 	/** Optional guard, called when leaving a matched route within this group. */
 	before_route_leave?(nav: Navigation): void
 	/** Nested routes (route tuples and/or more groups). */
@@ -56,8 +85,8 @@ export interface PreloadBundle<T = unknown> {
 export interface Hooks {
 	/** Validate and/or coerce params (validator runs before coercer). */
 	param_rules?: Record<string, ParamRule>
-	/** Load data for a route before navigation. May return a Promise or an array of values/promises. */
-	loader?(args: LoaderArgs): unknown | Promise<unknown> | Array<unknown | Promise<unknown>>
+	/** Load data for a route before navigation. Return a LoadPlan (object) or a Promise for arbitrary data. */
+	loader?(ctx: LoaderContext): LoadPlan | Promise<unknown>
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
@@ -121,7 +150,7 @@ export interface Options {
 	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
 	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
-	after_navigate?(nav: Navigation): void
+	after_navigate?(nav: Navigation, on_revalidate?: (cb: () => void) => void): void | Promise<void>
 	/** Optional hook awaited after `after_navigate` and before scroll handling.
 	 *  Useful for UI frameworks (e.g., Svelte) to flush DOM updates so anchor/top
 	 *  scrolling lands on the correct elements.
@@ -161,6 +190,8 @@ export default class Navgo<T = unknown> {
 	}>
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>
+	/** Invalidate cache entries by canonical keys (URLs) or tags. */
+	invalidate(keys_or_tags: string | string[]): Promise<void>
 	/** Built-in validator helpers (namespaced). */
 	static validators: ValidatorHelpers
 }
