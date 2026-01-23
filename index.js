@@ -66,7 +66,7 @@ export default class Navgo {
 		attach_to_window: true,
 		load_plan_defaults: {
 			parse: 'json',
-			cache: { strategy: 'swr', ttl: 300000 },
+			cache: { strategy: 'swr', ttl: 86400000 },
 		},
 	}
 	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>} */
@@ -432,7 +432,7 @@ export default class Navgo {
 				const parse = spec.parse || defaults.parse || 'json'
 				const cache_hints = { ...(defaults.cache || {}), ...(spec.cache || {}) }
 				const strategy = cache_hints.strategy || 'swr'
-				const ttl = cache_hints.ttl ?? 300000
+				const ttl = cache_hints.ttl ?? 86400000
 				const tags = cache_hints.tags || []
 				const side = cache ? this.#read_meta(req.url) : null
 				let entry

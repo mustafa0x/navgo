@@ -145,6 +145,7 @@ Notes:
   - When `true`, `init()` attaches the instance to `window.navgo` for convenience.
 - `load_plan_defaults`: `{ parse?: Parser; cache?: { strategy?: CacheStrategy; ttl?: number; tags?: string[] } }`
   - Defaults applied to LoadPlan entries when `parse`/`cache` are omitted.
+  - Default: `{ parse: 'json', cache: { strategy: 'swr', ttl: 86_400_000 } }`
 
 Important: Navgo only processes routes that match your `base` path.
 
