@@ -767,6 +767,45 @@ describe('layouts and shared loaders', () => {
 })
 
 describe('load plan caching', () => {
+	it('ignores CacheStorage when unavailable', async () => {
+		setupStubs('/app/foo')
+		const prev_caches = global.caches
+		// @ts-ignore
+		global.caches = undefined
+		let fetch_calls = 0
+		global.fetch = async () => {
+			fetch_calls++
+			return new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		}
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return { data: 'https://example.com/data' }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(fetch_calls).toBe(1)
+		expect(last.to.data.data).toEqual({ ok: true })
+		r.destroy()
+		global.caches = prev_caches
+	})
+
 	it('load plan defaults apply to parse', async () => {
 		setupStubs('/app/foo')
 		global.fetch = async () => new Response('ok', { status: 200 })

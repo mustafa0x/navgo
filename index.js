@@ -384,15 +384,22 @@ export default class Navgo {
 
 	async #fetch_and_cache(req, cache, side, tags, signal) {
 		const headers = new Headers(req.headers)
-		if (side?.etag) headers.set('If-None-Match', side.etag)
-		if (side?.last_modified) headers.set('If-Modified-Since', side.last_modified)
+		if (cache && side?.etag) headers.set('If-None-Match', side.etag)
+		if (cache && side?.last_modified) headers.set('If-Modified-Since', side.last_modified)
 		const res = await fetch(new Request(req, { headers }), { signal })
+		if (!cache) return res
 		if (res.status === 304) {
 			this.#write_meta(req.url, { ...side, ts: Date.now() })
-			return (await cache.match(req)) || res
+			try {
+				return (await cache.match(req)) || res
+			} catch {
+				return res
+			}
 		}
 		if (res.ok) {
-			await cache.put(req, res.clone())
+			try {
+				await cache.put(req, res.clone())
+			} catch {}
 			this.#write_meta(req.url, {
 				ts: Date.now(),
 				etag: res.headers.get('ETag'),
@@ -409,8 +416,12 @@ export default class Navgo {
 	}
 
 	async #run_plan(plan, controller, nav_id) {
-		if (!globalThis.caches) throw new Error('CacheStorage is required for load plans')
-		const cache = await caches.open(this.#cache_name)
+		let cache = null
+		if (globalThis.caches) {
+			try {
+				cache = await caches.open(this.#cache_name)
+			} catch {}
+		}
 		const out = {}
 		const sources = {}
 		const defaults = this.#opts.load_plan_defaults || {}
@@ -423,12 +434,17 @@ export default class Navgo {
 				const strategy = cache_hints.strategy || 'swr'
 				const ttl = cache_hints.ttl ?? 300000
 				const tags = cache_hints.tags || []
-				const side = this.#read_meta(req.url)
-				const entry = await cache.match(req)
+				const side = cache ? this.#read_meta(req.url) : null
+				let entry
+				if (cache) {
+					try {
+						entry = await cache.match(req)
+					} catch {}
+				}
 				const fresh = !!(side && typeof side.ts === 'number' && Date.now() - side.ts <= ttl)
 				let res
 				let source = 'network'
-				if (strategy === 'no-store') {
+				if (!cache || strategy === 'no-store') {
 					res = await fetch(req, { signal: controller.signal })
 				} else if (strategy === 'cache-first' && entry && fresh) {
 					res = entry
@@ -826,9 +842,14 @@ export default class Navgo {
 	 * @param {string|string[]} keys_or_tags
 	 */
 	async invalidate(keys_or_tags) {
-		if (!globalThis.caches) throw new Error('CacheStorage is required for invalidation')
+		if (!globalThis.caches) return
 		const arr = Array.isArray(keys_or_tags) ? keys_or_tags : [keys_or_tags]
-		const cache = await caches.open(this.#cache_name)
+		let cache
+		try {
+			cache = await caches.open(this.#cache_name)
+		} catch {
+			return
+		}
 		const prefix = '__navgo_meta:'
 		const to_delete = []
 		for (const x of arr) {
@@ -849,8 +870,12 @@ export default class Navgo {
 			}
 		}
 		for (const url of new Set(to_delete)) {
-			await cache.delete(new Request(url, { method: 'GET' }))
-			sessionStorage.removeItem(prefix + url)
+			try {
+				await cache.delete(new Request(url, { method: 'GET' }))
+			} catch {}
+			try {
+				sessionStorage.removeItem(prefix + url)
+			} catch {}
 		}
 	}
 
