@@ -7,6 +7,7 @@ import Navgo, {
 	type RouteTuple,
 	type Options,
 	type Params,
+	type Match,
 	type MatchResult,
 	type RawParam,
 	type LoaderContext,
@@ -78,10 +79,22 @@ const is_color = Navgo.validators.one_of(['red', 'green'])
 const ok: boolean = is_color('red')
 
 // route store typing checks
-type RouteState = { url: URL; route: RouteTuple<Meta> | null; params: Params }
+type RouteState = {
+	url: URL
+	route: RouteTuple<Meta> | null
+	params: Params
+	matches: Match<Meta>[]
+	search_params: Record<string, unknown>
+}
 const route_store: Writable<RouteState> = router.route
 route_store.subscribe(() => {})
-route_store.set({ url: new URL('http://example.com/app'), route: routes[0], params: {} })
+route_store.set({
+	url: new URL('http://example.com/app'),
+	route: routes[0],
+	params: {},
+	matches: [],
+	search_params: {},
+})
 
 // is_navigating typing checks
 const nav_store: Writable<boolean> = router.is_navigating

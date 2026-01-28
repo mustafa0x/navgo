@@ -146,16 +146,23 @@ Notes:
 - `load_plan_defaults`: `{ parse?: Parser; cache?: { strategy?: CacheStrategy; ttl?: number; tags?: string[] } }`
   - Defaults applied to LoadPlan entries when `parse`/`cache` are omitted.
   - Default: `{ parse: 'json', cache: { strategy: 'swr', ttl: 86_400_000 } }`
+- `search`: `SearchOptions`
+  - Default behavior for keeping URL search params in sync with `router.search_params`.
+  - Can be overridden per-route via `search_options`.
 
 Important: Navgo only processes routes that match your `base` path.
 
 ### Instance stores
 
-- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[] }>`
+- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; search_params: Record<string, unknown> }>`
   - Readonly property that holds the current snapshot.
   - Subscribe to react to changes; Navgo updates it on every URL change.
 - `router.is_navigating` -- `Writable<boolean>`
   - `true` while a navigation is in flight (between start and completion/cancel).
+- `router.search_params` -- `Writable<Record<string, unknown>>`
+  - Writable store of validated search params for the **current** route.
+  - If the current route defines a `search_schema`, this store is kept in sync with the URL.
+  - Writing to it updates the URL search string (optionally debounced).
 
 Example:
 
@@ -168,6 +175,67 @@ const router = new Navgo(...)
 const {route, is_navigating} = router
 </script>
 ```
+
+### Search Params
+
+Navgo can keep a route-scoped search params store in sync with the URL.
+
+- Define a Valibot `search_schema` on a route tuple **and/or** a route group.
+- Navgo validates + applies defaults, and exposes the result:
+  - as `router.search_params` (Svelte store)
+  - as `search_params` on `router.route` (snapshot: `$route.search_params`)
+  - as `ctx.search_params` inside loaders
+- Update `router.search_params` to update the URL search string.
+
+Only keys declared in the schema are managed. Other query params are preserved.
+
+Coercion is **default-driven**: if a schema default is a number or boolean, Navgo will coerce URL values
+from strings before validation. Plain strings are not JSON-parsed, so `?q=true` stays `'true'` when `q`
+defaults to a string.
+
+#### Defining a schema
+
+```js
+// routes/Products.svelte
+import * as v from 'valibot'
+
+export const search_schema = v.object({
+  q: v.optional(v.fallback(v.string(), ''), ''),
+  page: v.optional(v.fallback(v.number(), 1), 1),
+	// arrays are supported
+	tag: v.optional(v.fallback(v.array(v.string()), []), []),
+	cat: v.optional(v.fallback(v.array(v.string()), []), []),
+})
+
+export const search_options = {
+  debounce: 300,
+  pushHistory: true,
+  showDefaults: false,
+  sort: true,
+	// arrays default to 'repeat' (?tag=a&tag=b), but can be configured per key
+	arrayStyle: { cat: 'csv' },
+}
+```
+
+Schemas can be composed: `search_schema` entries from matched layout groups are merged (outer → inner), then the leaf route&#39;s schema is merged on top.
+
+#### Updating in a component
+
+```svelte
+<script>
+  const { search_params } = router
+</script>
+
+<input
+  value={$search_params.q ?? ''}
+  oninput={(e) => ($search_params = { ...$search_params, q: e.target.value, page: 1 })}
+/>
+```
+
+Notes:
+
+- Writes are **shallow** (URL changes via `replace_state` / `push_state`), so loaders are not re-run automatically.
+- If you want a full navigation, call `router.goto(...)` with a new URL.
 
 ### Route Hooks
 
@@ -216,6 +284,11 @@ See `examples.md` for more setups.
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`
   - Guard called once per navigation attempt on the current route (leave). Call `nav.cancel()` synchronously to prevent navigation. For `popstate`, cancellation auto-reverts the history jump.
+- search_schema?: `any`
+  - Valibot object schema whose output becomes `router.search_params` and `ctx.search_params`.
+  - Can also be placed on route groups (layouts) to share search params across children.
+- search_options?: `SearchOptions`
+  - Overrides `options.search` for this route (e.g. debounce and history behavior).
 
 The `Navigation` object contains:
 

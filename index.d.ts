@@ -47,10 +47,36 @@ export interface LoadPlanDefaults {
 	cache?: CacheOptions
 }
 
+export interface SearchOptions {
+	showDefaults?: boolean
+	debounce?: number
+	pushHistory?: boolean
+	sort?: boolean
+	/**
+	 * How arrays are encoded in the URL.
+	 *
+	 * - 'repeat': `?tag=a&tag=b`
+	 * - 'csv': `?tag=a,b`
+	 * - 'json': `?tag=["a","b"]`
+	 *
+	 * You can set a global style (string) or a per-key map. When using a map,
+	 * `default` is used as the fallback style for keys not explicitly listed.
+	 */
+	arrayStyle?:
+		| 'repeat'
+		| 'csv'
+		| 'json'
+		| ({ default?: 'repeat' | 'csv' | 'json' } & Record<
+				string,
+				'repeat' | 'csv' | 'json' | undefined
+		  >)
+}
+
 export interface LoaderContext {
 	route_entry: RouteTuple
 	url: URL
 	params: Params
+	search_params: Record<string, unknown>
 	signal: AbortSignal
 	fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
 	invalidate(keys_or_tags: string | string[]): Promise<void>
@@ -74,6 +100,8 @@ export interface RouteGroup<T = unknown> {
 	loader?(ctx: LoaderContext): LoadPlan | Promise<unknown>
 	/** Optional guard, called when leaving a matched route within this group. */
 	before_route_leave?(nav: Navigation): void
+	search_schema?: any
+	search_options?: SearchOptions
 	/** Nested routes (route tuples and/or more groups). */
 	routes: Array<RouteEntry<T>>
 }
@@ -96,6 +124,8 @@ export interface Hooks {
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
 	before_route_leave?(nav: Navigation): void
+	search_schema?: any
+	search_options?: SearchOptions
 }
 
 export interface NavigationTarget<T = unknown> {
@@ -152,6 +182,7 @@ export interface Options {
 	preload_on_hover?: boolean
 	/** Attach instance to window as `window.navgo`. Default true. */
 	attach_to_window?: boolean
+	search?: SearchOptions
 	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
 	before_navigate?(nav: Navigation): void
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
@@ -188,15 +219,18 @@ export default class Navgo<T = unknown> {
 	init(): Promise<void>
 	/** Remove listeners installed by `init()`. */
 	destroy(): void
-	/** Writable store with current { url, route, params }. */
+	/** Writable store with current { url, route, params, matches, search_params }. */
 	readonly route: import('svelte/store').Writable<{
 		url: URL
 		route: RouteTuple<T> | null
 		params: Params
 		matches: Match<T>[]
+		search_params: Record<string, unknown>
 	}>
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>
+	/** Writable store of validated search params for the current route. */
+	readonly search_params: import('svelte/store').Writable<Record<string, unknown>>
 	/** Invalidate cache entries by canonical keys (URLs) or tags. */
 	invalidate(keys_or_tags: string | string[]): Promise<void>
 	/** Built-in validator helpers (namespaced). */

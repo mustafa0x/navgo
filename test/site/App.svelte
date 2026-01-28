@@ -14,6 +14,10 @@
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Posts</a
             >
             <a
+                href="/search-params"
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Search params</a
+            >
+            <a
                 href="/cache"
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Cache</a
             >
@@ -155,6 +159,7 @@ import * as ProductsRoute from './routes/Products.svelte'
 import * as ProductRoute from './routes/Product.svelte'
 import * as PostsRoute from './routes/Posts.svelte'
 import * as PostRoute from './routes/Post.svelte'
+import * as SearchParamsRoute from './routes/SearchParams.svelte'
 import * as CacheRoute from './routes/Cache.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
@@ -183,6 +188,7 @@ const routes = [
       ['/products/:id', ProductRoute],
       ['/posts', PostsRoute],
       ['/posts/:id', PostRoute],
+      ['/search-params', SearchParamsRoute],
       ['/contact', ContactRoute],
       ['/about', AboutRoute],
       ['/account', AccountRoute],

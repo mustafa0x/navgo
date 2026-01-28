@@ -1,4 +1,6 @@
 import { throttle } from 'es-toolkit'
+import { debounce } from 'es-toolkit/function'
+import * as v from 'valibot'
 import { parse } from 'regexparam'
 import { tick } from 'svelte'
 import { writable } from 'svelte/store'
@@ -64,6 +66,13 @@ export default class Navgo {
 		scroll_to_top: true,
 		aria_current: false,
 		attach_to_window: true,
+		search: {
+			showDefaults: false,
+			debounce: 0,
+			pushHistory: false,
+			sort: true,
+			arrayStyle: 'repeat',
+		},
 		load_plan_defaults: {
 			parse: 'json',
 			cache: { strategy: 'swr', ttl: 86400000 },
@@ -77,8 +86,8 @@ export default class Navgo {
 	#base_rgx = /^\/+/
 	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
-	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[] }} */
-	#current = { url: null, route: null, params: {}, matches: [] }
+	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[], search_params: Record<string, unknown> }} */
+	#current = { url: null, route: null, params: {}, matches: [], search_params: {} }
 	/** @type {number} */
 	#route_idx = 0
 	/** @type {boolean} */
@@ -96,8 +105,29 @@ export default class Navgo {
 	#loader_controller = null
 	#cache_name = 'navgo'
 	#revalidation = null
-	route = writable({ url: new URL(location.href), route: null, params: {}, matches: [] })
+	/** @type {any} */
+	#search_schema = null
+	#search_defaults = {}
+	#search_keys = []
+	#search_opts = {
+		showDefaults: false,
+		debounce: 0,
+		pushHistory: false,
+		sort: true,
+		arrayStyle: 'repeat',
+	}
+	#search_syncing = false
+	#search_unsub = null
+	#search_writer = null
+	route = writable({
+		url: new URL(location.href),
+		route: null,
+		params: {},
+		matches: [],
+		search_params: {},
+	})
 	is_navigating = writable(false)
+	search_params = writable({})
 
 	//
 	// Event listeners
@@ -175,6 +205,7 @@ export default class Navgo {
 			if (!from || (cur && from === cur.pathname)) {
 				const next_current = { ...this.#current, url: target }
 				this.#current = next_current
+				this.#sync_search_from_url(target)
 				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
 				this.#apply_scroll(ev)
 				this.route.set(next_current)
@@ -382,6 +413,264 @@ export default class Navgo {
 		}
 	}
 
+	#search_array_style(k, opts = this.#search_opts) {
+		const v = opts?.arrayStyle
+		if (typeof v === 'string') return v
+		if (v && typeof v === 'object' && !Array.isArray(v)) {
+			if (typeof v[k] === 'string') return v[k]
+			if (typeof v.default === 'string') return v.default
+		}
+		return 'repeat'
+	}
+
+	#apply_search_opts(target, next) {
+		if (!target || !next || typeof next !== 'object') return target
+		const as = next.arrayStyle
+		if (as !== undefined) {
+			const cur = target.arrayStyle
+			if (typeof as === 'string') target.arrayStyle = as
+			else if (as && typeof as === 'object' && !Array.isArray(as)) {
+				if (typeof cur === 'string') target.arrayStyle = { default: cur, ...as }
+				else if (cur && typeof cur === 'object' && !Array.isArray(cur))
+					target.arrayStyle = { ...cur, ...as }
+				else target.arrayStyle = as
+			}
+		}
+		for (const k in next) {
+			if (k === 'arrayStyle') continue
+			target[k] = next[k]
+		}
+		return target
+	}
+
+	#try_parse_json(s) {
+		if (typeof s !== 'string') return undefined
+		const t = s.trim()
+		if (!t || (t[0] !== '{' && t[0] !== '[')) return undefined
+		try {
+			return JSON.parse(t)
+		} catch {
+			return undefined
+		}
+	}
+
+	#coerce_search_value(value, def, style) {
+		if (value == null) return undefined
+
+		const last = Array.isArray(value) ? value.at(-1) : value
+
+		// array defaults => accept repeat/csv arrays (already arrays), or wrap a single value.
+		if (Array.isArray(def)) {
+			const arr = Array.isArray(value) ? value : [value]
+			return style === 'json' ? (this.#try_parse_json(last) ?? arr) : arr
+		}
+
+		// number defaults => coerce from string (but treat empty as missing).
+		if (typeof def === 'number' && typeof last === 'string') {
+			const s = last.trim()
+			if (!s) return undefined
+			const n = Number(s)
+			return Number.isNaN(n) ? undefined : n
+		}
+
+		// boolean defaults => only accept explicit true/false
+		if (typeof def === 'boolean' && typeof last === 'string') {
+			if (last === 'true') return true
+			if (last === 'false') return false
+			return undefined
+		}
+
+		// object defaults => attempt JSON decode
+		if (def && typeof def === 'object' && typeof last === 'string') {
+			return this.#try_parse_json(last) ?? last
+		}
+
+		return last
+	}
+
+	#read_search(url, schema, opts) {
+		const sp = url?.searchParams
+		if (!sp || !schema?.entries) return {}
+		const out = {}
+		for (const k in schema.entries) {
+			const style = this.#search_array_style(k, opts)
+			if (style === 'csv') {
+				const all = sp.getAll(k)
+				if (!all.length) continue
+				const parts = []
+				for (const raw of all) {
+					// treat empty as empty array
+					if (!raw) continue
+					for (const p of raw.split(',')) if (p) parts.push(p)
+				}
+				out[k] = parts
+				continue
+			}
+			if (style === 'json') {
+				const all = sp.getAll(k)
+				if (!all.length) continue
+				out[k] = all[all.length - 1]
+				continue
+			}
+
+			// repeat (default)
+			const all = sp.getAll(k)
+			if (!all.length) continue
+			out[k] = all.length > 1 ? all : all[0]
+		}
+		return out
+	}
+
+	#resolve_search(matches, route, url, params) {
+		const opts = { ...(this.#opts.search || {}) }
+		let entries = null
+		const ctx = { route_entry: route, url, params }
+		for (const m of matches || []) {
+			if (m.type !== 'layout') continue
+			const e = m.__entry
+			if (e?.search_options && typeof e.search_options === 'object')
+				this.#apply_search_opts(opts, e.search_options)
+			const s = e?.search_schema
+			const sch = typeof s === 'function' ? s(ctx) : s
+			if (sch?.entries && typeof sch.entries === 'object')
+				entries = { ...(entries || {}), ...sch.entries }
+		}
+		const hooks = this.#get_hooks(route)
+		if (hooks?.search_options && typeof hooks.search_options === 'object')
+			this.#apply_search_opts(opts, hooks.search_options)
+		const rs = hooks?.search_schema
+		const rsch = typeof rs === 'function' ? rs(ctx) : rs
+		if (rsch?.entries && typeof rsch.entries === 'object')
+			entries = { ...(entries || {}), ...rsch.entries }
+		const schema = entries ? v.object(entries) : null
+		return { schema, opts }
+	}
+
+	#validate_search(raw, schema, opts) {
+		if (!schema?.entries) return {}
+		const defaults =
+			schema === this.#search_schema
+				? this.#search_defaults || {}
+				: (() => {
+						try {
+							return v.getDefaults(schema) || {}
+						} catch {
+							return {}
+						}
+					})()
+
+		const input = {}
+		for (const k in schema.entries) {
+			if (!raw || !(k in raw)) continue
+			const style = this.#search_array_style(k, opts)
+			input[k] = this.#coerce_search_value(raw[k], defaults?.[k], style)
+		}
+
+		const whole = v.safeParse(schema, input)
+		if (whole.success) return whole.output
+
+		// Partial validation: keep valid keys, fallback invalid ones to defaults.
+		const out = { ...defaults }
+		for (const k in schema.entries) {
+			if (!(k in input)) continue
+			const res = v.safeParse(schema.entries[k], input[k])
+			if (res.success) out[k] = res.output
+		}
+		return out
+	}
+
+	#set_search_store(values) {
+		const next = values || {}
+		this.#search_syncing = true
+		this.search_params.set(next)
+		this.#search_syncing = false
+		this.#current.search_params = next
+		if (this.#current.url) this.route.set(this.#current)
+	}
+
+	#set_search_state(schema, opts, initial) {
+		this.#search_schema = schema
+		this.#search_opts = this.#apply_search_opts({ ...(this.#opts.search || {}) }, opts || {})
+		try {
+			this.#search_defaults = schema ? v.getDefaults(schema) || {} : {}
+		} catch {
+			this.#search_defaults = {}
+		}
+		this.#search_keys = schema?.entries ? Object.keys(schema.entries) : []
+		this.#search_writer?.cancel?.()
+		this.#search_writer =
+			this.#search_opts.debounce > 0
+				? debounce(v => this.#commit_search(v), this.#search_opts.debounce)
+				: null
+		this.#set_search_store(initial ?? {})
+	}
+
+	#sync_search_from_url(url) {
+		const schema = this.#search_schema
+		if (!schema) return this.#set_search_store({})
+		const next = this.#validate_search(
+			this.#read_search(url, schema, this.#search_opts),
+			schema,
+			this.#search_opts,
+		)
+		this.#set_search_store(next)
+	}
+
+	#commit_search(values) {
+		const schema = this.#search_schema
+		if (!schema) return
+		const cur = this.#current.url || new URL(location.href)
+		let sp = new URLSearchParams(cur.search)
+		for (const k of this.#search_keys) {
+			sp.delete(k)
+			const val = values?.[k]
+			const def = this.#search_defaults?.[k]
+			if (val == null) continue
+			if (!this.#search_opts.showDefaults && this.#same_value(val, def)) continue
+			// Arrays can be encoded via repeat/csv/json.
+			if (Array.isArray(val)) {
+				if (!val.length) continue
+				const style = this.#search_array_style(k, this.#search_opts)
+				if (style === 'csv') {
+					sp.set(k, val.map(x => String(x)).join(','))
+					continue
+				}
+				if (style === 'json') {
+					try {
+						sp.set(k, JSON.stringify(val))
+					} catch {
+						sp.set(k, String(val))
+					}
+					continue
+				}
+				// repeat (default)
+				for (const x of val) {
+					if (x == null) continue
+					sp.append(k, String(x))
+				}
+				continue
+			}
+			if (val && typeof val === 'object') {
+				try {
+					sp.set(k, JSON.stringify(val))
+				} catch {
+					sp.set(k, String(val))
+				}
+				continue
+			}
+			sp.set(k, String(val))
+		}
+		if (this.#search_opts.sort) {
+			sp = new URLSearchParams([...sp.entries()].sort(([a], [b]) => a.localeCompare(b)))
+		}
+		const next = new URL(cur.href)
+		const s = sp.toString()
+		next.search = s ? `?${s}` : ''
+		if (next.href === cur.href) return
+		if (this.#search_opts.pushHistory) this.push_state(next.href)
+		else this.replace_state(next.href)
+	}
+
 	async #fetch_and_cache(req, cache, side, tags, signal) {
 		const headers = new Headers(req.headers)
 		if (cache && side?.etag) headers.set('If-None-Match', side.etag)
@@ -500,13 +789,14 @@ export default class Navgo {
 		} catch {}
 	}
 
-	async #run_loader(route, url, params, controller, nav_id) {
+	async #run_loader(route, url, params, search_params, controller, nav_id) {
 		const loader = this.#get_hooks(route)?.loader
 		if (!loader) return undefined
 		const ctx = {
 			route_entry: route,
 			url,
 			params,
+			search_params,
 			signal: controller.signal,
 			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
 			invalidate: x => this.invalidate(x),
@@ -518,13 +808,14 @@ export default class Navgo {
 		return ret
 	}
 
-	async #run_group_loader(group, route, url, params, controller, nav_id) {
+	async #run_group_loader(group, route, url, params, search_params, controller, nav_id) {
 		const loader = group?.loader
 		if (!loader) return undefined
 		const ctx = {
 			route_entry: route,
 			url,
 			params,
+			search_params,
 			signal: controller.signal,
 			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
 			invalidate: x => this.invalidate(x),
@@ -555,15 +846,20 @@ export default class Navgo {
 
 	async #load_hit(hit, url, controller, nav_id) {
 		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
+		const { schema, opts } = this.#resolve_search(matches, hit.route, url, hit.params)
+		const search_params = schema
+			? this.#validate_search(this.#read_search(url, schema, opts), schema, opts)
+			: {}
 		const ps = matches.map(m => {
 			const p =
 				m.type === 'route'
-					? this.#run_loader(m.route, url, hit.params, controller, nav_id)
+					? this.#run_loader(m.route, url, hit.params, search_params, controller, nav_id)
 					: this.#run_group_loader(
 							m.__entry,
 							hit.route,
 							url,
 							hit.params,
+							search_params,
 							controller,
 							nav_id,
 						)
@@ -571,7 +867,7 @@ export default class Navgo {
 		})
 		const datas = await Promise.all(ps)
 		for (let i = 0; i < matches.length; i++) matches[i].data = datas[i]
-		return { matches, data: datas[datas.length - 1] }
+		return { matches, data: datas[datas.length - 1], search: { schema, opts, search_params } }
 	}
 
 	/**
@@ -719,7 +1015,19 @@ export default class Navgo {
 		const prev = this.#current
 		const matches = hit ? bundle?.matches || [] : []
 		const data = hit ? bundle?.data : { __error: { status: 404 } }
-		this.#current = { url, route: hit?.route || null, params: hit?.params || {}, matches }
+		this.#current = {
+			url,
+			route: hit?.route || null,
+			params: hit?.params || {},
+			matches,
+			search_params: {},
+		}
+
+		this.#set_search_state(
+			hit ? bundle?.search?.schema : null,
+			hit ? bundle?.search?.opts : null,
+			hit ? bundle?.search?.search_params : {},
+		)
 
 		// Build a completion nav using the previous route as `from`
 		nav = this.#make_nav({
@@ -824,6 +1132,7 @@ export default class Navgo {
 		if (!replace) this.#clear_onward_history()
 		// update current URL snapshot and notify
 		this.#current.url = u
+		this.#sync_search_from_url(u)
 		this.route.set(this.#current)
 		this.#update_active_links()
 	}
@@ -990,6 +1299,17 @@ export default class Navgo {
 
 		this.#routes = compile_routes(routes)
 
+		// keep URL in sync when search_params store changes
+		this.#search_unsub = this.search_params.subscribe(next => {
+			if (this.#search_syncing) return
+			const schema = this.#search_schema
+			if (!schema) return
+			const validated = this.#validate_search(next || {}, schema)
+			if (!this.#same_value(validated, next)) this.#set_search_store(validated)
+			if (this.#search_writer) this.#search_writer(validated)
+			else this.#commit_search(validated)
+		})
+
 		ℹ('[🧭 init]', {
 			base: this.#base,
 			routes: this.#routes.length,
@@ -1048,6 +1368,7 @@ export default class Navgo {
 		removeEventListener('hashchange', this.#on_hashchange)
 		removeEventListener('scroll', this.#scroll_handler, { capture: true })
 		this.#areas_pos.clear()
+		this.#search_unsub?.()
 		delete window.navgo
 	}
 
