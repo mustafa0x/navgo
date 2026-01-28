@@ -68,16 +68,18 @@ const routes = [
 ## Param rules
 
 ```js
+import { v } from 'navgo'
+
 const routes = [
 	[
 		'/users/:id',
 		User,
 		{
 			param_rules: {
-				id: { validator: Navgo.validators.int({ min: 1 }), coercer: Number },
+				id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
 			},
 			validate(params) {
-				// params.id is already coerced by this point
+				// params.id is already transformed by this point
 				return params.id < 10_000
 			},
 		},

@@ -4,11 +4,13 @@
 // These are compile-only tests; they should typecheck without emitting JS.
 
 import Navgo, {
+	v,
 	type RouteTuple,
 	type Options,
 	type Params,
+	type Match,
 	type MatchResult,
-	type RawParam,
+	type ParamRule,
 	type LoaderContext,
 	type LoadPlan,
 } from 'navgo'
@@ -16,7 +18,7 @@ import type { Writable } from 'svelte/store'
 
 // Custom route metadata type for generics flow
 type Meta = {
-	param_rules?: Record<string, (value: RawParam) => boolean>
+	param_rules?: Record<string, ParamRule>
 	loader?: (ctx: LoaderContext) => LoadPlan | Promise<unknown>
 }
 
@@ -31,7 +33,7 @@ const plan: LoadPlan = {
 
 const routes: Array<RouteTuple<Meta>> = [
 	['/', {}],
-	['users/:id', { param_rules: { id: Navgo.validators.int({ min: 1 }) } }],
+	['users/:id', { param_rules: { id: v.pipe(v.string(), v.toNumber(), v.minValue(1)) } }],
 	[/^\/posts\/(?<slug>[^/]+)$/, {}],
 ]
 
@@ -73,15 +75,27 @@ router.push_state('/app/foo', { x: 1 })
 router.replace_state('/app/foo', { x: 1 })
 router.invalidate(['https://dummyjson.com/products', 'products'])
 
-// Static validator helpers
-const is_color = Navgo.validators.one_of(['red', 'green'])
-const ok: boolean = is_color('red')
+// valibot re-export
+const id_schema = v.pipe(v.string(), v.toNumber())
+const id_ok: boolean = v.safeParse(id_schema, '123').success
 
 // route store typing checks
-type RouteState = { url: URL; route: RouteTuple<Meta> | null; params: Params }
+type RouteState = {
+	url: URL
+	route: RouteTuple<Meta> | null
+	params: Params
+	matches: Match<Meta>[]
+	search_params: Record<string, unknown>
+}
 const route_store: Writable<RouteState> = router.route
 route_store.subscribe(() => {})
-route_store.set({ url: new URL('http://example.com/app'), route: routes[0], params: {} })
+route_store.set({
+	url: new URL('http://example.com/app'),
+	route: routes[0],
+	params: {},
+	matches: [],
+	search_params: {},
+})
 
 // is_navigating typing checks
 const nav_store: Writable<boolean> = router.is_navigating

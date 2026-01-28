@@ -24,7 +24,8 @@
 	},
 	"files": [
 		"*.d.ts",
-		"index.js"
+		"index.js",
+		"utils.js"
 	],
 	"keywords": [
 		"browser",
@@ -33,7 +34,8 @@
 	],
 	"dependencies": {
 		"es-toolkit": "^1.42.0",
-		"regexparam": "^3.0.0"
+		"regexparam": "^3.0.0",
+		"valibot": "^1.2.0"
 	},
 	"peerDependencies": {
 		"svelte": "5"

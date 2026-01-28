@@ -20,7 +20,7 @@ export default defineConfig([
 		languageOptions: { globals: { ...globals.es2021, ...globals.node, ...globals.browser } },
 	},
 	{
-		files: ['index.js', 'test/site/**/*.js'],
+		files: ['index.js', 'utils.js', 'test/site/**/*.js'],
 		languageOptions: { globals: { ...globals.es2021, ...globals.browser } },
 	},
 	{

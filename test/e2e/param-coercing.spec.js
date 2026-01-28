@@ -17,7 +17,7 @@ test('param coercion and third-item override', async ({ page }) => {
 	await expect(page.locator('[data-testid="coerce-type"]')).toHaveText('number')
 })
 
-test('param validator rejects invalid values', async ({ page }) => {
+test('param schema rejects invalid values', async ({ page }) => {
 	await page.evaluate(() => window.navgo.goto('/coerce/nope'))
 	await expect(page.locator('main')).toContainText('Page not found')
 })

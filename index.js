@@ -1,7 +1,19 @@
-import { throttle } from 'es-toolkit'
+import { throttle, isEqual } from 'es-toolkit'
+import { debounce } from 'es-toolkit/function'
+import { isPromise } from 'es-toolkit/predicate'
+import * as v from 'valibot'
+import {
+	build_search_url,
+	merge_search_opts,
+	normalize_path,
+	read_search,
+	scroll_to_hash,
+	validate_search,
+} from './utils.js'
 import { parse } from 'regexparam'
 import { tick } from 'svelte'
 import { writable } from 'svelte/store'
+export { v }
 
 const ℹ = (...args) => console.debug(...args)
 
@@ -64,6 +76,13 @@ export default class Navgo {
 		scroll_to_top: true,
 		aria_current: false,
 		attach_to_window: true,
+		search: {
+			show_defaults: false,
+			debounce: 0,
+			push_history: true,
+			sort: true,
+			array_style: 'repeat',
+		},
 		load_plan_defaults: {
 			parse: 'json',
 			cache: { strategy: 'swr', ttl: 86400000 },
@@ -77,8 +96,8 @@ export default class Navgo {
 	#base_rgx = /^\/+/
 	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
-	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[] }} */
-	#current = { url: null, route: null, params: {}, matches: [] }
+	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[], search_params: Record<string, unknown> }} */
+	#current = { url: null, route: null, params: {}, matches: [], search_params: {} }
 	/** @type {number} */
 	#route_idx = 0
 	/** @type {boolean} */
@@ -96,8 +115,29 @@ export default class Navgo {
 	#loader_controller = null
 	#cache_name = 'navgo'
 	#revalidation = null
-	route = writable({ url: new URL(location.href), route: null, params: {}, matches: [] })
+	/** @type {any} */
+	#search_schema = null
+	#search_defaults = {}
+	#search_keys = []
+	#search_opts = {
+		show_defaults: false,
+		debounce: 0,
+		push_history: true,
+		sort: true,
+		array_style: 'repeat',
+	}
+	#search_syncing = false
+	#search_unsub = null
+	#search_writer = null
+	route = writable({
+		url: new URL(location.href),
+		route: null,
+		params: {},
+		matches: [],
+		search_params: {},
+	})
 	is_navigating = writable(false)
+	search_params = writable({})
 
 	//
 	// Event listeners
@@ -119,7 +159,7 @@ export default class Navgo {
 				if (next_hash === '' || (next_hash === 'top' && !document.getElementById('top'))) {
 					scrollTo({ top: 0 })
 				} else {
-					this.#scroll_to_hash('#' + next_hash)
+					scroll_to_hash('#' + next_hash)
 				}
 				ℹ('[🧭 hash]', 'same-hash scroll')
 				return
@@ -175,6 +215,7 @@ export default class Navgo {
 			if (!from || (cur && from === cur.pathname)) {
 				const next_current = { ...this.#current, url: target }
 				this.#current = next_current
+				this.#sync_search_from_url(target)
 				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
 				this.#apply_scroll(ev)
 				this.route.set(next_current)
@@ -279,13 +320,10 @@ export default class Navgo {
 	//
 	// Helpers
 	//
-	#normalize(url) {
-		return '/' + (url || '').replace(/^\/|\/$/g, '')
-	}
 	/** @param {string} url @returns {string|false} */
 	format(url) {
 		if (!url) return url
-		url = this.#normalize(url)
+		url = normalize_path(url)
 		const out = this.#base_rgx.test(url) && url.replace(this.#base_rgx, '/')
 		ℹ('[🧭 format]', { in: url, out })
 		return out
@@ -337,16 +375,13 @@ export default class Navgo {
 		const br = b?.param_rules
 		if (ar || br) {
 			const out = {}
-			const norm = r => (typeof r === 'function' ? { validator: r } : r || {})
-			for (const k in ar || {}) out[k] = norm(ar[k])
-			for (const k in br || {}) out[k] = { ...out[k], ...norm(br[k]) }
+			const norm_rule = r =>
+				r?.schema !== undefined || r?.coercer !== undefined ? r : r ? { schema: r } : {}
+			for (const k in ar || {}) out[k] = norm_rule(ar[k])
+			for (const k in br || {}) out[k] = { ...out[k], ...norm_rule(br[k]) }
 			hooks.param_rules = out
 		}
 		return hooks
-	}
-
-	#is_promise(x) {
-		return !!x && typeof x === 'object' && typeof x.then === 'function'
 	}
 
 	#to_get_request(input, init) {
@@ -358,34 +393,110 @@ export default class Navgo {
 		return new Request(base.url, { ...init, method: 'GET', headers })
 	}
 
-	#meta_key(url) {
-		return '__navgo_meta:' + url
-	}
+	#meta_key = '__navgo_meta:'
 	#read_meta(url) {
 		try {
-			return JSON.parse(sessionStorage.getItem(this.#meta_key(url)) || 'null')
+			return JSON.parse(sessionStorage.getItem(this.#meta_key + url) || 'null')
 		} catch {
 			return null
 		}
 	}
 	#write_meta(url, meta) {
 		try {
-			sessionStorage.setItem(this.#meta_key(url), JSON.stringify(meta))
+			sessionStorage.setItem(this.#meta_key + url, JSON.stringify(meta))
 		} catch {}
 	}
 
 	#same_value(a, b) {
-		try {
-			return JSON.stringify(a) === JSON.stringify(b)
-		} catch {
-			return a === b
+		return isEqual(a, b)
+	}
+
+	/* Resolve search schema + options for the current match. */
+	#resolve_search(matches, route, url, params) {
+		const ctx = { route_entry: route, url, params }
+		let schema = null
+		let opts = merge_search_opts(this.#opts.search || {})
+
+		const apply_schema = s => {
+			if (!s) return
+			const sch = typeof s === 'function' ? s(ctx) : s
+			if (sch?.entries) schema = sch
 		}
+
+		for (const m of matches || []) {
+			if (m.type !== 'layout') continue
+			const e = m.__entry
+			opts = merge_search_opts(opts, e?.search_options)
+			apply_schema(e?.search_schema)
+		}
+
+		const hooks = this.#get_hooks(route)
+		opts = merge_search_opts(opts, hooks?.search_options)
+		apply_schema(hooks?.search_schema)
+
+		return { schema, opts }
+	}
+
+	/* Sync search_params store and route snapshot. */
+	#set_search_store(values) {
+		const next = values || {}
+		this.#search_syncing = true
+		this.search_params.set(next)
+		this.#search_syncing = false
+		this.#current.search_params = next
+		if (this.#current.url) this.route.set(this.#current)
+	}
+
+	/* Apply resolved search config to current route. */
+	#set_search_state(search) {
+		this.#search_schema = search?.schema || null
+		this.#search_opts = merge_search_opts(this.#opts.search || {}, search?.opts || {})
+		this.#search_defaults = search?.defaults || {}
+		this.#search_keys = this.#search_schema?.entries
+			? Object.keys(this.#search_schema.entries)
+			: []
+		this.#search_writer?.cancel?.()
+		this.#search_writer =
+			this.#search_opts.debounce > 0
+				? debounce(v => this.#commit_search(v), this.#search_opts.debounce)
+				: null
+		this.#set_search_store(search?.search_params ?? {})
+	}
+
+	/* Read + validate search params from URL. */
+	#sync_search_from_url(url) {
+		if (!this.#search_schema) return this.#set_search_store({})
+		const raw = read_search(url, this.#search_schema, this.#search_opts)
+		const next = validate_search(
+			raw,
+			this.#search_schema,
+			this.#search_defaults,
+			this.#search_opts,
+		)
+		this.#set_search_store(next)
+	}
+
+	/* Commit search_params to the URL. */
+	#commit_search(values) {
+		if (!this.#search_schema) return
+		const cur = this.#current.url || new URL(location.href)
+		const next = build_search_url(
+			cur,
+			values,
+			this.#search_keys,
+			this.#search_defaults,
+			this.#search_opts,
+			(a, b) => this.#same_value(a, b),
+		)
+		if (!next) return
+		if (this.#search_opts.push_history) this.push_state(next.href)
+		else this.replace_state(next.href)
 	}
 
 	async #fetch_and_cache(req, cache, side, tags, signal) {
 		const headers = new Headers(req.headers)
-		if (cache && side?.etag) headers.set('If-None-Match', side.etag)
-		if (cache && side?.last_modified) headers.set('If-Modified-Since', side.last_modified)
+		if (side?.etag) headers.set('If-None-Match', side.etag)
+		if (side?.last_modified) headers.set('If-Modified-Since', side.last_modified)
 		const res = await fetch(new Request(req, { headers }), { signal })
 		if (!cache) return res
 		if (res.status === 304) {
@@ -417,11 +528,9 @@ export default class Navgo {
 
 	async #run_plan(plan, controller, nav_id) {
 		let cache = null
-		if (globalThis.caches) {
-			try {
-				cache = await caches.open(this.#cache_name)
-			} catch {}
-		}
+		try {
+			cache = await caches.open(this.#cache_name)
+		} catch {}
 		const out = {}
 		const sources = {}
 		const defaults = this.#opts.load_plan_defaults || {}
@@ -436,11 +545,9 @@ export default class Navgo {
 				const tags = cache_hints.tags || []
 				const side = cache ? this.#read_meta(req.url) : null
 				let entry
-				if (cache) {
-					try {
-						entry = await cache.match(req)
-					} catch {}
-				}
+				try {
+					entry = await cache?.match?.(req)
+				} catch {}
 				const fresh = !!(side && typeof side.ts === 'number' && Date.now() - side.ts <= ttl)
 				let res
 				let source = 'network'
@@ -500,37 +607,39 @@ export default class Navgo {
 		} catch {}
 	}
 
-	async #run_loader(route, url, params, controller, nav_id) {
+	async #run_loader(route, url, params, search_params, controller, nav_id) {
 		const loader = this.#get_hooks(route)?.loader
 		if (!loader) return undefined
 		const ctx = {
 			route_entry: route,
 			url,
 			params,
+			search_params,
 			signal: controller.signal,
 			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
 			invalidate: x => this.invalidate(x),
 		}
 		const ret = loader(ctx)
-		if (this.#is_promise(ret)) return ret
+		if (isPromise(ret)) return ret
 		if (ret && typeof ret === 'object' && !Array.isArray(ret))
 			return this.#run_plan(ret, controller, nav_id)
 		return ret
 	}
 
-	async #run_group_loader(group, route, url, params, controller, nav_id) {
+	async #run_group_loader(group, route, url, params, search_params, controller, nav_id) {
 		const loader = group?.loader
 		if (!loader) return undefined
 		const ctx = {
 			route_entry: route,
 			url,
 			params,
+			search_params,
 			signal: controller.signal,
 			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
 			invalidate: x => this.invalidate(x),
 		}
 		const ret = loader(ctx)
-		if (this.#is_promise(ret)) return ret
+		if (isPromise(ret)) return ret
 		if (ret && typeof ret === 'object' && !Array.isArray(ret))
 			return this.#run_plan(ret, controller, nav_id)
 		return ret
@@ -555,15 +664,23 @@ export default class Navgo {
 
 	async #load_hit(hit, url, controller, nav_id) {
 		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
+		const { schema, opts } = this.#resolve_search(matches, hit.route, url, hit.params)
+
+		const defaults = schema ? v.getDefaults(schema) || {} : {}
+		const search_params = schema
+			? validate_search(read_search(url, schema, opts), schema, defaults, opts)
+			: {}
+
 		const ps = matches.map(m => {
 			const p =
 				m.type === 'route'
-					? this.#run_loader(m.route, url, hit.params, controller, nav_id)
+					? this.#run_loader(m.route, url, hit.params, search_params, controller, nav_id)
 					: this.#run_group_loader(
 							m.__entry,
 							hit.route,
 							url,
 							hit.params,
+							search_params,
 							controller,
 							nav_id,
 						)
@@ -571,7 +688,11 @@ export default class Navgo {
 		})
 		const datas = await Promise.all(ps)
 		for (let i = 0; i < matches.length; i++) matches[i].data = datas[i]
-		return { matches, data: datas[datas.length - 1] }
+		return {
+			matches,
+			data: datas[datas.length - 1],
+			search: { schema, opts, defaults, search_params },
+		}
 	}
 
 	/**
@@ -719,7 +840,15 @@ export default class Navgo {
 		const prev = this.#current
 		const matches = hit ? bundle?.matches || [] : []
 		const data = hit ? bundle?.data : { __error: { status: 404 } }
-		this.#current = { url, route: hit?.route || null, params: hit?.params || {}, matches }
+		this.#current = {
+			url,
+			route: hit?.route || null,
+			params: hit?.params || {},
+			matches,
+			search_params: {},
+		}
+
+		this.#set_search_state(hit ? bundle?.search : null)
 
 		// Build a completion nav using the previous route as `from`
 		nav = this.#make_nav({
@@ -824,6 +953,7 @@ export default class Navgo {
 		if (!replace) this.#clear_onward_history()
 		// update current URL snapshot and notify
 		this.#current.url = u
+		this.#sync_search_from_url(u)
 		this.route.set(this.#current)
 		this.#update_active_links()
 	}
@@ -842,7 +972,6 @@ export default class Navgo {
 	 * @param {string|string[]} keys_or_tags
 	 */
 	async invalidate(keys_or_tags) {
-		if (!globalThis.caches) return
 		const arr = Array.isArray(keys_or_tags) ? keys_or_tags : [keys_or_tags]
 		let cache
 		try {
@@ -850,7 +979,7 @@ export default class Navgo {
 		} catch {
 			return
 		}
-		const prefix = '__navgo_meta:'
+		const prefix = this.#meta_key
 		const to_delete = []
 		for (const x of arr) {
 			const str = String(x)
@@ -941,18 +1070,20 @@ export default class Navgo {
 				for (const k in arr.groups) params[k] = arr.groups[k]
 			}
 
-			// per-route validators and optional async validate()
+			// per-route param rules and optional async validate()
 			const hooks = this.#get_hooks(obj.data)
 			if (hooks.param_rules) {
 				let ok = true
 				for (const k in hooks.param_rules) {
 					const param_rule = hooks.param_rules[k]
-					const param_validator =
-						typeof param_rule === 'function' ? param_rule : param_rule?.validator
-					if (typeof param_validator === 'function' && !param_validator(params[k])) {
+					const schema = param_rule?.schema
+					if (!schema) continue
+					const res = v.safeParse(schema, params[k])
+					if (!res.success) {
 						ok = false
 						break
 					}
+					params[k] = res.output
 				}
 				if (!ok) {
 					ℹ('[🧭 match]', 'skip: param_rules', { pattern: obj.data?.[0] })
@@ -960,8 +1091,7 @@ export default class Navgo {
 				}
 				for (const k in hooks.param_rules) {
 					const param_rule = hooks.param_rules[k]
-					const param_coercer =
-						typeof param_rule === 'function' ? null : param_rule?.coercer
+					const param_coercer = param_rule?.coercer
 					if (typeof param_coercer === 'function') params[k] = param_coercer(params[k])
 				}
 			}
@@ -983,12 +1113,29 @@ export default class Navgo {
 
 	/** @param {RouteEntry[]} [routes] @param {Options} [opts] */
 	constructor(routes = [], opts) {
-		this.#opts = { ...this.#opts, ...opts }
-		this.#base = this.#normalize(this.#opts.base || '/')
+		const base_opts = this.#opts
+		this.#opts = { ...base_opts, ...opts }
+		this.#opts.search = merge_search_opts(base_opts.search || {}, opts?.search || {})
+		this.#base = normalize_path(this.#opts.base || '/')
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
 		this.#routes = compile_routes(routes)
+
+		// keep URL in sync when search_params store changes
+		this.#search_unsub = this.search_params.subscribe(next => {
+			if (this.#search_syncing) return
+			if (!this.#search_schema) return
+			const validated = validate_search(
+				next || {},
+				this.#search_schema,
+				this.#search_defaults,
+				this.#search_opts,
+			)
+			if (!this.#same_value(validated, next)) this.#set_search_store(validated)
+			if (this.#search_writer) this.#search_writer(validated)
+			else this.#commit_search(validated)
+		})
 
 		ℹ('[🧭 init]', {
 			base: this.#base,
@@ -1048,6 +1195,7 @@ export default class Navgo {
 		removeEventListener('hashchange', this.#on_hashchange)
 		removeEventListener('scroll', this.#scroll_handler, { capture: true })
 		this.#areas_pos.clear()
+		this.#search_unsub?.()
 		delete window.navgo
 	}
 
@@ -1107,7 +1255,7 @@ export default class Navgo {
 				if (pos || m) return
 			}
 			// 2) If there is a hash, prefer anchor scroll
-			if (hash && this.#scroll_to_hash(hash)) {
+			if (hash && scroll_to_hash(hash)) {
 				ℹ('[🧭 scroll]', 'hash')
 				return
 			}
@@ -1118,37 +1266,6 @@ export default class Navgo {
 			}
 		})
 	}
-
-	#scroll_to_hash(hash) {
-		let id = hash.slice(1)
-		if (!id) return false
-		try {
-			id = decodeURIComponent(id)
-		} catch {}
-		const el =
-			document.getElementById(id) || document.querySelector(`[name="${CSS.escape(id)}"]`)
-		el?.scrollIntoView()
-		ℹ('[🧭 scroll]', 'anchor', { id, found: !!el })
-		return !!el
-	}
-
-	/** @type {ValidatorHelpers} */
-	static validators = {
-		int(opts = {}) {
-			const { min = null, max = null } = opts
-			return v => {
-				if (typeof v !== 'string' || !/^-?\d+$/.test(v)) return false
-				const n = Number(v)
-				if (min != null && n < min) return false
-				if (max != null && n > max) return false
-				return true
-			}
-		},
-		one_of(values) {
-			const set = new Set(values)
-			return v => set.has(v)
-		},
-	}
 }
 
 /** @typedef {import('./index.d.ts').Options} Options */
@@ -1158,5 +1275,4 @@ export default class Navgo {
 /** @typedef {import('./index.d.ts').PreloadBundle} PreloadBundle */
 /** @typedef {import('./index.d.ts').RouteTuple} RouteTuple */
 /** @typedef {import('./index.d.ts').MatchResult} MatchResult */
-/** @typedef {import('./index.d.ts').ValidatorHelpers} ValidatorHelpers */
 /** @typedef {import('./index.d.ts').Navigation} Navigation */

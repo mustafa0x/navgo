@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 console.debug = () => {}
-import Navgo from './index.js'
+import Navgo, { v } from './index.js'
 
 global.history = {}
 
@@ -418,12 +418,15 @@ describe('$.match', () => {
 		if (res.route !== r2) throw new Error('async validate(false) did not skip the route')
 	})
 
-	it('params validators run before coercers; validate sees coerced params', async () => {
+	it('param schemas run before coercers; validate sees coerced params', async () => {
 		const r1 = [
 			'users/:id',
 			{
 				param_rules: {
-					id: { validator: v => typeof v === 'string', coercer: v => Number(v) },
+					id: {
+						schema: v.pipe(v.string(), v.toNumber()),
+						coercer: value => (typeof value === 'number' ? value + 1 : -1),
+					},
 				},
 				validate: p => typeof p.id === 'number' && p.id > 5,
 			},
@@ -431,7 +434,7 @@ describe('$.match', () => {
 		const r2 = ['users/:id', {}]
 		const ctx = new Navgo([r1, r2])
 
-		const a = await ctx.match('/users/6')
+		const a = await ctx.match('/users/5')
 		if (!a) throw new Error('expected a match')
 		expect(a.route).toBe(r1)
 		expect(a.params.id).toBe(6)
@@ -455,7 +458,7 @@ describe('$.match', () => {
 	it('merges param_rules fields for same key', async () => {
 		const r = [
 			'users/:id',
-			{ param_rules: { id: v => typeof v === 'string' && /^\d+$/.test(v) } },
+			{ param_rules: { id: v.pipe(v.string(), v.regex(/^\d+$/)) } },
 			{ param_rules: { id: { coercer: Number } } },
 		]
 		const ctx = new Navgo([r])

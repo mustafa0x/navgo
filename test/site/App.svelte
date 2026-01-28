@@ -14,6 +14,10 @@
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Posts</a
             >
             <a
+                href="/search-params"
+                class="rounded-md px-3 py-1.5 hover:bg-gray-100">Search params</a
+            >
+            <a
                 href="/cache"
                 class="rounded-md px-3 py-1.5 hover:bg-gray-100">Cache</a
             >
@@ -149,12 +153,13 @@
 <div class="request-indicator" class:active={$is_navigating}></div>
 
 <script module>
-import Navgo from '../../index.js'
+import Navgo, { v } from '../../index.js'
 
 import * as ProductsRoute from './routes/Products.svelte'
 import * as ProductRoute from './routes/Product.svelte'
 import * as PostsRoute from './routes/Posts.svelte'
 import * as PostRoute from './routes/Post.svelte'
+import * as SearchParamsRoute from './routes/SearchParams.svelte'
 import * as CacheRoute from './routes/Cache.svelte'
 import * as ContactRoute from './routes/Contact.svelte'
 import * as AboutRoute from './routes/About.svelte'
@@ -183,6 +188,7 @@ const routes = [
       ['/products/:id', ProductRoute],
       ['/posts', PostsRoute],
       ['/posts/:id', PostRoute],
+      ['/search-params', SearchParamsRoute],
       ['/contact', ContactRoute],
       ['/about', AboutRoute],
       ['/account', AccountRoute],
@@ -193,7 +199,10 @@ const routes = [
         {
           validate: () => true,
           param_rules: {
-            id: {validator: Navgo.validators.int({min: 1}), coercer: v => (v == null ? v : Number(v))},
+            id: {
+              schema: v.pipe(v.string(), v.regex(/^\d+$/)),
+              coercer: value => (value == null ? value : Number(value)),
+            },
           },
         },
       ],
@@ -207,7 +216,7 @@ const routes = [
             {
               // constrain/coerce params
               param_rules: {
-                id: {validator: Navgo.validators.int({min: 1}), coercer: Number},
+                id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
               },
               // load data before URL changes; result goes to after_navigate(...)
               loader: async ({params}) => ({audit: 'ok', admin_id: params.id}),
