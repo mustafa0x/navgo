@@ -10,59 +10,12 @@ import {
 	scroll_to_hash,
 	validate_search,
 } from './utils.js'
-import { parse } from 'regexparam'
 import { tick } from 'svelte'
 import { writable } from 'svelte/store'
 export { v }
+import { parse } from 'regexparam'
 
 const ℹ = (...args) => console.debug(...args)
-
-/** @param {any} x @returns {x is RouteTuple} */
-function is_route_tuple(x) {
-	return Array.isArray(x) && (typeof x[0] === 'string' || x[0] instanceof RegExp)
-}
-
-/** @param {any} x @returns {x is RouteGroup} */
-function is_route_group(x) {
-	return !!x && typeof x === 'object' && Array.isArray(x.routes)
-}
-
-/**
- * Flatten nested route groups into a list of matchable routes.
- *
- * @param {RouteEntry[]} entries
- * @param {RouteGroup[]} stack
- * @returns {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>}
- */
-function compile_routes(entries, stack = []) {
-	/** @type {Array<{ pattern: RegExp, keys: string[]|null, data: RouteTuple, stack: RouteGroup[] }>} */
-	const out = []
-	for (const e of entries || []) {
-		if (is_route_tuple(e)) {
-			const pat_or_rx = e[0]
-			const pat =
-				pat_or_rx instanceof RegExp ? { pattern: pat_or_rx, keys: null } : parse(pat_or_rx)
-			pat.data = e // keep original tuple: [pattern, hooks, ...]
-			pat.stack = stack
-			out.push(pat)
-			continue
-		}
-		if (is_route_group(e)) {
-			out.push(...compile_routes(e.routes, stack.concat(e)))
-			continue
-		}
-	}
-	return out
-}
-
-/**
- * Create a match descriptor.
- * Uses a non-enumerable `__entry` field for internal references.
- */
-function make_match(obj, entry) {
-	if (entry) Object.defineProperty(obj, '__entry', { value: entry })
-	return obj
-}
 
 export default class Navgo {
 	/** @type {Options} */
@@ -407,10 +360,6 @@ export default class Navgo {
 		} catch {}
 	}
 
-	#same_value(a, b) {
-		return isEqual(a, b)
-	}
-
 	/* Resolve search schema + options for the current match. */
 	#resolve_search(matches, route, url, params) {
 		const ctx = { route_entry: route, url, params }
@@ -486,7 +435,7 @@ export default class Navgo {
 			this.#search_keys,
 			this.#search_defaults,
 			this.#search_opts,
-			(a, b) => this.#same_value(a, b),
+			isEqual,
 		)
 		if (!next) return
 		if (this.#search_opts.push_history) this.push_state(next.href)
@@ -594,7 +543,7 @@ export default class Navgo {
 			r.pending?.set(as, value)
 			return
 		}
-		if (this.#same_value(data[as], value)) return
+		if (isEqual(data[as], value)) return
 		try {
 			data[as] = value
 			if (data.__meta?.source) data.__meta.source[as] = 'revalidated'
@@ -657,8 +606,12 @@ export default class Navgo {
 
 	#build_matches(route, stack) {
 		const out = []
-		for (const g of stack || []) out.push(make_match({ type: 'layout', layout: g.layout }, g))
-		out.push(make_match({ type: 'route', route }, null))
+		for (const g of stack || []) {
+			const obj = { type: 'layout', layout: g.layout }
+			Object.defineProperty(obj, '__entry', { value: g })
+			out.push(obj)
+		}
+		out.push({ type: 'route', route })
 		return out
 	}
 
@@ -878,7 +831,7 @@ export default class Navgo {
 			const nav_data = nav.to?.data
 			if (nav_data && typeof nav_data === 'object' && reval.pending?.size) {
 				for (const [as, value] of reval.pending) {
-					if (!this.#same_value(nav_data[as], value)) {
+					if (!isEqual(nav_data[as], value)) {
 						nav_data[as] = value
 						if (nav_data.__meta?.source) nav_data.__meta.source[as] = 'revalidated'
 						reval.updated = true
@@ -1120,6 +1073,27 @@ export default class Navgo {
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
 
+		function compile_routes(entries, stack = []) {
+			const out = []
+			for (const e of entries || []) {
+				if (Array.isArray(e) && (typeof e[0] === 'string' || e[0] instanceof RegExp)) {
+					const pat_or_rx = e[0]
+					const pat =
+						pat_or_rx instanceof RegExp
+							? { pattern: pat_or_rx, keys: null }
+							: parse(pat_or_rx)
+					pat.data = e
+					pat.stack = stack
+					out.push(pat)
+					continue
+				}
+				if (e && typeof e === 'object' && Array.isArray(e.routes)) {
+					out.push(...compile_routes(e.routes, stack.concat(e)))
+					continue
+				}
+			}
+			return out
+		}
 		this.#routes = compile_routes(routes)
 
 		// keep URL in sync when search_params store changes
@@ -1132,7 +1106,7 @@ export default class Navgo {
 				this.#search_defaults,
 				this.#search_opts,
 			)
-			if (!this.#same_value(validated, next)) this.#set_search_store(validated)
+			if (!isEqual(validated, next)) this.#set_search_store(validated)
 			if (this.#search_writer) this.#search_writer(validated)
 			else this.#commit_search(validated)
 		})
