@@ -120,6 +120,19 @@ describe('exports', () => {
 	})
 })
 
+describe('nav exposure', () => {
+	it('updates nav on completion', async () => {
+		setupStubs('/')
+		const router = new Navgo([
+			['/', {}],
+			['/a', {}],
+		])
+		await router.init()
+		await router.goto('/a')
+		expect(router.nav?.to?.url?.pathname).toBe('/a')
+	})
+})
+
 describe('search params', () => {
 	it('coerces array elements for repeat/csv', async () => {
 		setupStubs('/')

@@ -225,6 +225,8 @@ export default class Navgo<T = unknown> {
 		matches: Match<T>[]
 		search_params: Record<string, unknown>
 	}>
+	/** Last completed navigation object. */
+	nav: Navigation | null
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>
 	/** Writable store of validated search params for the current route. */

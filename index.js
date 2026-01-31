@@ -83,6 +83,8 @@ export default class Navgo {
 		matches: [],
 		search_params: {},
 	})
+	/** @type {Navigation|null} */
+	nav = null
 	is_navigating = writable(false)
 	search_params = writable({})
 
@@ -809,7 +811,7 @@ export default class Navgo {
 					}
 				: null,
 			to: {
-				url: new URL(location.href),
+				url,
 				params: hit?.params || {},
 				route: hit?.route || null,
 				matches,
@@ -817,6 +819,7 @@ export default class Navgo {
 			},
 			event: ev_param,
 		})
+		this.nav = nav
 
 		// Wire up revalidation tracking early (revalidate fetches can resolve before after_navigate runs).
 		const reval = this.#revalidation

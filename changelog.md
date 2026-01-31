@@ -20,6 +20,7 @@
   - parse/coerce URL values based on schema defaults (strings are not JSON-parsed by default)
   - fix array round-tripping with configurable `array_style` (`repeat`/`csv`/`json`)
   - apply defaults per-field when validation fails (valid keys are preserved)
+- add `router.nav` to expose the last completed navigation object
 - add `load_plan_defaults` option to set default `parse`/`cache` values for LoadPlans
 
 ### Migration: loaders (before/after)
