@@ -155,6 +155,38 @@
 			</div>
 
 			<div class="grid gap-2">
+				<span class="text-sm font-medium">ids (array, csv, number)</span>
+				<div class="flex gap-2">
+					<input
+						class="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2"
+						bind:value={ids_input}
+						placeholder="Add an id (e.g. 1)" />
+					<button
+						class="rounded bg-blue-700 px-3 py-2 text-sm text-white hover:bg-blue-800"
+						onclick={add_id}
+						disabled={!ids_input.trim()}>
+						Add
+					</button>
+				</div>
+				<div class="flex flex-wrap gap-2">
+					{#each ids as id (id)}
+						<span class="flex items-center gap-1 rounded bg-gray-100 px-2 py-1 text-xs">
+							<span class="font-mono">{id}</span>
+							<button
+								class="rounded bg-gray-200 px-1 py-0.5 hover:bg-gray-300"
+								onclick={() => remove_id(id)}
+								aria-label={`Remove ${id}`}>
+								×
+							</button>
+						</span>
+					{/each}
+				</div>
+				<p class="text-xs opacity-70">
+					Try <span class="font-mono">?ids=1,2</span> in the URL (numbers).
+				</p>
+			</div>
+
+			<div class="grid gap-2">
 				<span class="text-sm font-medium">filters (object)</span>
 				<div class="grid gap-2 sm:grid-cols-2">
 					<label class="grid gap-1">
@@ -226,6 +258,7 @@
 		tag: v.optional(v.fallback(v.array(v.string()), []), []),
 		cat: v.optional(v.fallback(v.array(v.string()), []), []),
 		json_tags: v.optional(v.fallback(v.array(v.string()), []), []),
+		ids: v.optional(v.fallback(v.array(v.number()), []), []),
 		filters: v.optional(
 			v.fallback(
 				v.object({
@@ -239,10 +272,11 @@
 	})
 
 	export const search_options = {
-		arrayStyle: {
+		array_style: {
 			// default for arrays is repeat
 			cat: 'csv',
 			json_tags: 'json',
+			ids: 'csv',
 		},
 	}
 
@@ -253,18 +287,21 @@
 </script>
 
 <script>
-	let { router, data = null } = $props()
-	const { route, search_params } = router
+	const props = $props()
+	let { data = null } = props
+	const { route, search_params } = props.router
 
 	let tag_input = $state('')
 	let cat_input = $state('')
 	let json_tag_input = $state('')
+	let ids_input = $state('')
 
 	const tags = $derived(Array.isArray($search_params.tag) ? $search_params.tag : [])
 	const cats = $derived(Array.isArray($search_params.cat) ? $search_params.cat : [])
 	const json_tags = $derived(
 		Array.isArray($search_params.json_tags) ? $search_params.json_tags : [],
 	)
+	const ids = $derived(Array.isArray($search_params.ids) ? $search_params.ids : [])
 	const filters = $derived(
 		($search_params.filters && typeof $search_params.filters === 'object'
 			? $search_params.filters
@@ -299,6 +336,16 @@
 	}
 	function remove_json_tag(t) {
 		$search_params = { ...$search_params, json_tags: json_tags.filter(x => x !== t) }
+	}
+
+	function add_id() {
+		const t = ids_input.trim()
+		if (!t) return
+		$search_params = { ...$search_params, ids: [...new Set([...ids, t])] }
+		ids_input = ''
+	}
+	function remove_id(id) {
+		$search_params = { ...$search_params, ids: ids.filter(x => x !== id) }
 	}
 
 	function update_filters(patch) {

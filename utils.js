@@ -44,13 +44,18 @@ export function merge_search_opts(base = {}, next = {}) {
 	return out
 }
 
-export function coerce_search_value(value, def, style) {
+export function coerce_search_value(value, def, style, schema) {
 	if (value == null) return undefined
 	const last = Array.isArray(value) ? value.at(-1) : value
 
-	if (Array.isArray(def)) {
+	if (Array.isArray(def) || schema?.type === 'array' || schema?.wrapped?.type === 'array') {
 		const arr = Array.isArray(value) ? value : [value]
-		if (style !== 'json') return arr
+		if (style !== 'json') {
+			const item = (schema?.type === 'array' ? schema : schema?.wrapped)?.item
+			const t = (item?.wrapped || item)?.type
+			const def = t === 'number' ? 0 : t === 'boolean' ? false : t === 'object' ? {} : null
+			return def == null ? arr : arr.map(v => coerce_search_value(v, def, style))
+		}
 		const parsed = try_parse_json(last)
 		return Array.isArray(parsed) ? parsed : arr
 	}
@@ -99,7 +104,7 @@ export function validate_search(raw, schema, defaults = {}, opts) {
 	for (const k in schema.entries) {
 		if (!raw || !(k in raw)) continue
 		const style = as?.[k] || as?.default || 'repeat'
-		input[k] = coerce_search_value(raw[k], defaults?.[k], style)
+		input[k] = coerce_search_value(raw[k], defaults?.[k], style, schema.entries[k])
 	}
 	const whole = v.safeParse(schema, input)
 	if (whole.success) return whole.output

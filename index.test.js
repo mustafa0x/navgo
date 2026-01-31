@@ -120,6 +120,28 @@ describe('exports', () => {
 	})
 })
 
+describe('search params', () => {
+	it('coerces array elements for repeat/csv', async () => {
+		setupStubs('/')
+		const schema = v.object({
+			ids: v.optional(v.fallback(v.array(v.number()), []), []),
+		})
+		const routes = [
+			['/', { search_schema: schema }],
+			['/csv', { search_schema: schema, search_options: { array_style: { ids: 'csv' } } }],
+		]
+		const router = new Navgo(routes)
+		await router.init()
+		let cur
+		const unsub = router.search_params.subscribe(v => (cur = v))
+		await router.goto('/?ids=1&ids=2')
+		expect(cur.ids).toEqual([1, 2])
+		await router.goto('/csv?ids=3,4')
+		expect(cur.ids).toEqual([3, 4])
+		unsub()
+	})
+})
+
 // ---
 
 describe('is_navigating store', () => {
