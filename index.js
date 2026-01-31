@@ -31,7 +31,7 @@ export default class Navgo {
 		attach_to_window: true,
 		search: {
 			show_defaults: false,
-			debounce: 0,
+			debounce: 1000,
 			push_history: true,
 			sort: true,
 			array_style: 'repeat',
@@ -72,13 +72,7 @@ export default class Navgo {
 	#search_schema = null
 	#search_defaults = {}
 	#search_keys = []
-	#search_opts = {
-		show_defaults: false,
-		debounce: 0,
-		push_history: true,
-		sort: true,
-		array_style: 'repeat',
-	}
+	#search_opts = { ...this.#opts.search }
 	#search_syncing = false
 	#search_unsub = null
 	#search_writer = null
