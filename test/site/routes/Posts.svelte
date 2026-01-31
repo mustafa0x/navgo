@@ -3,6 +3,14 @@
 	Loaded from DummyJSON with caching. Click an anchor to test hash scrolling.
 </p>
 
+<nav class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Posts">
+	{#each posts as post (post.id)}
+		<a class="rounded bg-gray-100 px-2 py-1 hover:bg-gray-200" href="#post-{post.id}"
+			>{post.title}</a
+		>
+	{/each}
+</nav>
+
 {#if data?.__meta}
 	<div class="mt-4 rounded-md border border-gray-200 bg-white p-4 text-sm">
 		<div class="flex flex-wrap items-center gap-2">
