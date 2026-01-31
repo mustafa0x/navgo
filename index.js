@@ -31,7 +31,7 @@ export default class Navgo {
 		attach_to_window: true,
 		search: {
 			show_defaults: false,
-			debounce: 1000,
+			debounce: 0,
 			push_history: true,
 			sort: true,
 			array_style: 'repeat',
