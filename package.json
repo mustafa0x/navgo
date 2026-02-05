@@ -25,7 +25,9 @@
 	"files": [
 		"*.d.ts",
 		"index.js",
-		"utils.js"
+		"utils.js",
+		"changelog.md",
+		"readme.md"
 	],
 	"keywords": [
 		"browser",
