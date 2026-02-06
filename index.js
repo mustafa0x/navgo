@@ -179,12 +179,19 @@ export default class Navgo {
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
 		if (this.#hash_navigating) {
+			const prev_idx = this.#route_idx
 			this.#hash_navigating = false
+			// Hash navigation creates a new history entry and clears the browser's forward stack.
+			// Clear our forward scroll snapshots too (avoid stale reuse at the next idx).
+			this.#clear_onward_history()
 			const prev = history.state && typeof history.state == 'object' ? history.state : {}
-			const next_idx = this.#route_idx + 1
+			const next_idx = prev_idx + 1
 			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: next_idx } }
 			history.replaceState(next_state, '', location.href)
 			this.#route_idx = next_idx
+			const m = new Map(this.#areas_pos.get(prev_idx) || [])
+			m.set('window', { x: scrollX || 0, y: scrollY || 0 })
+			this.#areas_pos.set(next_idx, m)
 			ℹ('[🧭 event:hashchange]', { idx: next_idx, href: location.href })
 		} else {
 			// hashchange via Back/Forward — restore previous position when hash is removed
@@ -278,6 +285,8 @@ export default class Navgo {
 		return out
 	}
 	#resolve_url_and_path(url_raw) {
+		if (url_raw == null) return null
+		if (typeof url_raw !== 'string') url_raw = String(url_raw)
 		if (url_raw[0] == '/' && !this.#base_rgx.test(url_raw)) url_raw = this.#base + url_raw
 		const url = new URL(url_raw, location.href)
 		const path = this.format(url.pathname).match?.(/[^?#]*/)?.[0]
@@ -594,8 +603,12 @@ export default class Navgo {
 		const matches = this.#current.matches || []
 		for (let i = matches.length - 1; i >= 0; i--) {
 			const m = matches[i]
-			if (m.type === 'route') this.#get_hooks(m.route)?.before_route_leave?.(nav)
-			else m.__entry?.before_route_leave?.(nav)
+			try {
+				if (m.type === 'route') this.#get_hooks(m.route)?.before_route_leave?.(nav)
+				else m.__entry?.before_route_leave?.(nav)
+			} catch (e) {
+				ℹ('[🧭 hooks]', 'before_route_leave threw', { err: e })
+			}
 			if (nav.cancelled) break
 		}
 	}
@@ -682,189 +695,230 @@ export default class Navgo {
 	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		const nav_id = ++this.#nav_seq
 		this.#nav_active = nav_id
-		const info = this.#resolve_url_and_path(url_raw)
-		if (!info) {
-			ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
-			return
-		}
-		this.is_navigating.set(true)
-		const { url, path, load_key } = info
-		this.#revalidation = {
-			id: nav_id,
-			nav: null,
-			cbs: new Set(),
-			updated: false,
-			pending: new Map(),
-		}
-		this.#loader_controller?.abort?.()
-		const controller = new AbortController()
-		this.#loader_controller = controller
 
-		const is_popstate = nav_type === 'popstate'
-		let nav = this.#make_nav({ type: nav_type, to: null, event: ev_param })
-		ℹ('[🧭 goto]', 'start', {
-			type: nav_type,
-			path,
-			replace: !!opts.replace,
-			popstate: is_popstate,
-		})
-
-		//
-		// before_route_leave
-		//
-		this.#run_before_route_leave(nav)
-		if (nav.cancelled) {
-			// use history.go to cancel the nav, and jump back to where we are
-			if (is_popstate) {
-				const new_idx = ev_param?.state?.__navgo?.idx
-				if (new_idx != null) {
-					const delta = new_idx - this.#route_idx
-					if (delta) {
-						ℹ('[🧭 goto]', 'cancel popstate; correcting history', {
-							delta,
-						})
-						history.go(-delta)
-					}
+		const rollback_popstate = () => {
+			if (nav_type !== 'popstate') return
+			const new_idx = ev_param?.state?.__navgo?.idx
+			if (new_idx != null) {
+				const delta = new_idx - this.#route_idx
+				if (delta) {
+					ℹ('[🧭 goto]', 'cancel popstate; correcting history', { delta })
+					history.go(-delta)
 				}
 			}
-			if (nav_id === this.#nav_active) this.is_navigating.set(false)
-			ℹ('[🧭 goto]', 'cancelled by before_route_leave')
-			return
 		}
 
-		//
-		// #
-		//
-		this.#opts.before_navigate?.(nav)
-		ℹ('[🧭 hooks]', 'before_navigate', {
-			from: nav.from?.url?.href,
-			to: url.href,
-		})
-		const hit = await this.match(path)
-		if (nav_id !== this.#nav_active) return
+		try {
+			const info = this.#resolve_url_and_path(url_raw)
+			if (!info) return void ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
+			this.is_navigating.set(true)
 
-		//
-		// loader
-		//
-		let bundle
-		if (hit) {
-			const pre = this.#preloads.get(load_key)
-			bundle =
-				pre?.data ??
-				(await (pre?.promise || this.#load_hit(hit, url, controller, nav_id)).catch(e => ({
-					matches: [],
-					data: { __error: e },
-				})))
-			this.#preloads.delete(load_key)
-			const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
-			ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
+			const { url, path, load_key } = info
+			this.#revalidation = {
+				id: nav_id,
+				nav: null,
+				cbs: new Set(),
+				updated: false,
+				pending: new Map(),
+			}
+			this.#loader_controller?.abort?.()
+			const controller = new AbortController()
+			this.#loader_controller = controller
+
+			let nav = this.#make_nav({
+				type: nav_type,
+				to: { url, params: {}, route: null, matches: [] },
+				event: ev_param,
+			})
+			ℹ('[🧭 goto]', 'start', {
+				type: nav_type,
 				path,
-				preloaded: !!pre,
-				has_error,
+				replace: !!opts.replace,
+				popstate: nav_type === 'popstate',
 			})
-		}
-		if (nav_id !== this.#nav_active) return
 
-		//
-		// change URL (skip if popstate as browser changes, or first goto())
-		//
-		if (!is_popstate && !(nav_type === 'goto' && this.#current.url == null)) {
-			const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
-			const prev_state =
-				history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = {
-				...prev_state,
-				__navgo: { idx: next_idx, type: nav_type },
+			// before_route_leave
+			this.#run_before_route_leave(nav)
+			if (nav.cancelled) {
+				rollback_popstate()
+				ℹ('[🧭 goto]', 'cancelled by before_route_leave')
+				return
 			}
-			history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
-			ℹ('[🧭 history]', opts.replace ? 'replaceState' : 'pushState', {
-				idx: next_idx,
-				href: url.href,
-			})
-			this.#route_idx = next_idx
-			if (!opts.replace) this.#clear_onward_history()
-		}
-		if (nav_id !== this.#nav_active) return
 
-		const prev = this.#current
-		const matches = hit ? bundle?.matches || [] : []
-		const data = hit ? bundle?.data : { __error: { status: 404 } }
-		this.#current = {
-			url,
-			route: hit?.route || null,
-			params: hit?.params || {},
-			matches,
-			search_params: {},
-		}
-
-		this.#set_search_state(hit ? bundle?.search : null)
-
-		// Build a completion nav using the previous route as `from`
-		nav = this.#make_nav({
-			type: nav_type,
-			from: prev?.url
-				? {
-						url: prev.url,
-						params: prev.params || {},
-						route: prev.route,
-						matches: prev.matches || [],
-					}
-				: null,
-			to: {
-				url,
-				params: hit?.params || {},
-				route: hit?.route || null,
-				matches,
-				data,
-			},
-			event: ev_param,
-		})
-		this.nav = nav
-
-		// Wire up revalidation tracking early (revalidate fetches can resolve before after_navigate runs).
-		const reval = this.#revalidation
-		if (reval && reval.id === nav_id) {
-			reval.nav = nav
-			const nav_data = nav.to?.data
-			if (nav_data && typeof nav_data === 'object' && reval.pending?.size) {
-				for (const [as, value] of reval.pending) {
-					if (!isEqual(nav_data[as], value)) {
-						nav_data[as] = value
-						if (nav_data.__meta?.source) nav_data.__meta.source[as] = 'revalidated'
-						reval.updated = true
-					}
-				}
-				reval.pending.clear()
+			// match (so before_navigate can see route/params/matches)
+			let hit = null
+			let match_error = null
+			try {
+				hit = await this.match(path)
+			} catch (e) {
+				match_error = e
+				ℹ('[🧭 match]', 'error', { err: e })
 			}
-		}
-
-		this.route.set(this.#current)
-		// await so that apply_scroll is after potential async work
-		await this.#opts.after_navigate?.(nav, cb => {
 			if (nav_id !== this.#nav_active) return
-			const r = this.#revalidation
-			if (!r || r.id !== nav_id) return
-			r.cbs.add(cb)
-			if (r.updated) {
-				if (typeof queueMicrotask === 'function') queueMicrotask(cb)
-				else setTimeout(cb, 0)
+			nav.to = hit
+				? {
+						url,
+						params: hit.params || {},
+						route: hit.route || null,
+						matches: hit.matches || [],
+					}
+				: { url, params: {}, route: null, matches: [] }
+			if (match_error) nav.to.data = { __error: match_error }
+
+			// before_navigate (skip initial)
+			if (nav.from) {
+				try {
+					this.#opts.before_navigate?.(nav)
+				} catch (e) {
+					ℹ('[🧭 hooks]', 'before_navigate threw', { err: e })
+				}
+				ℹ('[🧭 hooks]', 'before_navigate', {
+					from: nav.from?.url?.href,
+					to: nav.to?.url?.href,
+				})
+				if (nav.cancelled) {
+					rollback_popstate()
+					ℹ('[🧭 goto]', 'cancelled by before_navigate')
+					return
+				}
+				if (nav_id !== this.#nav_active) return
 			}
-		})
 
-		if (nav_id !== this.#nav_active) return
-		ℹ('[🧭 navigate]', hit ? 'done' : 'done (404)', {
-			from: nav.from?.url?.href,
-			to: nav.to?.url?.href,
-			type: nav.type,
-			idx: this.#route_idx,
-		})
+			// loader
+			let bundle
+			if (hit && !match_error) {
+				const pre = this.#preloads.get(load_key)
+				bundle =
+					pre?.data ??
+					(await (pre?.promise || this.#load_hit(hit, url, controller, nav_id)).catch(
+						e => ({
+							matches: [],
+							data: { __error: e },
+						}),
+					))
+				this.#preloads.delete(load_key)
+				const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
+				ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
+					path,
+					preloaded: !!pre,
+					has_error,
+				})
+			}
+			if (nav_id !== this.#nav_active) return
 
-		// allow frameworks to flush DOM before scrolling
-		await this.#opts.tick?.()
+			// change URL (skip if popstate as browser changes, or first goto())
+			if (nav_type !== 'popstate' && !(nav_type === 'goto' && this.#current.url == null)) {
+				const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
+				const prev_state =
+					history.state && typeof history.state == 'object' ? history.state : {}
+				const next_state = { ...prev_state, __navgo: { idx: next_idx, type: nav_type } }
+				history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
+				ℹ('[🧭 history]', opts.replace ? 'replaceState' : 'pushState', {
+					idx: next_idx,
+					href: url.href,
+				})
+				this.#route_idx = next_idx
+				if (!opts.replace) {
+					this.#areas_pos.delete(next_idx)
+					this.#clear_onward_history()
+				}
+			}
+			if (nav_id !== this.#nav_active) return
 
-		this.#update_active_links()
-		this.#apply_scroll(nav)
-		this.is_navigating.set(false)
+			const prev = this.#current
+			const matches = hit && !match_error ? bundle?.matches || [] : []
+			const data = match_error
+				? { __error: match_error }
+				: hit
+					? bundle?.data
+					: { __error: { status: 404 } }
+			this.#current = {
+				url,
+				route: match_error ? null : hit?.route || null,
+				params: match_error ? {} : hit?.params || {},
+				matches,
+				search_params: {},
+			}
+
+			this.#set_search_state(hit && !match_error ? bundle?.search : null)
+
+			// Build a completion nav using the previous route as `from`
+			nav = this.#make_nav({
+				type: nav_type,
+				from: prev?.url
+					? {
+							url: prev.url,
+							params: prev.params || {},
+							route: prev.route,
+							matches: prev.matches || [],
+						}
+					: null,
+				to: {
+					url,
+					params: match_error ? {} : hit?.params || {},
+					route: match_error ? null : hit?.route || null,
+					matches,
+					data,
+				},
+				event: ev_param,
+			})
+			this.nav = nav
+
+			// Wire up revalidation tracking early (revalidate fetches can resolve before after_navigate runs).
+			const reval = this.#revalidation
+			if (reval && reval.id === nav_id) {
+				reval.nav = nav
+				const nav_data = nav.to?.data
+				if (nav_data && typeof nav_data === 'object' && reval.pending?.size) {
+					for (const [as, value] of reval.pending) {
+						if (!isEqual(nav_data[as], value)) {
+							nav_data[as] = value
+							if (nav_data.__meta?.source) nav_data.__meta.source[as] = 'revalidated'
+							reval.updated = true
+						}
+					}
+					reval.pending.clear()
+				}
+			}
+
+			this.route.set(this.#current)
+			// await so that apply_scroll is after potential async work
+			try {
+				await this.#opts.after_navigate?.(nav, cb => {
+					if (nav_id !== this.#nav_active) return
+					const r = this.#revalidation
+					if (!r || r.id !== nav_id) return
+					r.cbs.add(cb)
+					if (r.updated)
+						(typeof queueMicrotask === 'function' ? queueMicrotask : setTimeout)(cb, 0)
+				})
+			} catch (e) {
+				ℹ('[🧭 hooks]', 'after_navigate threw', { err: e })
+			}
+
+			if (nav_id !== this.#nav_active) return
+			ℹ('[🧭 navigate]', match_error ? 'done (error)' : hit ? 'done' : 'done (404)', {
+				from: nav.from?.url?.href,
+				to: nav.to?.url?.href,
+				type: nav.type,
+				idx: this.#route_idx,
+			})
+
+			// allow frameworks to flush DOM before scrolling
+			try {
+				await this.#opts.tick?.()
+			} catch (e) {
+				ℹ('[🧭 hooks]', 'tick threw', { err: e })
+			}
+
+			this.#update_active_links()
+			this.#apply_scroll(nav)
+		} catch (e) {
+			// Prevent event handlers (click/popstate) from causing unhandled rejections.
+			ℹ('[🧭 goto]', 'error', { err: e })
+		} finally {
+			if (nav_id === this.#nav_active) this.is_navigating.set(false)
+		}
 	}
 
 	/**
@@ -872,6 +926,9 @@ export default class Navgo {
 	 */
 	#commit_shallow(url, state, replace) {
 		const u = new URL(url || location.href, location.href)
+		const prev_idx = this.#route_idx
+		// Pushing from a non-tip position clears forward history.
+		if (!replace) this.#clear_onward_history()
 		// persist current entry's scroll into its state so Back after refresh restores it
 		const prev = history.state && typeof history.state == 'object' ? history.state : {}
 		history.replaceState(
@@ -886,7 +943,7 @@ export default class Navgo {
 				JSON.stringify({ x: scrollX || 0, y: scrollY || 0 }),
 			)
 		} catch {}
-		const idx = this.#route_idx + (replace ? 0 : 1)
+		const idx = prev_idx + (replace ? 0 : 1)
 		const from = this.#current.url?.pathname || location.pathname
 		const st = { ...state, __navgo: { shallow: true, idx, from } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
@@ -896,11 +953,12 @@ export default class Navgo {
 		})
 		// Popstate handler checks state.__navgo.shallow and skips router processing
 		this.#route_idx = idx
-		// carry forward current window position for the shallow entry so Forward restores correctly
-		const m = this.#areas_pos.get(idx) || new Map()
+		// Snapshot scroll areas for the new entry (so Forward restores even without new scroll events).
+		const m = replace
+			? this.#areas_pos.get(idx) || new Map()
+			: new Map(this.#areas_pos.get(prev_idx) || [])
 		m.set('window', { x: scrollX || 0, y: scrollY || 0 })
 		this.#areas_pos.set(idx, m)
-		if (!replace) this.#clear_onward_history()
 		// update current URL snapshot and notify
 		this.#current.url = u
 		this.#sync_search_from_url(u)
@@ -964,41 +1022,45 @@ export default class Navgo {
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
 	async preload(url_raw) {
-		const { path, url, load_key } = this.#resolve_url_and_path(url_raw) || {}
-		if (!path) {
-			ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
-			return Promise.resolve()
-		}
-		// Do not preload if we're already at this path
-		if (
-			this.format(this.#current.url?.pathname) + (this.#current.url?.search || '') ===
-			load_key
-		) {
-			ℹ('[🧭 preload]', 'skip current path', { path })
-			return Promise.resolve()
-		}
-		const hit = await this.match(path)
-		if (!hit) {
-			ℹ('[🧭 preload]', 'no route', { path })
-			return Promise.resolve()
-		}
+		try {
+			const { path, url, load_key } = this.#resolve_url_and_path(url_raw) || {}
+			if (!path) return void ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
+			if (
+				this.format(this.#current.url?.pathname) + (this.#current.url?.search || '') ===
+				load_key
+			)
+				return void ℹ('[🧭 preload]', 'skip current path', { path })
+			const hit = await this.match(path).catch(() => null)
+			if (!hit) return void ℹ('[🧭 preload]', 'no route', { path })
 
-		if (this.#preloads.has(load_key)) {
-			const p = this.#preloads.get(load_key)
-			ℹ('[🧭 preload]', 'dedupe', { path })
-			return p.promise ? p.promise.then(b => b?.data) : Promise.resolve(p.data?.data)
-		}
+			if (this.#preloads.has(load_key)) {
+				const p = this.#preloads.get(load_key)
+				ℹ('[🧭 preload]', 'dedupe', { path })
+				return p.promise ? p.promise.then(b => b?.data) : p.data?.data
+			}
 
-		const entry = {}
-		const controller = new AbortController()
-		entry.promise = this.#load_hit(hit, url, controller, 0).then(bundle => {
-			entry.data = bundle
-			delete entry.promise
-			ℹ('[🧭 preload]', 'done', { path })
-			return bundle
-		})
-		this.#preloads.set(load_key, entry)
-		return entry.promise.then(b => b?.data)
+			const entry = {}
+			const controller = new AbortController()
+			entry.promise = this.#load_hit(hit, url, controller, 0).then(
+				bundle => {
+					entry.data = bundle
+					delete entry.promise
+					ℹ('[🧭 preload]', 'done', { path })
+					return bundle
+				},
+				err => {
+					const bundle = { matches: [], data: { __error: err } }
+					entry.data = bundle
+					delete entry.promise
+					ℹ('[🧭 preload]', 'error', { path, err })
+					return bundle
+				},
+			)
+			this.#preloads.set(load_key, entry)
+			return entry.promise.then(b => b?.data)
+		} catch (e) {
+			ℹ('[🧭 preload]', 'error', { url: url_raw, err: e })
+		}
 	}
 
 	//
@@ -1010,6 +1072,8 @@ export default class Navgo {
 		let arr, obj
 		for (let i = 0; i < this.#routes.length; i++) {
 			obj = this.#routes[i]
+			// Guard against user-provided /g or /y patterns (lastIndex is sticky).
+			if (obj.pattern.global || obj.pattern.sticky) obj.pattern.lastIndex = 0
 			if (!(arr = obj.pattern.exec(url_raw))) continue
 			const params = {}
 			if (obj.keys?.length) {
@@ -1022,11 +1086,11 @@ export default class Navgo {
 
 			// per-route param rules and optional async validate()
 			const hooks = this.#get_hooks(obj.data)
-			if (hooks.param_rules) {
+			const rules = hooks.param_rules
+			if (rules) {
 				let ok = true
-				for (const k in hooks.param_rules) {
-					const param_rule = hooks.param_rules[k]
-					const schema = param_rule?.schema
+				for (const k in rules) {
+					const schema = rules[k]?.schema
 					if (!schema) continue
 					const res = v.safeParse(schema, params[k])
 					if (!res.success) {
@@ -1039,15 +1103,28 @@ export default class Navgo {
 					ℹ('[🧭 match]', 'skip: param_rules', { pattern: obj.data?.[0] })
 					continue
 				}
-				for (const k in hooks.param_rules) {
-					const param_rule = hooks.param_rules[k]
-					const param_coercer = param_rule?.coercer
-					if (typeof param_coercer === 'function') params[k] = param_coercer(params[k])
+				for (const k in rules) {
+					const param_coercer = rules[k]?.coercer
+					if (typeof param_coercer === 'function') {
+						try {
+							params[k] = param_coercer(params[k])
+						} catch {
+							ok = false
+							break
+						}
+					}
 				}
+				if (!ok) continue
 			}
-			if (hooks.validate && !(await hooks.validate(params))) {
-				ℹ('[🧭 match]', 'skip: validate', { pattern: obj.data?.[0] })
-				continue
+			if (hooks.validate) {
+				try {
+					if (!(await hooks.validate(params))) {
+						ℹ('[🧭 match]', 'skip: validate', { pattern: obj.data?.[0] })
+						continue
+					}
+				} catch {
+					continue
+				}
 			}
 
 			ℹ('[🧭 match]', 'hit', { pattern: obj.data?.[0], params })
@@ -1223,7 +1300,7 @@ export default class Navgo {
 						el.scrollTop = p.y
 					}
 				}
-				if (pos || m) return
+				if (pos) return
 			}
 			// 2) If there is a hash, prefer anchor scroll
 			if (hash && scroll_to_hash(hash)) {
