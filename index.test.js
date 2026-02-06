@@ -412,6 +412,22 @@ describe('$.match', () => {
 		expect(res.params).toEqual({ year: '2024' })
 	})
 
+	it('RegExp routes with /g are reusable across matches', async () => {
+		const ctx = new Navgo([[/^\/foo$/g, {}]])
+		const a = await ctx.match('/foo')
+		const b = await ctx.match('/foo')
+		expect(!!a).toBe(true)
+		expect(!!b).toBe(true)
+	})
+
+	it('RegExp routes with /y are reusable across matches', async () => {
+		const ctx = new Navgo([[/^\/foo$/y, {}]])
+		const a = await ctx.match('/foo')
+		const b = await ctx.match('/foo')
+		expect(!!a).toBe(true)
+		expect(!!b).toBe(true)
+	})
+
 	it('RegExp alternation without named groups', async () => {
 		const ctx = new Navgo([[/about\/(contact|team)/, {}]])
 		let a = await ctx.match('/about/contact')
@@ -511,6 +527,126 @@ describe('$.match', () => {
 		const res = await ctx.match('/users/3')
 		if (!res) throw new Error('expected a match')
 		expect(res.route).toBe(r)
+	})
+
+	it('coercer exceptions do not throw; route is skipped', async () => {
+		const r1 = [
+			'users/:id',
+			{
+				param_rules: {
+					id: {
+						coercer() {
+							throw new Error('boom')
+						},
+					},
+				},
+			},
+		]
+		const r2 = ['users/:id', {}]
+		const ctx = new Navgo([r1, r2])
+		const res = await ctx.match('/users/7')
+		if (!res) throw new Error('expected a match')
+		expect(res.route).toBe(r2)
+	})
+
+	it('validate exceptions do not throw; route is skipped', async () => {
+		const r1 = [
+			'users/:id',
+			{
+				validate() {
+					throw new Error('boom')
+				},
+			},
+		]
+		const r2 = ['users/:id', {}]
+		const ctx = new Navgo([r1, r2])
+		const res = await ctx.match('/users/7')
+		if (!res) throw new Error('expected a match')
+		expect(res.route).toBe(r2)
+	})
+})
+
+describe('before_navigate', () => {
+	it('receives destination url and can cancel navigation', async () => {
+		const hist = setupStubs('/app/')
+		let seen
+		let loads = 0
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/foo',
+					{
+						loader() {
+							loads++
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				before_navigate(nav) {
+					seen = nav?.to?.url?.pathname
+					nav.cancel()
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		expect(seen).toBe('/app/foo')
+		expect(loads).toBe(0)
+		// cancellation should prevent idx increment
+		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
+		// and route should remain on the initial location
+		expect(r.nav?.to?.url?.pathname).toBe('/app/')
+		r.destroy()
+	})
+
+	it('popstate cancel rolls history back via history.go', async () => {
+		const hist = setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{
+				base: '/app',
+				before_navigate(nav) {
+					if (nav.type === 'popstate') nav.cancel()
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/foo') // idx 1
+		// simulate back to idx 0
+		global.location = new URL('http://example.com/app/')
+		const ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(ev)
+		await tick(3)
+		// cancelling popstate to 0 should go forward(1)
+		expect(hist._went).toBe(1)
+		r.destroy()
+	})
+
+	it('hook exceptions do not reject goto()', async () => {
+		setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{
+				base: '/app',
+				before_navigate() {
+					throw new Error('boom')
+				},
+			},
+		)
+		await r.init()
+		await expect(r.goto('/app/foo')).resolves.toBeUndefined()
+		expect(r.nav?.to?.url?.pathname).toBe('/app/foo')
+		r.destroy()
 	})
 })
 
@@ -672,6 +808,40 @@ describe('preload behavior', () => {
 		await router.preload('/app/foo?x=2')
 		expect(calls.foo).toBe(2)
 		router.destroy()
+	})
+
+	it('preload loader errors do not cause unhandled rejections', async () => {
+		setupStubs('/app/')
+		let unhandled = 0
+		const onUnhandled = () => (unhandled += 1)
+		process.on('unhandledRejection', onUnhandled)
+		try {
+			const r = new Navgo(
+				[
+					['/', {}],
+					[
+						'/bad',
+						{
+							loader() {
+								return Promise.reject(new Error('bad loader'))
+							},
+						},
+					],
+				],
+				{ base: '/app' },
+			)
+			await r.init()
+			// fire-and-forget like a hover preload
+			r.preload('/app/bad')
+			await tick(5)
+			expect(unhandled).toBe(0)
+			await expect(r.preload('/app/bad')).resolves.toBeTruthy()
+			await expect(r.goto('/app/bad')).resolves.toBeUndefined()
+			expect(r.nav?.to?.data?.__error).toBeTruthy()
+			r.destroy()
+		} finally {
+			process.removeListener('unhandledRejection', onUnhandled)
+		}
 	})
 })
 
@@ -1343,6 +1513,12 @@ describe('scroll restoration (areas)', () => {
 		setupStubs('/app/')
 		const pane = make_pane()
 		pane.id = 'pane'
+		const prev_doc = global.document
+		// allow apply_scroll to find the pane by selector
+		global.document = {
+			...prev_doc,
+			querySelector: sel => (String(sel).includes('pane') ? pane : null),
+		}
 		const r = new Navgo(
 			[
 				['/', {}],
@@ -1361,6 +1537,8 @@ describe('scroll restoration (areas)', () => {
 		await new Promise(r => setTimeout(r, 120))
 
 		await r.goto('/app/bar') // idx 2
+		// simulate leaving the page and resetting scroll
+		pane.scrollTop = 0
 		// popstate back to idx 1
 		global.location = new URL('http://example.com/app/foo')
 		const ev = new Event('popstate')
@@ -1369,6 +1547,141 @@ describe('scroll restoration (areas)', () => {
 		await tick(2)
 		expect(pane.scrollTop).toBe(123)
 		r.destroy()
+		global.document = prev_doc
+	})
+
+	it('popstate without saved window pos falls through to top', async () => {
+		setupStubs('/app/foo')
+		const pane = make_pane()
+		pane.id = 'pane'
+		const prev_doc = global.document
+		global.document = {
+			...prev_doc,
+			querySelector: sel => (String(sel).includes('pane') ? pane : null),
+		}
+
+		const r = new Navgo(
+			[
+				['/foo', {}],
+				['/bar', {}],
+			],
+			{ base: '/app' },
+		)
+		await r.init() // idx 0 (/foo)
+
+		pane.scrollTop = 55
+		global.dispatchEvent({ type: 'scroll', target: pane })
+		await new Promise(r => setTimeout(r, 120))
+
+		await r.goto('/app/bar') // idx 1
+		global.scrollTo(0, 999)
+		expect(global.scrollY).toBe(999)
+		pane.scrollTop = 0
+
+		// popstate back to idx 0 (no pos stored for window)
+		global.location = new URL('http://example.com/app/foo')
+		const ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(ev)
+		await tick(3)
+		// pane restored; window falls through to top
+		expect(pane.scrollTop).toBe(55)
+		expect(global.scrollY).toBe(0)
+		r.destroy()
+		global.document = prev_doc
+	})
+
+	it('shallow push clones scroll-area snapshot into the new entry', async () => {
+		setupStubs('/app/foo')
+		const pane = make_pane()
+		pane.id = 'pane'
+		const prev_doc = global.document
+		global.document = {
+			...prev_doc,
+			querySelector: sel => (String(sel).includes('pane') ? pane : null),
+		}
+
+		const r = new Navgo([['/foo', {}]], { base: '/app' })
+		await r.init() // idx 0
+
+		pane.scrollTop = 77
+		global.dispatchEvent({ type: 'scroll', target: pane })
+		await new Promise(r => setTimeout(r, 120))
+
+		r.push_state('/app/foo?x=1') // idx 1 (shallow)
+		pane.scrollTop = 0
+
+		// back to idx 0 then forward to idx 1
+		global.location = new URL('http://example.com/app/foo')
+		let ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0, shallow: true } }
+		global.dispatchEvent(ev)
+		await tick(2)
+
+		global.location = new URL('http://example.com/app/foo?x=1')
+		ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 1, shallow: true, from: '/app/foo' } }
+		global.dispatchEvent(ev)
+		await tick(3)
+
+		expect(pane.scrollTop).toBe(77)
+		r.destroy()
+		global.document = prev_doc
+	})
+
+	it('divergent history clears forward scroll snapshots (no stale reuse)', async () => {
+		setupStubs('/app/a')
+		const pane = make_pane()
+		pane.id = 'pane'
+		const prev_doc = global.document
+		global.document = {
+			...prev_doc,
+			querySelector: sel => (String(sel).includes('pane') ? pane : null),
+		}
+
+		const r = new Navgo(
+			[
+				['/a', {}],
+				['/b', {}],
+				['/c', {}],
+			],
+			{ base: '/app' },
+		)
+		await r.init() // idx 0 (/a)
+
+		await r.goto('/app/b') // idx 1
+		pane.scrollTop = 123
+		global.dispatchEvent({ type: 'scroll', target: pane })
+		await new Promise(r => setTimeout(r, 120))
+
+		// go back to idx 0
+		global.location = new URL('http://example.com/app/a')
+		let ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(ev)
+		await tick(3)
+
+		// new navigation diverges and creates a new idx 1 (should NOT reuse old scroll snapshot)
+		await r.goto('/app/c')
+
+		// back then forward to idx 1
+		global.location = new URL('http://example.com/app/a')
+		ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(ev)
+		await tick(3)
+
+		pane.scrollTop = 0
+		global.location = new URL('http://example.com/app/c')
+		ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 1 } }
+		global.dispatchEvent(ev)
+		await tick(3)
+
+		// without clearing forward snapshots, this would restore 123 from the old /b entry
+		expect(pane.scrollTop).toBe(0)
+		r.destroy()
+		global.document = prev_doc
 	})
 
 	it('hash-only back restores previous window scroll position', async () => {

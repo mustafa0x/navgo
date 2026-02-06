@@ -22,6 +22,11 @@
   - apply defaults per-field when validation fails (valid keys are preserved)
 - add `router.nav` to expose the last completed navigation object
 - add `load_plan_defaults` option to set default `parse`/`cache` values for LoadPlans
+- breaking: `before_navigate(nav)` now runs after matching (so `nav.to` includes `route/params/matches`) and can cancel navigations; it does not run for the initial `init()` navigation
+  - migration:
+    - if you relied on `before_navigate` running on initial load, move that logic to `after_navigate` or run it after `await router.init()`
+    - if you relied on `nav.to === null`, update to use `nav.to.url` / `nav.to.route` / `nav.to.params`
+    - if you relied on `goto()`/`preload()` rejecting, handle errors via `nav.to.data.__error` (or logging) instead
 
 ### Migration: loaders (before/after)
 
