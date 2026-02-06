@@ -1,0 +1,59 @@
+## Core
+
+- routes: tuples like `['/rooms/:id', RouteModule]` (and/or route groups with `layout` + shared `loader`)
+- route hooks (`loader`, `param_rules`, `search_schema`, `search_options`, `before_route_leave`) live in the route file’s `<script module>`
+- navigation: match -> leave-guard (`before_route_leave`, can `nav.cancel()`) -> loaders -> update stores -> `after_navigate(nav)`
+- `before_navigate(nav)` runs after matching (so `nav.to` includes `url/route/params/matches`) and can cancel; it does not run for the initial `init()` navigation
+- `goto()` and `preload()` are safe to call without `await` from events (no unhandled rejections); errors surface via `nav.to.data.__error` (or preload bundle `data.__error`)
+- `router.init()` attaches the router instance to `window.navgo` by default
+- stores:
+  - `window.navgo.route`: `{ url, route, params, matches, search_params }`
+  - `window.navgo.is_navigating`: boolean
+
+## Setup (App Wiring)
+
+- `const router = new Navgo(routes, { after_navigate })`; `await router.init()` once at startup
+- `after_navigate(nav)` sets app props: `route_data = nav.to?.data ?? null`, `is_404 = nav.to?.data?.__error?.status === 404`, `Component = leaf route module default`
+- render `Component` keyed by `$route.url.pathname`, pass `data={route_data}`
+
+## Patterns / Usage
+
+- Search params:
+  - add `search_schema` (route or group) so `window.navgo.search_params` stays typed/defaulted
+  - update via `window.navgo.search_params.update(o => ({ ...o, q: 'x', page: 1 }))` (shallow URL update; loaders are not re-run)
+  - common pattern: loader uses `search_params` for initial data, then a `$effect` refetches when `$search_params` changes
+- Loaders:
+  - returning a non-Promise object means a LoadPlan (cached fetch plan), not plain data; return plain object data via `async loader()`
+  - layout/group loaders run outer → inner and their results are on `nav.to.matches[*].data` (leaf convenience stays on `nav.to.data`)
+  - SWR revalidation can update `nav.to.data` after navigation; subscribe via `after_navigate(nav, on_revalidate)`
+  - Avoid these common mistakes:
+    - Re-fetching the same data in the component `<script>` that the loader already fetched (double network + out-of-sync state). Prefer using the `data` prop.
+    - Overcomplicating the loader: keep it as a LoadPlan (just URLs/specs). Do client-side orchestration in the component only if it truly depends on interactive state.
+    - Duplicating imports across `<script>` and `<script module>`: in Svelte they share imports; duplicating can cause compile errors. Put imports in one place.
+- Shallow history:
+  - `push_state`/`replace_state` updates URL/state without re-running loaders
+  - on Back/Forward, an entry is only treated as shallow when it was created from the currently-rendered pathname (`state.__navgo.from`)
+- Param handling:
+  - `param_rules`: schema then coercer; coercer/validate exceptions skip the route (mismatch)
+- Scroll model:
+  - `history.state.__navgo.idx` drives restoration; on `popstate` restores `window` + `[data-scroll-id]/#id` when known, otherwise falls through to hash/top; divergent history clears forward scroll snapshots
+- `goto` usage:
+  - prefer plain `<a href="/path">`
+  - use `window.navgo.goto('/path')` for buttons/menus/command palette
+
+## Recipes / Common Scenarios
+
+- Auth gate (block entry):
+  - in `before_navigate(nav)`: `if (!session && nav.to?.route?.[0].startsWith('/admin')) nav.cancel()`
+- Unsaved-changes guard (block leaving current page):
+  - in `before_route_leave(nav)`: `if (dirty && (nav.type === 'link' || nav.type === 'goto')) nav.cancel()`
+- Filters in URL without reloading:
+  - define `search_schema`; update via `$search_params = { ...$search_params, q, page: 1 }` (shallow URL update)
+- SWR revalidate refresh:
+  - `after_navigate(nav, on_revalidate) { render(nav.to?.data); on_revalidate?.(() => render(nav.to?.data)) }`
+- Handle 404 / loader errors:
+  - `const err = nav.to?.data?.__error; if (err?.status === 404) show_404 = true`
+- Shared layout data:
+  - read `nav.to.matches` outer → inner; layouts are `m.type === 'layout'`, route leaf is `m.type === 'route'`
+- Stable scroll panes:
+  - set `id="pane"` or `data-scroll-id="pane"` on scroll containers to get popstate restoration
