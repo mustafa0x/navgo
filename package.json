@@ -26,6 +26,7 @@
 		"*.d.ts",
 		"index.js",
 		"utils.js",
+		"llms.txt",
 		"changelog.md",
 		"readme.md"
 	],
