@@ -3,7 +3,6 @@
 - routes: tuples like `['/rooms/:id', RouteModule]` (and/or route groups with `layout` + shared `loader`)
 - route hooks (`loader`, `param_rules`, `search_schema`, `search_options`, `before_route_leave`) live in the route file’s `<script module>`
 - navigation: match -> leave-guard (`before_route_leave`, can `nav.cancel()`) -> loaders -> update stores -> `after_navigate(nav)`
-- `before_navigate(nav)` runs after matching (so `nav.to` includes `url/route/params/matches`) and can cancel; it does not run for the initial `init()` navigation
 - `goto()` and `preload()` are safe to call without `await` from events (no unhandled rejections); errors surface via `nav.to.data.__error` (or preload bundle `data.__error`)
 - `router.init()` attaches the router instance to `window.navgo` by default
 - stores:
@@ -35,6 +34,7 @@
   - on Back/Forward, an entry is only treated as shallow when it was created from the currently-rendered pathname (`state.__navgo.from`)
 - Param handling:
   - `param_rules`: schema then coercer; coercer/validate exceptions skip the route (mismatch)
+  - example: `param_rules: {id: v.pipe(v.string(), v.toNumber(), v.minValue(1))}`
 - Scroll model:
   - `history.state.__navgo.idx` drives restoration; on `popstate` restores `window` + `[data-scroll-id]/#id` when known, otherwise falls through to hash/top; divergent history clears forward scroll snapshots
 - `goto` usage:
@@ -43,8 +43,6 @@
 
 ## Recipes / Common Scenarios
 
-- Auth gate (block entry):
-  - in `before_navigate(nav)`: `if (!session && nav.to?.route?.[0].startsWith('/admin')) nav.cancel()`
 - Unsaved-changes guard (block leaving current page):
   - in `before_route_leave(nav)`: `if (dirty && (nav.type === 'link' || nav.type === 'goto')) nav.cancel()`
 - Filters in URL without reloading:

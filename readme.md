@@ -1,78 +1,92 @@
-## Install
+# Navgo
 
-```
-$ pnpm install --dev navgo
-```
+A batteries-included SPA router for Svelte.
 
-## Usage
+Code-based routes (params + regex) • Nested layouts • Route guards and hooks • Param validation • Loader caching (SWR + tags) • Data preloading • Search schema sync (validate/coerce + URL/store) • Shallow routing • Scroll restoration • Reactive stores • Performant • Well tested • ~1k loc (fraction of other routers) • Minimal API
+
+<video src="https://github.com/user-attachments/assets/0f86c635-5b78-4cdd-a7e3-e440801e1745" controls muted playsinline></video>
+
+## Example Site Structure
+
+This example demonstrates:
+
+- code-defined routes with a dynamic segment (`/products/:id`)
+- `after_navigate(nav)` wiring for route data + 404 state
+- app shell rendering via `nav.to.route?.[1]?.default`
+- reading router stores from `window.navgo` (`route`, `is_navigating`)
+- route-level `param_rules` validation/coercion (`id` string -> number, min `1`)
+- basic LoadPlan loader (`{ product: '/api/products/:id' }`)
+- automatic SWR caching for LoadPlan requests (default strategy)
+- passing `$route.params` + loader data into the route component
+
+### `src/main.svelte.js`
 
 ```js
-import Navgo, { v } from 'navgo'
-import {mount} from 'svelte'
+import Navgo from 'navgo'
+import { hydrate } from 'svelte'
 
 import App from './App.svelte'
-import * as AppLayout from './layouts/App.svelte'
-import * as HomeRoute from './routes/Home.svelte'
-import * as ReaderRoute from './routes/Reader.svelte'
-import * as AccountRoute from './routes/Account.svelte'
-import * as AdminRoute from './routes/Admin.svelte'
-import * as DebugRoute from './routes/Debug.svelte'
+import * as Product from './routes/Product.svelte'
 
-const routes = [
-  {
-    // optional layout wrapper (router just forwards it via nav.to.matches)
-    layout: AppLayout,
-    // optional shared loader for all children
-    loader: async (ctx) => ctx.fetch('/api/session').then(r => r.json()),
-    routes: [
-      ['/', HomeRoute],
-      ['/:book_id', ReaderRoute],
-      ['/account', AccountRoute],
-      [
-        '/admin/:id',
-        AdminRoute,
-        {
-          // constrain/coerce params
-          param_rules: {
-            id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
-          },
-          // load data before URL changes; result goes to after_navigate(...)
-          loader: ({ params }) => ({ admin: `/api/admin/${params.id}` }),
-          // per-route guard; cancel synchronously to block nav
-          before_route_leave(nav) {
-            if ((nav.type === 'link' || nav.type === 'goto') && !confirm('Enter admin?')) {
-              nav.cancel()
-            }
-          },
-        },
-      ],
-    ],
-  },
-]
-if (window.__DEBUG__) routes[0].routes.push(['/debug', DebugRoute])
+const routes = [['/products/:id', Product]]
 
 const props = $state({
-  matches: [],
+  Component: null,
+  route_data: null,
   is_404: false,
 })
 
 function after_navigate(nav) {
   props.is_404 = nav.to?.data?.__error?.status === 404
-  props.matches = nav.to?.matches ?? []
+  props.route_data = nav.to?.data ?? null
+  props.Component = nav.to?.route?.[1]?.default ?? null
 }
 
-const router = new Navgo(routes, {
-  before_navigate(nav) {
-    // app-level hook before loader/URL update; may cancel
-    console.log('before_navigate', nav.type, '→', nav.to?.url.pathname)
-  },
-  after_navigate,
+new Navgo(routes, { after_navigate }).init().then(() => {
+  hydrate(App, { target: document.body, props })
 })
+```
 
-// Long-lived router: history + <a> bindings
-// Also immediately processes the current location
-router.init()
-mount(App, {target: document.body, props})
+### `src/App.svelte`
+
+```svelte
+{#key $route.url.pathname}
+  {#if Component}
+    <Component {...$route.params} data={route_data} />
+  {/if}
+{/key}
+
+<div class="request-indicator" class:active={$is_navigating}></div>
+
+<script>
+const { Component, route_data } = $props()
+const { route, is_navigating } = window.navgo
+</script>
+```
+
+### `src/routes/Product.svelte`
+
+```svelte
+<script module>
+import { v } from 'navgo'
+
+export const param_rules = {
+  id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
+}
+
+export function loader({ params }) {
+  return {
+    product: `/api/products/${params.id}`,
+  }
+}
+</script>
+
+<script>
+const { id, data } = $props()
+</script>
+
+<h1>Product {id}</h1>
+<pre>{JSON.stringify(data?.product, null, 2)}</pre>
 ```
 
 ## API
