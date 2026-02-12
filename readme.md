@@ -11,7 +11,7 @@ Code-based routes (params + regex) • Nested layouts • Route guards and hooks
 This example demonstrates:
 
 - code-defined routes with a dynamic segment (`/products/:id`)
-- `after_navigate(nav)` wiring for route data + 404 state
+- `after_navigate(nav, on_revalidate)` wiring for route data + SWR revalidate updates + 404 state
 - app shell rendering via `nav.to.route?.[1]?.default`
 - reading router stores from `window.navgo` (`route`, `is_navigating`)
 - route-level `param_rules` validation/coercion (`id` string -> number, min `1`)
@@ -36,10 +36,13 @@ const props = $state({
   is_404: false,
 })
 
-function after_navigate(nav) {
+function after_navigate(nav, on_revalidate) {
   props.is_404 = nav.to?.data?.__error?.status === 404
   props.route_data = nav.to?.data ?? null
   props.Component = nav.to?.route?.[1]?.default ?? null
+  on_revalidate?.(() => {
+    props.route_data = nav.to?.data ?? null
+  })
 }
 
 new Navgo(routes, { after_navigate }).init().then(() => {
@@ -508,7 +511,7 @@ For `link` and `goto` navigations that match a route:
             → no → run loaders (layouts → route)  // each may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
-            → after_navigate(nav)
+            → after_navigate(nav, on_revalidate)
             → tick()?                 // optional app-provided await before scroll
             → scroll restore/hash/top
 ```
