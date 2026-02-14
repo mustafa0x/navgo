@@ -1124,6 +1124,9 @@ describe('load plan caching', () => {
 		global.fetch = async () => {
 			const idx = Math.min(fetch_calls, payloads.length - 1)
 			fetch_calls++
+			// SWR revalidations happen in the background; delay them so the test can
+			// reliably observe "stale ref" -> "new ref".
+			if (fetch_calls > 1) await new Promise(r => setTimeout(r, 1))
 			return new Response(JSON.stringify(payloads[idx]), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json', ETag: 'v' + fetch_calls },
@@ -1131,6 +1134,8 @@ describe('load plan caching', () => {
 		}
 		let revals = 0
 		let last
+		let before_ref = null
+		let after_ref = null
 		const r = new Navgo(
 			[
 				[
@@ -1151,8 +1156,10 @@ describe('load plan caching', () => {
 				base: '/app',
 				after_navigate(nav, on_revalidate) {
 					last = nav
+					before_ref = nav.to?.data ?? null
 					on_revalidate?.(() => {
 						revals++
+						after_ref = nav.to?.data ?? null
 					})
 				},
 			},
@@ -1168,14 +1175,18 @@ describe('load plan caching', () => {
 		expect(fetch_calls).toBe(2)
 		expect(revals).toBe(0)
 		expect(last.to.data.data).toEqual({ v: 1 })
+		expect(after_ref).toBe(null)
 
 		// next revalidate returns different value => callback fires + data updates
 		await new Promise(r => setTimeout(r, 2))
 		await r.goto('/app/foo')
+		const ref2 = before_ref
 		await tick(3)
 		expect(fetch_calls).toBe(3)
 		expect(revals).toBe(1)
 		expect(last.to.data.data).toEqual({ v: 2 })
+		expect(after_ref).not.toBe(null)
+		expect(after_ref).not.toBe(ref2)
 		r.destroy()
 	})
 
