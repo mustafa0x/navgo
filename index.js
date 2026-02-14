@@ -541,8 +541,7 @@ export default class Navgo {
 	#emit_revalidate(id, as, value) {
 		const r = this.#revalidation
 		if (id !== this.#nav_active || !r || r.id !== id) return
-		const nav = r.nav
-		const data = nav?.to?.data
+		const data = r.nav?.to?.data
 		// Revalidate results can arrive before `after_navigate` and before `r.nav` is wired.
 		// Buffer them and flush once navigation commits.
 		if (!data || typeof data !== 'object') {
@@ -553,8 +552,6 @@ export default class Navgo {
 		try {
 			data[as] = value
 			if (data.__meta?.source) data.__meta.source[as] = 'revalidated'
-			if (data.__meta) data.__meta.at = Date.now()
-			if (nav?.to) nav.to.data = { ...data }
 			r.updated = true
 			this.route.set(this.#current)
 			for (const fn of r.cbs || [])
@@ -873,18 +870,12 @@ export default class Navgo {
 				reval.nav = nav
 				const nav_data = nav.to?.data
 				if (nav_data && typeof nav_data === 'object' && reval.pending?.size) {
-					let changed = false
 					for (const [as, value] of reval.pending) {
 						if (!isEqual(nav_data[as], value)) {
 							nav_data[as] = value
 							if (nav_data.__meta?.source) nav_data.__meta.source[as] = 'revalidated'
 							reval.updated = true
-							changed = true
 						}
-					}
-					if (changed) {
-						if (nav_data.__meta) nav_data.__meta.at = Date.now()
-						nav.to.data = { ...nav_data }
 					}
 					reval.pending.clear()
 				}
