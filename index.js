@@ -511,9 +511,28 @@ export default class Navgo {
 					res = entry
 					source = 'cache'
 				} else if (strategy === 'swr' && entry) {
-					res = entry
-					source = fresh ? 'cache' : 'stale'
-					if (!fresh) {
+					if (fresh) {
+						res = entry
+						source = 'cache'
+					} else if (nav_id === 0) {
+						// Preload should not freeze a stale snapshot into #preloads.
+						// Fetch now so goto() reuses fresh data.
+						try {
+							res = await this.#fetch_and_cache(
+								req,
+								cache,
+								side,
+								tags,
+								controller.signal,
+							)
+							source = 'network'
+						} catch {
+							res = entry
+							source = 'stale'
+						}
+					} else {
+						res = entry
+						source = 'stale'
 						this.#fetch_and_cache(req, cache, side, tags, controller.signal)
 							.then(r => this.#parse_response(r.clone ? r.clone() : r, parse))
 							.then(v => this.#emit_revalidate(nav_id, as, v))
