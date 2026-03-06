@@ -6,7 +6,7 @@
 - `goto()` and `preload()` are safe to call without `await` from events (no unhandled rejections); errors surface via `nav.to.data.__error` (or preload bundle `data.__error`)
 - `router.init()` attaches the router instance to `window.navgo` by default
 - stores:
-  - `window.navgo.route`: `{ url, route, params, matches, search_params }`
+  - `window.navgo.route`: `{ url, route, params, matches, layouts, search_params }`
   - `window.navgo.is_navigating`: boolean
 
 ## Setup (App Wiring)
@@ -52,6 +52,7 @@
 - Handle 404 / loader errors:
   - `const err = nav.to?.data?.__error; if (err?.status === 404) show_404 = true`
 - Shared layout data:
-  - read `nav.to.matches` outer → inner; layouts are `m.type === 'layout'`, route leaf is `m.type === 'route'`
+  - use `nav.to.layouts?.id?.data` or `$route.layouts?.id?.data` for direct access to matched group data
+  - `nav.to.matches` remains the ordered outer → inner structure; layouts are `m.type === 'layout'`, route leaf is `m.type === 'route'`
 - Stable scroll panes:
   - set `id="pane"` or `data-scroll-id="pane"` on scroll containers to get popstate restoration

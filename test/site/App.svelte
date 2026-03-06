@@ -178,6 +178,7 @@ import AdminLayoutCmp from './layouts/Admin.svelte'
 /** @type {Array<any>} */
 const routes = [
   {
+    id: 'app',
     layout: AppLayout,
     // note: loaders return a Promise for plain data; returning a plain object is treated as a load plan
     loader: async () => ({session: {user: 'Zara', plan: 'pro'}}),
@@ -207,6 +208,7 @@ const routes = [
         },
       ],
       {
+        id: 'admin',
         layout: AdminLayout,
         loader: async ({params}) => ({section: 'admin', admin_id: params?.id ?? null}),
         routes: [
@@ -247,11 +249,11 @@ let revalidate_count = $state(0)
 
 function sync_from_nav(nav) {
 	route_data = nav.to?.data ?? null
-	const layout_matches = nav.to?.matches?.filter(m => m.layout) ?? []
-	app_layout_data = layout_matches[0]?.data ?? null
-	admin_layout_data = layout_matches[1]?.data ?? null
-	app_layout_active = !!layout_matches[0]?.layout
-	admin_layout_active = !!layout_matches[1]?.layout
+	const layouts = nav.to?.layouts ?? {}
+	app_layout_data = layouts.app?.data ?? null
+	admin_layout_data = layouts.admin?.data ?? null
+	app_layout_active = !!layouts.app
+	admin_layout_active = !!layouts.admin
 	Component = nav.to?.route?.[1]?.default || null
 }
 

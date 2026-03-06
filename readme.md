@@ -114,6 +114,7 @@ Each route group is an object:
 
 ```js
 {
+  id?: string,
   layout?: any,
   loader?: (ctx) => LoadPlan | Promise<unknown>,
   before_route_leave?: (nav) => void,
@@ -121,6 +122,7 @@ Each route group is an object:
 }
 ```
 
+- `id` enables direct keyed access via `nav.to.layouts[id]` / `$route.layouts[id]`. IDs must be unique across route groups.
 - `layout` is forwarded into `nav.to.matches` (the router does not render anything).
 - `loader` runs for every matched child route in the group.
 - `before_route_leave` runs when leaving a matched route within the group.
@@ -171,7 +173,7 @@ Important: Navgo only processes routes that match your `base` path.
 
 ### Instance stores
 
-- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; search_params: Record<string, unknown> }>`
+- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; layouts: Record<string, Match>; search_params: Record<string, unknown> }>`
   - Readonly property that holds the current snapshot.
   - Subscribe to react to changes; Navgo updates it on every URL change.
 - `router.is_navigating` -- `Writable<boolean>`
@@ -315,8 +317,8 @@ The `Navigation` object contains:
 ```ts
 {
   type: 'link' | 'goto' | 'popstate' | 'leave',
-  from: { url, params, route, matches } | null,
-  to:   { url, params, route, matches, data } | null,
+  from: { url, params, route, matches, layouts } | null,
+  to:   { url, params, route, matches, layouts, data } | null,
   will_unload: boolean,
   cancelled: boolean,
   event?: Event,
@@ -324,13 +326,20 @@ The `Navigation` object contains:
 }
 ```
 
-`nav.to.matches` is ordered **outer → inner** and contains both layouts and the final route:
+`nav.to.matches` is ordered **outer → inner** and remains the canonical structure:
 
 ```js
 for (const m of nav.to?.matches || []) {
   if (m.type === 'layout') console.log('layout', m.layout, m.data)
   if (m.type === 'route') console.log('route', m.route?.[0], m.data)
 }
+```
+
+If a matched route group declares an `id`, Navgo also exposes a keyed lookup that points at the same match object:
+
+```js
+const session = nav.to?.layouts?.app?.data
+const admin_layout = $route.layouts?.admin
 ```
 
 #### Order & cancellation:
@@ -556,7 +565,7 @@ scroll flow
 ### Method-by-Method Semantics
 
 - `format(uri)` -- normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
-- `match(uri)` -- returns a Promise of `{ route, params } | null` using string/RegExp patterns and `param_rules` (Valibot schemas). Awaits an async `validate(params)` if provided.
+- `match(uri)` -- returns a Promise of `{ route, params, matches, layouts } | null` using string/RegExp patterns and `param_rules` (Valibot schemas). Awaits an async `validate(params)` if provided.
 - `goto(uri, { replace? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
 - `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `destroy()` -- removes listeners added by `init()`.

@@ -83,6 +83,8 @@ export interface LoaderContext {
 export interface Match<T = unknown> {
 	/** Matched layout/group wrapper or the final route tuple. */
 	type: 'layout' | 'route'
+	/** Present when `type === 'layout'` and the route group declared an `id`. */
+	id?: string
 	/** Present when `type === 'layout'`. */
 	layout?: any
 	/** Present when `type === 'route'`. */
@@ -91,7 +93,17 @@ export interface Match<T = unknown> {
 	data?: unknown
 }
 
+export interface LayoutMatch<T = unknown> extends Match<T> {
+	type: 'layout'
+	id: string
+}
+
+/** Keyed lookup into matched layout/group wrappers. Values are the same objects as in `matches`. */
+export type LayoutsMap<T = unknown> = Record<string, LayoutMatch<T>>
+
 export interface RouteGroup<T = unknown> {
+	/** Optional stable key for direct access via `layouts[id]`. Must be unique across groups. */
+	id?: string
 	/** Optional layout component/module (router does not render; it just forwards this). */
 	layout?: any
 	/** Load data for this layout group. Return a LoadPlan (object) or a Promise for arbitrary data. */
@@ -109,6 +121,7 @@ export type RouteEntry<T = unknown> = RouteTuple<T> | RouteGroup<T>
 
 export interface PreloadBundle<T = unknown> {
 	matches: Match<T>[]
+	layouts?: LayoutsMap<T>
 	data?: unknown
 }
 
@@ -133,6 +146,8 @@ export interface NavigationTarget<T = unknown> {
 	route: RouteTuple<T> | null
 	/** Ordered matches for nested layouts and the final route (outer → inner). */
 	matches?: Match<T>[]
+	/** Keyed lookup into matched layout/group wrappers by `RouteGroup.id`. */
+	layouts?: LayoutsMap<T>
 	/** Optional data from route loader when available. */
 	data?: unknown
 }
@@ -156,6 +171,7 @@ export interface MatchResult<T = unknown> {
 	route: RouteTuple<T>
 	params: Params
 	matches: Match<T>[]
+	layouts: LayoutsMap<T>
 }
 
 // For convenience in docs/types, alias the class instance type
@@ -217,12 +233,13 @@ export default class Navgo<T = unknown> {
 	init(): Promise<void>
 	/** Remove listeners installed by `init()`. */
 	destroy(): void
-	/** Writable store with current { url, route, params, matches, search_params }. */
+	/** Writable store with current { url, route, params, matches, layouts, search_params }. */
 	readonly route: import('svelte/store').Writable<{
 		url: URL
 		route: RouteTuple<T> | null
 		params: Params
 		matches: Match<T>[]
+		layouts: LayoutsMap<T>
 		search_params: Record<string, unknown>
 	}>
 	/** Last completed navigation object. */

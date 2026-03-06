@@ -49,8 +49,15 @@ export default class Navgo {
 	#base_rgx = /^\/+/
 	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
-	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[], search_params: Record<string, unknown> }} */
-	#current = { url: null, route: null, params: {}, matches: [], search_params: {} }
+	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[], layouts: Record<string, Match>, search_params: Record<string, unknown> }} */
+	#current = {
+		url: null,
+		route: null,
+		params: {},
+		matches: [],
+		layouts: Object.create(null),
+		search_params: {},
+	}
 	/** @type {number} */
 	#route_idx = 0
 	/** @type {boolean} */
@@ -81,6 +88,7 @@ export default class Navgo {
 		route: null,
 		params: {},
 		matches: [],
+		layouts: Object.create(null),
 		search_params: {},
 	})
 	/** @type {Navigation|null} */
@@ -632,10 +640,17 @@ export default class Navgo {
 		}
 	}
 
+	#build_layouts(matches) {
+		const out = Object.create(null)
+		for (const m of matches || []) if (m.type === 'layout' && m.id) out[m.id] = m
+		return out
+	}
+
 	#build_matches(route, stack) {
 		const out = []
 		for (const g of stack || []) {
 			const obj = { type: 'layout', layout: g.layout }
+			if (g.id) obj.id = g.id
 			Object.defineProperty(obj, '__entry', { value: g })
 			out.push(obj)
 		}
@@ -671,6 +686,7 @@ export default class Navgo {
 		for (let i = 0; i < matches.length; i++) matches[i].data = datas[i]
 		return {
 			matches,
+			layouts: this.#build_layouts(matches),
 			data: datas[datas.length - 1],
 			search: { schema, opts, defaults, search_params },
 		}
@@ -689,6 +705,7 @@ export default class Navgo {
 							params: this.#current.params || {},
 							route: this.#current.route,
 							matches: this.#current.matches || [],
+							layouts: this.#current.layouts || Object.create(null),
 						}
 					: null
 		return {
@@ -746,7 +763,7 @@ export default class Navgo {
 
 			let nav = this.#make_nav({
 				type: nav_type,
-				to: { url, params: {}, route: null, matches: [] },
+				to: { url, params: {}, route: null, matches: [], layouts: Object.create(null) },
 				event: ev_param,
 			})
 			ℹ('[🧭 goto]', 'start', {
@@ -780,8 +797,9 @@ export default class Navgo {
 						params: hit.params || {},
 						route: hit.route || null,
 						matches: hit.matches || [],
+						layouts: hit.layouts || this.#build_layouts(hit.matches || []),
 					}
-				: { url, params: {}, route: null, matches: [] }
+				: { url, params: {}, route: null, matches: [], layouts: Object.create(null) }
 			if (match_error) nav.to.data = { __error: match_error }
 
 			// before_navigate (skip initial)
@@ -856,6 +874,10 @@ export default class Navgo {
 				route: match_error ? null : hit?.route || null,
 				params: match_error ? {} : hit?.params || {},
 				matches,
+				layouts:
+					hit && !match_error
+						? bundle?.layouts || this.#build_layouts(matches)
+						: Object.create(null),
 				search_params: {},
 			}
 
@@ -870,6 +892,7 @@ export default class Navgo {
 							params: prev.params || {},
 							route: prev.route,
 							matches: prev.matches || [],
+							layouts: prev.layouts || Object.create(null),
 						}
 					: null,
 				to: {
@@ -877,6 +900,7 @@ export default class Navgo {
 					params: match_error ? {} : hit?.params || {},
 					route: match_error ? null : hit?.route || null,
 					matches,
+					layouts: this.#current.layouts || Object.create(null),
 					data,
 				},
 				event: ev_param,
@@ -1147,10 +1171,12 @@ export default class Navgo {
 			}
 
 			ℹ('[🧭 match]', 'hit', { pattern: obj.data?.[0], params })
+			const matches = this.#build_matches(obj.data, obj.stack)
 			return {
 				route: obj.data || null,
 				params,
-				matches: this.#build_matches(obj.data, obj.stack),
+				matches,
+				layouts: this.#build_layouts(matches),
 			}
 		}
 		ℹ('[🧭 match]', 'miss', { url: url_raw })
@@ -1165,6 +1191,8 @@ export default class Navgo {
 		this.#base = normalize_path(this.#opts.base || '/')
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
+
+		const group_ids = new Map()
 
 		function compile_routes(entries, stack = []) {
 			const out = []
@@ -1181,6 +1209,14 @@ export default class Navgo {
 					continue
 				}
 				if (e && typeof e === 'object' && Array.isArray(e.routes)) {
+					if (e.id != null) {
+						if (typeof e.id !== 'string' || !e.id) {
+							throw new Error('Route group id must be a non-empty string')
+						}
+						if (group_ids.has(e.id))
+							throw new Error(`Duplicate route group id "${e.id}"`)
+						group_ids.set(e.id, e)
+					}
 					out.push(...compile_routes(e.routes, stack.concat(e)))
 					continue
 				}

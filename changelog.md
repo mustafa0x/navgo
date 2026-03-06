@@ -3,6 +3,12 @@
 ## v6
 
 - add route groups for nested layouts/shared loaders; expose ordered `matches` (layouts → route) on `nav.to.matches` and `router.route`
+- add optional route group `id`s plus keyed `layouts` lookups on navigation targets, `match()`, and `router.route` for direct access to shared layout/group data
+  - migration:
+    - before: `const app_data = nav.to?.matches?.find(m => m.type === 'layout')?.data`
+    - after: `const app_data = nav.to?.layouts?.app?.data`
+  - docs/typed surfaces now describe `match()` as returning `{ route, params, matches, layouts }` and `window.navgo.route` as including `layouts`
+  - covered on direct `match()`, completed navigations, `popstate`, and preload-reused navigations
 - run group loaders (and group `before_route_leave`) for matched child routes; preload caches the full loader chain and `goto` reuses it
 - use `param_rules` for per-param validation + coercion (superseding `param_validators`, which has been removed)
   - example:

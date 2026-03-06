@@ -848,13 +848,15 @@ describe('preload behavior', () => {
 // ---
 
 describe('layouts and shared loaders', () => {
-	it('match returns ordered matches for nested groups', async () => {
+	it('match returns ordered matches and keyed layouts for nested groups', async () => {
 		const ctx = new Navgo([
 			{
+				id: 'app',
 				layout: { default: 'L1' },
 				routes: [
 					['/', {}],
 					{
+						id: 'admin',
 						layout: { default: 'L2' },
 						routes: [['/foo', {}]],
 					},
@@ -865,10 +867,34 @@ describe('layouts and shared loaders', () => {
 		if (!res) throw new Error('expected a match')
 		expect(res.matches.length).toBe(3)
 		expect(res.matches[0].type).toBe('layout')
+		expect(res.matches[0].id).toBe('app')
 		expect(res.matches[0].layout?.default).toBe('L1')
+		expect(res.matches[1].id).toBe('admin')
 		expect(res.matches[1].layout?.default).toBe('L2')
 		expect(res.matches[2].type).toBe('route')
 		expect(res.matches[2].route?.[0]).toBe('/foo')
+		expect(res.layouts.app).toBe(res.matches[0])
+		expect(res.layouts.admin).toBe(res.matches[1])
+	})
+
+	it('omits groups without ids from layouts lookup', async () => {
+		const ctx = new Navgo([
+			{
+				id: 'app',
+				layout: { default: 'L1' },
+				routes: [
+					{
+						layout: { default: 'Anonymous' },
+						routes: [['/foo', {}]],
+					},
+				],
+			},
+		])
+		const res = await ctx.match('/foo')
+		if (!res) throw new Error('expected a match')
+		expect(Object.keys(res.layouts)).toEqual(['app'])
+		expect(res.layouts.app).toBe(res.matches[0])
+		expect(res.layouts.anonymous).toBeUndefined()
 	})
 
 	it('runs layout loaders and forwards data into nav.to.matches', async () => {
@@ -878,6 +904,7 @@ describe('layouts and shared loaders', () => {
 		const r = new Navgo(
 			[
 				{
+					id: 'root',
 					layout: { default: 'Root' },
 					async loader() {
 						calls.push('root')
@@ -886,6 +913,7 @@ describe('layouts and shared loaders', () => {
 					routes: [
 						['/', {}],
 						{
+							id: 'inner',
 							layout: { default: 'Inner' },
 							async loader() {
 								calls.push('inner')
@@ -927,8 +955,91 @@ describe('layouts and shared loaders', () => {
 		expect(m[2].type).toBe('route')
 		expect(m[2].route?.[0]).toBe('/foo')
 		expect(m[2].data).toEqual({ page: true })
+		expect(navs.at(-1)?.to?.layouts?.root).toBe(m[0])
+		expect(navs.at(-1)?.to?.layouts?.root?.data).toEqual({ root: true })
+		expect(navs.at(-1)?.to?.layouts?.inner).toBe(m[1])
+		expect(navs.at(-1)?.to?.layouts?.inner?.data).toEqual({ inner: true })
 		// leaf convenience stays on nav.to.data
 		expect(navs.at(-1)?.to?.data).toEqual({ page: true })
+		r.destroy()
+	})
+
+	it('route store exposes layouts and resets them on 404', async () => {
+		setupStubs('/app/')
+		let cur
+		const r = new Navgo(
+			[
+				{
+					id: 'app',
+					layout: { default: 'App' },
+					async loader() {
+						return { session: true }
+					},
+					routes: [
+						['/', {}],
+						['/foo', {}],
+					],
+				},
+			],
+			{ base: '/app' },
+		)
+		const unsub = r.route.subscribe(v => (cur = v))
+		await r.init()
+		expect(cur.layouts.app?.data).toEqual({ session: true })
+		await r.goto('/app/foo')
+		expect(cur.layouts.app?.data).toEqual({ session: true })
+		await r.goto('/app/missing')
+		expect(cur.route).toBe(null)
+		expect(Object.keys(cur.layouts)).toEqual([])
+		unsub()
+		r.destroy()
+	})
+
+	it('throws on duplicate route group ids', () => {
+		expect(
+			() =>
+				new Navgo([
+					{ id: 'app', routes: [['/', {}]] },
+					{ id: 'app', routes: [['/foo', {}]] },
+				]),
+		).toThrow(/Duplicate route group id "app"/)
+	})
+
+	it('popstate keeps layouts in sync with matches and route store', async () => {
+		setupStubs('/app/')
+		let cur
+		const r = new Navgo(
+			[
+				{
+					id: 'app',
+					layout: { default: 'App' },
+					async loader() {
+						return { app: true }
+					},
+					routes: [
+						['/', {}],
+						['/foo', {}],
+					],
+				},
+			],
+			{ base: '/app' },
+		)
+		const unsub = r.route.subscribe(v => (cur = v))
+		await r.init()
+		await r.goto('/app/foo')
+
+		global.location = new URL('http://example.com/app/')
+		const ev = new Event('popstate')
+		ev.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(ev)
+		await tick()
+
+		expect(cur.route?.[0]).toBe('/')
+		expect(cur.layouts.app).toBe(cur.matches[0])
+		expect(cur.layouts.app?.data).toEqual({ app: true })
+		expect(r.nav?.to?.layouts?.app).toBe(r.nav?.to?.matches?.[0])
+		expect(r.nav?.to?.layouts?.app?.data).toEqual({ app: true })
+		unsub()
 		r.destroy()
 	})
 
@@ -938,8 +1049,10 @@ describe('layouts and shared loaders', () => {
 		const r = new Navgo(
 			[
 				{
+					id: 'app',
 					async loader() {
 						calls.root++
+						return { app: true }
 					},
 					routes: [
 						['/', {}],
@@ -970,6 +1083,9 @@ describe('layouts and shared loaders', () => {
 		// goto should use preloaded results (no extra loader calls)
 		expect(calls.root).toBe(1)
 		expect(calls.page).toBe(1)
+		expect(r.nav?.to?.layouts?.app).toBe(r.nav?.to?.matches?.[0])
+		expect(r.nav?.to?.layouts?.app?.data).toEqual({ app: true })
+		expect(r.nav?.to?.route?.[0]).toBe('/foo')
 		r.destroy()
 	})
 })

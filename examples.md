@@ -33,17 +33,26 @@ Use a `RouteGroup` for layouts + shared hooks.
 ```js
 const routes = [
 	{
+		id: 'app',
 		layout: AppLayout,
 		routes: [
 			['/', Home],
 			['/products', Products],
 			{
+				id: 'admin',
 				layout: AdminLayout,
 				routes: [['/admin', AdminHome], ['/admin/users', AdminUsers]],
 			},
 		],
 	},
 ]
+```
+
+```js
+function after_navigate(nav) {
+	const app_data = nav.to?.layouts?.app?.data
+	const admin_data = nav.to?.layouts?.admin?.data
+}
 ```
 
 ## Guarding routes

@@ -10,6 +10,7 @@ import Navgo, {
 	type Params,
 	type Match,
 	type MatchResult,
+	type LayoutsMap,
 	type ParamRule,
 	type LoaderContext,
 	type LoadPlan,
@@ -85,6 +86,7 @@ type RouteState = {
 	route: RouteTuple<Meta> | null
 	params: Params
 	matches: Match<Meta>[]
+	layouts: LayoutsMap<Meta>
 	search_params: Record<string, unknown>
 }
 const route_store: Writable<RouteState> = router.route
@@ -94,6 +96,7 @@ route_store.set({
 	route: routes[0],
 	params: {},
 	matches: [],
+	layouts: {},
 	search_params: {},
 })
 
