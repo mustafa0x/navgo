@@ -1,3 +1,4 @@
+import { writable } from 'svelte/store'
 import * as v from 'valibot'
 
 export function normalize_path(value) {
@@ -125,7 +126,7 @@ function safe_json(value) {
 	}
 }
 
-export function build_search_url(cur, values, keys, defaults, opts, same_value) {
+export function build_search_string(cur, values, keys, defaults, opts, same_value) {
 	let sp = new URLSearchParams(cur.search)
 	const as = opts?.array_style
 	for (const k of keys) {
@@ -159,8 +160,34 @@ export function build_search_url(cur, values, keys, defaults, opts, same_value) 
 	if (opts?.sort) {
 		sp = new URLSearchParams([...sp.entries()].sort(([a], [b]) => a.localeCompare(b)))
 	}
+	return sp.toString()
+}
+
+export function build_search_url(cur, values, keys, defaults, opts, same_value) {
 	const next = new URL(cur.href)
-	const s = sp.toString()
+	const s = build_search_string(cur, values, keys, defaults, opts, same_value)
 	next.search = s ? `?${s}` : ''
 	return next.href === cur.href ? null : next
+}
+
+export function create_search_store(stringify = () => '') {
+	let current = {}
+	const store = writable(current)
+	const api = {
+		subscribe: store.subscribe,
+		set(value) {
+			current = value && typeof value === 'object' ? value : {}
+			store.set(current)
+		},
+		update(fn) {
+			api.set(fn(current))
+		},
+		toString() {
+			return stringify(current)
+		},
+		set_stringifier(fn) {
+			stringify = fn || (() => '')
+		},
+	}
+	return api
 }

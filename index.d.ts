@@ -7,6 +7,10 @@ export * as v from 'valibot'
  */
 export type RawParam = string | null | undefined
 export type Params = Record<string, any>
+export type SearchParams = Record<string, unknown>
+export type SearchParamsStore = import('svelte/store').Writable<SearchParams> & {
+	toString(): string
+}
 
 export type ParamSchema = import('valibot').BaseSchema<unknown, unknown, any>
 export type ParamRule = ParamSchema | { schema?: ParamSchema; coercer?: (value: RawParam) => any }
@@ -240,14 +244,14 @@ export default class Navgo<T = unknown> {
 		params: Params
 		matches: Match<T>[]
 		layouts: LayoutsMap<T>
-		search_params: Record<string, unknown>
+		search_params: SearchParams
 	}>
 	/** Last completed navigation object. */
 	nav: Navigation | null
 	/** Writable store indicating active navigation. */
 	readonly is_navigating: import('svelte/store').Writable<boolean>
 	/** Writable store of validated search params for the current route. */
-	readonly search_params: import('svelte/store').Writable<Record<string, unknown>>
+	readonly search_params: SearchParamsStore
 	/** Invalidate cache entries by canonical keys (URLs) or tags. */
 	invalidate(keys_or_tags: string | string[]): Promise<void>
 }

@@ -153,6 +153,112 @@ describe('search params', () => {
 		expect(cur.ids).toEqual([3, 4])
 		unsub()
 	})
+
+	it('stringifies canonical managed search params', async () => {
+		setupStubs('/search?z=1')
+		const router = new Navgo([
+			[
+				'/search',
+				{
+					search_schema: v.object({
+						q: v.optional(v.fallback(v.string(), ''), ''),
+						page: v.optional(v.fallback(v.number(), 1), 1),
+						tag: v.optional(v.fallback(v.array(v.string()), []), []),
+						cat: v.optional(v.fallback(v.array(v.string()), []), []),
+					}),
+					search_options: {
+						sort: true,
+						array_style: { default: 'repeat', cat: 'csv' },
+					},
+				},
+			],
+		])
+		await router.init()
+		let cur
+		const unsub = router.search_params.subscribe(v => (cur = v))
+		router.search_params.set({ q: '', page: 1, tag: ['a', 'b'], cat: ['x', 'y'] })
+		expect(router.search_params.toString()).toBe('cat=x%2Cy&tag=a&tag=b&z=1')
+		expect(cur.tag).toEqual(['a', 'b'])
+		unsub()
+	})
+
+	it('supports goto with query-only strings built from search_params', async () => {
+		setupStubs('/search')
+		let calls = 0
+		let seen
+		const router = new Navgo([
+			[
+				'/search',
+				{
+					search_schema: v.object({
+						tag: v.optional(v.fallback(v.array(v.string()), []), []),
+						cat: v.optional(v.fallback(v.array(v.string()), []), []),
+					}),
+					search_options: {
+						sort: true,
+						array_style: { default: 'repeat', cat: 'csv' },
+					},
+					loader({ search_params }) {
+						calls += 1
+						seen = search_params
+						return Promise.resolve(search_params)
+					},
+				},
+			],
+		])
+		await router.init()
+		let cur
+		const unsub = router.search_params.subscribe(v => (cur = v))
+		router.search_params.set({ tag: ['a', 'b'], cat: ['x', 'y'] })
+		await router.goto('?' + router.search_params.toString(), { replace: true })
+		expect(calls).toBe(2)
+		expect(seen).toEqual({ tag: ['a', 'b'], cat: ['x', 'y'] })
+		expect(router.nav?.to?.url?.search).toBe('?cat=x%2Cy&tag=a&tag=b')
+		expect(cur.cat).toEqual(['x', 'y'])
+		unsub()
+	})
+
+	it('keeps managed search params in the URL on init', async () => {
+		setupStubs('/search?tag=a')
+		const router = new Navgo([
+			[
+				'/search',
+				{
+					search_schema: v.object({
+						tag: v.optional(v.fallback(v.array(v.string()), []), []),
+					}),
+				},
+			],
+		])
+		let cur
+		router.route.subscribe(v => (cur = v))
+		await router.init()
+		expect(cur.url.href).toBe('http://example.com/search?tag=a')
+		expect(cur.url.search).toBe('?tag=a')
+		expect(cur.search_params.tag).toEqual(['a'])
+		expect(router.search_params.toString()).toBe('tag=a')
+		expect(router.nav?.to?.url?.href).toBe('http://example.com/search?tag=a')
+		expect(global.history.state.__navgo.shallow).toBeUndefined()
+	})
+
+	it('does not collide with a toString search param key', async () => {
+		setupStubs('/search?toString=abc')
+		const router = new Navgo([
+			[
+				'/search',
+				{
+					search_schema: v.object({
+						toString: v.optional(v.fallback(v.string(), ''), ''),
+					}),
+				},
+			],
+		])
+		let cur
+		router.search_params.subscribe(v => (cur = v))
+		await router.init()
+		expect(cur.toString).toBe('abc')
+		expect(router.search_params.toString()).toBe('toString=abc')
+	})
 })
 
 // ---

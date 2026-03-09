@@ -12,6 +12,8 @@ import Navgo, {
 	type MatchResult,
 	type LayoutsMap,
 	type ParamRule,
+	type SearchParams,
+	type SearchParamsStore,
 	type LoaderContext,
 	type LoadPlan,
 } from 'navgo'
@@ -87,7 +89,7 @@ type RouteState = {
 	params: Params
 	matches: Match<Meta>[]
 	layouts: LayoutsMap<Meta>
-	search_params: Record<string, unknown>
+	search_params: SearchParams
 }
 const route_store: Writable<RouteState> = router.route
 route_store.subscribe(() => {})
@@ -98,6 +100,13 @@ route_store.set({
 	matches: [],
 	layouts: {},
 	search_params: {},
+})
+
+const sp_store: SearchParamsStore = router.search_params
+const search_string: string = sp_store.toString()
+sp_store.subscribe(sp => {
+	const maybe_string: unknown = sp.toString
+	return maybe_string
 })
 
 // is_navigating typing checks

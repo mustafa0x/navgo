@@ -173,15 +173,16 @@ Important: Navgo only processes routes that match your `base` path.
 
 ### Instance stores
 
-- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; layouts: Record<string, Match>; search_params: Record<string, unknown> }>`
+- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; layouts: Record<string, Match>; search_params: SearchParams }>`
   - Readonly property that holds the current snapshot.
   - Subscribe to react to changes; Navgo updates it on every URL change.
 - `router.is_navigating` -- `Writable<boolean>`
   - `true` while a navigation is in flight (between start and completion/cancel).
-- `router.search_params` -- `Writable<Record<string, unknown>>`
+- `router.search_params` -- `Writable<SearchParams> & { toString(): string }`
   - Writable store of validated search params for the **current** route.
   - If the current route defines a `search_schema`, this store is kept in sync with the URL.
   - Writing to it updates the URL search string (optionally debounced).
+  - The store object has a custom `toString()` that returns the canonical query string (without the leading `?`) for the current route, using `URLSearchParams` encoding.
 
 Example:
 
@@ -257,6 +258,7 @@ Notes:
 
 - Writes are **shallow** (URL changes via `replace_state` / `push_state`), so loaders are not re-run automatically.
 - If you want a full navigation, call `router.goto(...)` with a new URL.
+- You can serialize the current managed query with `router.search_params.toString()`.
 
 ### Route Hooks
 

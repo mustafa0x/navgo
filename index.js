@@ -3,7 +3,9 @@ import { debounce } from 'es-toolkit/function'
 import { isPromise } from 'es-toolkit/predicate'
 import * as v from 'valibot'
 import {
+	build_search_string,
 	build_search_url,
+	create_search_store,
 	merge_search_opts,
 	normalize_path,
 	read_search,
@@ -94,7 +96,7 @@ export default class Navgo {
 	/** @type {Navigation|null} */
 	nav = null
 	is_navigating = writable(false)
-	search_params = writable({})
+	search_params = create_search_store()
 
 	//
 	// Event listeners
@@ -422,7 +424,21 @@ export default class Navgo {
 			this.#search_opts.debounce > 0
 				? debounce(v => this.#commit_search(v), this.#search_opts.debounce)
 				: null
+		this.search_params.set_stringifier(v => this.#stringify_search(v))
 		this.#set_search_store(search?.search_params ?? {})
+	}
+
+	#stringify_search(values) {
+		if (!this.#search_schema) return ''
+		const cur = this.#current.url || new URL(location.href)
+		return build_search_string(
+			cur,
+			values,
+			this.#search_keys,
+			this.#search_defaults,
+			this.#search_opts,
+			isEqual,
+		)
 	}
 
 	/* Read + validate search params from URL. */
