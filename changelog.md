@@ -1,5 +1,13 @@
 # Changelog
 
+## v6.0.5
+
+- fix hash-only back scroll restoration when a pending same-page hash click is cancelled before its `hashchange` settles
+
+## v6.0.4
+
+- add `router.search_params.toString()` on the store object to serialize the current managed query string without colliding with a real `toString` search param key
+
 ## v6
 
 - add route groups for nested layouts/shared loaders; expose ordered `matches` (layouts → route) on `nav.to.matches` and `router.route`

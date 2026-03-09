@@ -62,8 +62,7 @@ export default class Navgo {
 	}
 	/** @type {number} */
 	#route_idx = 0
-	/** @type {boolean} */
-	#hash_navigating = false
+	#hash_target = ''
 	/** @type {Map<number, Map<string, { x: number, y: number }>>} */
 	#areas_pos = new Map()
 	// Latest-wins nav guard: monotonic id and currently active id
@@ -125,7 +124,7 @@ export default class Navgo {
 			}
 
 			// different hash on same path — let browser update URL + scroll
-			this.#hash_navigating = true
+			this.#hash_target = url.href
 			ℹ('[🧭 hash]', 'navigate', { href: url.href })
 			return
 		}
@@ -149,7 +148,7 @@ export default class Navgo {
 
 	#on_popstate = ev => {
 		// ignore popstate while a hash-originating nav is in flight
-		if (this.#hash_navigating) return
+		if (this.#hash_target === location.href) return
 
 		const st = ev?.state?.__navgo
 		ℹ('[🧭 event:popstate]', st)
@@ -188,9 +187,11 @@ export default class Navgo {
 	}
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
-		if (this.#hash_navigating) {
+		const hash_target = this.#hash_target
+		const hash_from_click = hash_target === location.href
+		this.#hash_target = ''
+		if (hash_from_click) {
 			const prev_idx = this.#route_idx
-			this.#hash_navigating = false
 			// Hash navigation creates a new history entry and clears the browser's forward stack.
 			// Clear our forward scroll snapshots too (avoid stale reuse at the next idx).
 			this.#clear_onward_history()
@@ -206,15 +207,15 @@ export default class Navgo {
 		} else {
 			// hashchange via Back/Forward — restore previous position when hash is removed
 			const idx = history.state?.__navgo?.idx
-			if (typeof idx === 'number') this.#route_idx = idx
+			if (!hash_target && typeof idx === 'number') this.#route_idx = idx
 			if (!location.hash) {
 				const pos = this.#areas_pos.get(this.#route_idx)?.get?.('window')
 				if (pos) {
-					scrollTo(pos.x, pos.y)
+					setTimeout(() => scrollTo(pos.x, pos.y), 0)
 					ℹ('[🧭 scroll]', 'restore hash-back', { idx: this.#route_idx, ...pos })
 				} else if (this.#opts.scroll_to_top) {
 					// no saved position for previous entry — default to top
-					scrollTo(0, 0)
+					setTimeout(() => scrollTo(0, 0), 0)
 					ℹ('[🧭 scroll]', 'hash-back -> top')
 				}
 			}
@@ -242,7 +243,7 @@ export default class Navgo {
 
 	#on_scroll = e => {
 		// prevent hash from overwriting the previous entry’s saved position.
-		if (this.#hash_navigating) return
+		if (this.#hash_target === location.href) return
 
 		const el = e?.target
 		const id =

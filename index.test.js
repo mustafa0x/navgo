@@ -1949,6 +1949,75 @@ describe('scroll restoration (areas)', () => {
 		expect(global.scrollY).toBe(333)
 		r.destroy()
 	})
+
+	it('hash-only back re-applies top when browser scrolls late', async () => {
+		const hist = setupStubs('/app/posts')
+		const r = new Navgo([['/posts', {}]], { base: '/app' })
+		await r.init()
+
+		let prevented = false
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '#post-1' : null),
+			pathname: '/app/posts',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {
+				prevented = true
+			},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+		global.location = new URL('http://example.com/app/posts#post-1')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick()
+		expect(prevented).toBe(false)
+
+		hist.state = { __navgo: { idx: 0 } }
+		global.location = new URL('http://example.com/app/posts')
+		let ev = new Event('popstate')
+		ev.state = hist.state
+		global.dispatchEvent(ev)
+		global.dispatchEvent(new Event('hashchange'))
+		global.scrollTo(0, 222)
+		await tick(2)
+		expect(global.scrollY).toBe(0)
+		r.destroy()
+	})
+
+	it('hash-only back ignores a pending hash click that never settled', async () => {
+		const hist = setupStubs('/app/posts')
+		const r = new Navgo([['/posts', {}]], { base: '/app' })
+		await r.init()
+
+		const anchor = {
+			host: 'example.com',
+			getAttribute: name => (name === 'href' ? '#post-1' : null),
+			pathname: '/app/posts',
+			closest: () => anchor,
+		}
+		const click = {
+			type: 'click',
+			button: 0,
+			defaultPrevented: false,
+			preventDefault() {},
+			target: anchor,
+			composedPath: () => [anchor],
+		}
+		global.dispatchEvent(click)
+
+		hist.state = { __navgo: { idx: 1 } }
+		global.location = new URL('http://example.com/app/posts')
+		global.dispatchEvent(new Event('hashchange'))
+		await tick(2)
+		expect(global.scrollY).toBe(0)
+		r.destroy()
+	})
 })
 
 describe('leave (beforeunload)', () => {
