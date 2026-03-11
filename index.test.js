@@ -1339,6 +1339,101 @@ describe('load plan caching', () => {
 		r.destroy()
 	})
 
+	it('exposes same-origin load plan requests as __meta.preloads', async () => {
+		setupStubs('/app/foo')
+		global.fetch = async req =>
+			new Response(JSON.stringify({ url: req.url }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return {
+								a: 'http://example.com/api/a?x=1',
+								b: { request: 'http://example.com/api/b' },
+							}
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(last.to.data.__meta.preloads).toEqual(['/api/a?x=1', '/api/b'])
+		r.destroy()
+	})
+
+	it('dedupes and excludes cross-origin load plan preloads', async () => {
+		setupStubs('/app/foo')
+		global.fetch = async () =>
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return {
+								a: 'http://example.com/api/a?x=1',
+								b: { request: 'https://other.com/api/b' },
+								c: { request: 'http://example.com/api/a?x=1' },
+							}
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(last.to.data.__meta.preloads).toEqual(['/api/a?x=1'])
+		r.destroy()
+	})
+
+	it('does not expose __meta.preloads for async plain-data loaders', async () => {
+		setupStubs('/app/foo')
+		let last
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						async loader() {
+							return { data: { ok: true } }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+		expect(last.to.data.__meta?.preloads).toBeUndefined()
+		r.destroy()
+	})
+
 	it('stale-while-revalidate only updates when value changes', async () => {
 		setupStubs('/app/foo')
 		let fetch_calls = 0

@@ -512,11 +512,14 @@ export default class Navgo {
 		} catch {}
 		const out = {}
 		const sources = {}
+		const preloads = new Set()
 		const defaults = this.#opts.load_plan_defaults || {}
 		await Promise.all(
 			Object.entries(plan || {}).map(async ([as, raw]) => {
 				const spec = typeof raw === 'string' ? { request: raw } : raw || {}
 				const req = this.#to_get_request(spec.request, spec.init)
+				const url = new URL(req.url)
+				if (url.origin === location.origin) preloads.add(url.pathname + url.search)
 				const parse = spec.parse || defaults.parse || 'json'
 				const cache_hints = { ...(defaults.cache || {}), ...(spec.cache || {}) }
 				const strategy = cache_hints.strategy || 'swr'
@@ -579,7 +582,10 @@ export default class Navgo {
 				sources[as] = source
 			}),
 		)
-		return { ...out, __meta: { source: sources, at: Date.now() } }
+		return {
+			...out,
+			__meta: { source: sources, at: Date.now(), preloads: [...preloads] },
+		}
 	}
 
 	#emit_revalidate(id, as, value) {

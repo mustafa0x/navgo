@@ -1,5 +1,10 @@
 # Changelog
 
+## v6.0.6
+
+- add `data.__meta.preloads` for executed LoadPlans so consumers can reuse same-origin request URLs
+  for SSR preload headers
+
 ## v6.0.5
 
 - fix hash-only back scroll restoration when a pending same-page hash click is cancelled before its `hashchange` settles

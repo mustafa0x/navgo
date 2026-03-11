@@ -46,6 +46,14 @@ export interface LoadPlanDefaults {
 	cache?: CacheOptions
 }
 
+export type LoadPlanSource = 'network' | 'cache' | 'stale' | 'revalidated'
+
+export interface LoadPlanMeta {
+	source: Record<string, LoadPlanSource>
+	at: number
+	preloads?: string[]
+}
+
 export interface SearchOptions {
 	show_defaults?: boolean
 	debounce?: number
@@ -93,7 +101,7 @@ export interface Match<T = unknown> {
 	layout?: any
 	/** Present when `type === 'route'`. */
 	route?: RouteTuple<T>
-	/** Loader result for this match when available (e.g. on navigation completion). */
+	/** Loader result for this match when available (e.g. on navigation completion). LoadPlan results include `__meta`. */
 	data?: unknown
 }
 
@@ -152,7 +160,7 @@ export interface NavigationTarget<T = unknown> {
 	matches?: Match<T>[]
 	/** Keyed lookup into matched layout/group wrappers by `RouteGroup.id`. */
 	layouts?: LayoutsMap<T>
-	/** Optional data from route loader when available. */
+	/** Optional data from route loader when available. LoadPlan results include `__meta`. */
 	data?: unknown
 }
 

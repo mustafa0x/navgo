@@ -295,6 +295,11 @@ const router = new Navgo(routes, {
 
 See `examples.md` for more setups.
 
+Executed LoadPlans also expose the fetched same-origin request URLs on `data.__meta.preloads` as
+relative `pathname + search` strings. This is useful for SSR services that want to turn LoadPlan
+requests into `Link: rel=preload` headers. Async loaders that return plain data do not produce
+`__meta.preloads`.
+
 
 - param_rules?: `Record<string, ParamRule>`
   - Each rule is either a Valibot schema or `{ schema, coercer }`.
