@@ -27,7 +27,7 @@
   - SWR revalidation can update `nav.to.data` after navigation; subscribe via `after_navigate(nav, on_revalidate)`
   - Avoid these common mistakes:
     - Re-fetching the same data in the component `<script>` that the loader already fetched (double network + out-of-sync state). Prefer using the `data` prop.
-    - Overcomplicating the loader: keep it as a LoadPlan (just URLs/specs). Do client-side orchestration in the component only if it truly depends on interactive state.
+    - Overcomplicating the loader: do not keep an `async loader()` just to do `filter`/`map`/`sort`-style normalization. Usually keep the loader as a LoadPlan (just URLs/specs) and normalize in the component. Use `async loader()` when later fetches depend on earlier results.
     - Duplicating imports across `<script>` and `<script module>`: in Svelte they share imports; duplicating can cause compile errors. Put imports in one place.
 - Shallow history:
   - `push_state`/`replace_state` updates URL/state without re-running loaders
