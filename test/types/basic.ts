@@ -42,6 +42,17 @@ const routes: Array<RouteTuple<Meta>> = [
 
 const opts: Options = {
 	base: '/app',
+	rewrite: {
+		input({ url, current }) {
+			const p: string = url.pathname
+			const c: unknown = current?.context
+			return { url, context: c }
+		},
+		output({ url, context }) {
+			const c: unknown = context
+			return { url, context: c }
+		},
+	},
 	preload_delay: 10,
 	preload_on_hover: true,
 	before_navigate(nav) {
@@ -50,6 +61,8 @@ const opts: Options = {
 	after_navigate(nav) {
 		const to = nav.to!
 		const u: string = to.url.pathname
+		const i: string = to.internal_url.pathname
+		const pth: string = to.path
 		const m: RouteTuple<Meta> = to.route as RouteTuple<Meta>
 		const p: Params = to.params
 		const d: unknown = to.data
@@ -71,7 +84,11 @@ router.destroy?.()
 // Async-returning methods
 declare function expectsPromise<T>(p: Promise<T>): void
 expectsPromise(router.goto('/users/1'))
+expectsPromise(router.goto('/users/1', { literal: true, context: { locale: 'en' } }))
 expectsPromise(router.preload('/users/1'))
+expectsPromise(router.preload('/users/1', { literal: true, context: { locale: 'en' } }))
+const h1: string | false = router.href('/users/1')
+const h2: string | false = router.href('/users/1', { absolute: true, context: { locale: 'en' } })
 
 // Shallow history helpers
 router.push_state('/app/foo', { x: 1 })
@@ -90,11 +107,17 @@ type RouteState = {
 	matches: Match<Meta>[]
 	layouts: LayoutsMap<Meta>
 	search_params: SearchParams
+	internal_url: URL
+	path: string
+	context?: unknown
 }
 const route_store: Writable<RouteState> = router.route
 route_store.subscribe(() => {})
 route_store.set({
 	url: new URL('http://example.com/app'),
+	internal_url: new URL('http://example.com/'),
+	path: '/',
+	context: { locale: 'en' },
 	route: routes[0],
 	params: {},
 	matches: [],

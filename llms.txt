@@ -4,9 +4,11 @@
 - route hooks (`loader`, `param_rules`, `search_schema`, `search_options`, `before_route_leave`) live in the route file’s `<script module>`
 - navigation: match -> leave-guard (`before_route_leave`, can `nav.cancel()`) -> loaders -> update stores -> `after_navigate(nav)`
 - `goto()` and `preload()` are safe to call without `await` from events (no unhandled rejections); errors surface via `nav.to.data.__error` (or preload bundle `data.__error`)
+- `rewrite.input` maps a public browser URL into the canonical internal path before matching; `rewrite.output` maps an internal target back into a public URL for history/links
+- `router.href('/internal')` builds a public in-app URL from a canonical internal path; pass `{ literal: true }` only when the input is already public
 - `router.init()` attaches the router instance to `window.navgo` by default
 - stores:
-  - `window.navgo.route`: `{ url, route, params, matches, layouts, search_params }`
+  - `window.navgo.route`: `{ url, internal_url, path, context, route, params, matches, layouts, search_params }`
   - `window.navgo.is_navigating`: boolean
 
 ## Setup (App Wiring)
@@ -22,6 +24,7 @@
   - update via `window.navgo.search_params.update(o => ({ ...o, q: 'x', page: 1 }))` (shallow URL update; loaders are not re-run)
   - common pattern: loader uses `search_params` for initial data, then a `$effect` refetches when `$search_params` changes
 - Loaders:
+  - loader/search hook ctx includes both public `url` and canonical `internal_url`, plus canonical `path` and arbitrary rewrite `context`
   - returning a non-Promise object means a LoadPlan (cached fetch plan), not plain data; return plain object data via `async loader()`
   - layout/group loaders run outer → inner and their results are on `nav.to.matches[*].data` (leaf convenience stays on `nav.to.data`)
   - SWR revalidation can update `nav.to.data` after navigation; subscribe via `after_navigate(nav, on_revalidate)`
@@ -40,6 +43,7 @@
 - `goto` usage:
   - prefer plain `<a href="/path">`
   - use `window.navgo.goto('/path')` for buttons/menus/command palette
+  - with rewrites, keep route patterns canonical (example: `'/about'`) and switch public variants through `context`/`href()` instead of duplicating route entries
 
 ## Recipes / Common Scenarios
 
@@ -54,5 +58,8 @@
 - Shared layout data:
   - use `nav.to.layouts?.id?.data` or `$route.layouts?.id?.data` for direct access to matched group data
   - `nav.to.matches` remains the ordered outer → inner structure; layouts are `m.type === 'layout'`, route leaf is `m.type === 'route'`
+- Localized/public URL variants:
+  - locale prefixes, vanity slugs, and similar browser-only transforms belong in `rewrite`, not in duplicated route patterns
+  - `nav.to.url` is the public browser URL; `nav.to.internal_url` / `nav.to.path` are the canonical values your routes and loaders should reason about
 - Stable scroll panes:
   - set `id="pane"` or `data-scroll-id="pane"` on scroll containers to get popstate restoration

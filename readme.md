@@ -145,6 +145,8 @@ Notes:
 
 - `base`: `string` (default `'/'`)
   - App base pathname. With or without leading/trailing slashes is accepted.
+- `rewrite`: `{ input?: (ctx) => string | URL | { url?: string | URL; context?: unknown } | void; output?: (ctx) => string | URL | { url?: string | URL; context?: unknown } | void }`
+  - Optional bidirectional URL rewrite hooks. `input` maps a public URL into Navgo's canonical internal path before matching, while `output` maps an internal target back into a public URL for history, links, and preloading. Useful for locale prefixes like `/en/...` without duplicating routes.
 - `before_navigate`: `(nav: Navigation) => void`
   - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation, on_revalidate?: (cb: () => void) => void) => void | Promise<void>`
@@ -173,7 +175,7 @@ Important: Navgo only processes routes that match your `base` path.
 
 ### Instance stores
 
-- `router.route` -- `Writable<{ url: URL; route: RouteTuple|null; params: Params; matches: Match[]; layouts: Record<string, Match>; search_params: SearchParams }>`
+- `router.route` -- `Writable<{ url: URL; internal_url: URL; path: string; context?: unknown; route: RouteTuple|null; params: Params; matches: Match[]; layouts: Record<string, Match>; search_params: SearchParams }>`
   - Readonly property that holds the current snapshot.
   - Subscribe to react to changes; Navgo updates it on every URL change.
 - `router.is_navigating` -- `Writable<boolean>`
@@ -188,6 +190,7 @@ Example:
 
 ```svelte
 Current path: {$route.path}
+Current public URL: {$route.url.pathname}
 <div class="request-indicator" class:active={$is_navigating}></div>
 
 <script>
@@ -388,9 +391,9 @@ router.init()
 
 Returns: `String` or `false`
 
-Formats and returns a pathname relative to the [`base`](#base) path.
+Parses a public URL relative to the configured [`base`](#base) path and optional `rewrite.input`, then returns the canonical internal pathname.
 
-If the `uri` **does not** begin with the `base`, then `false` will be returned instead.<br>
+If the `uri` **does not** belong to the app's `base`, then `false` will be returned instead.<br>
 Otherwise, the return value will always lead with a slash (`/`).
 
 > **Note:** This is called automatically within the [`init()`](#init) method.
@@ -403,6 +406,22 @@ The path to format.
 
 > **Note:** Much like [`base`](#base), paths with or without leading and trailing slashes are handled identically.
 
+### href(uri, options?)
+
+Returns: `String` or `false`
+
+Builds a public in-app URL from an internal target. This is the forward counterpart to [`format()`](#formaturi) and is especially useful when combined with `rewrite.output` (for example, locale prefixes).
+
+#### options
+
+Type: `Object`
+
+- absolute: `Boolean` (default `false`)
+- literal: `Boolean` (default `false`)
+- context: `Any`
+
+When `literal` is `true`, the `uri` is treated as an already-public URL and is only validated/normalized. Otherwise Navgo treats ambiguous inputs like `/about` as canonical internal targets and applies `base` + `rewrite.output` when building the final public URL.
+
 ### goto(uri, options?)
 
 Returns: `Promise<void>`
@@ -411,16 +430,19 @@ Runs any matching route `loader` before updating the URL and then updates histor
 
 #### uri
 
-Type: `String`
+Type: `String | URL`
 
-The desired path to navigate. If it begins with `/` and does not match the configured [`base`](#base), it will be prefixed automatically.
+The desired path to navigate. When `literal` is `false`, ambiguous paths like `/about` are treated as canonical internal targets and are passed through `base` + `rewrite.output`.
 
 #### options
 
 Type: `Object`
 
 - replace: `Boolean` (default `false`)
-- When `true`, uses `history.replaceState`; otherwise `history.pushState`.
+- literal: `Boolean` (default `false`)
+- context: `Any`
+- When `true`, `replace` uses `history.replaceState`; otherwise `history.pushState`.
+- When `literal` is `true`, the `uri` is interpreted as the already-public browser URL. Otherwise ambiguous inputs like `/about` are treated as canonical internal targets and pass through `rewrite.output`.
 
 ### init()
 
@@ -469,11 +491,11 @@ Or with a custom id:
 <div data-scroll-id="pane">...</div>
 ```
 
-### preload(uri)
+### preload(uri, options?)
 
 Returns: `Promise<unknown | void>`
 
-Preload a route's `loader` data for a given `uri` without navigating. Concurrent calls for the same path are deduped.
+Preload a route's `loader` data for a given `uri` without navigating. Concurrent calls for the same public URL are deduped. Accepts the same `literal` / `context` options as [`goto()`](#gotouri-options).
 Note: Resolves to `undefined` when the matched route has no `loader`.
 
 ### push_state(url?, state?)
@@ -571,12 +593,13 @@ scroll flow
 
 ### Method-by-Method Semantics
 
-- `format(uri)` -- normalizes a path relative to `base`. Returns `false` when `uri` is outside of `base`.
+- `format(uri)` -- parses a public URL relative to `base` and `rewrite.input`, returning the canonical internal path. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` -- returns a Promise of `{ route, params, matches, layouts } | null` using string/RegExp patterns and `param_rules` (Valibot schemas). Awaits an async `validate(params)` if provided.
-- `goto(uri, { replace? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
+- `href(uri, options?)` -- builds a public in-app URL from a canonical internal target (or validates a literal public URL when `literal: true`).
+- `goto(uri, { replace?, literal?, context? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
 - `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
 - `destroy()` -- removes listeners added by `init()`.
-- `preload(uri)` -- pre-executes a route's `loader` for a path and caches the result; concurrent calls are deduped.
+- `preload(uri, { literal?, context? })` -- pre-executes a route's `loader` for a path and caches the result; concurrent calls are deduped by public URL.
 - `push_state(url?, state?)` -- shallow push that updates the URL and `history.state` without route processing.
 - `replace_state(url?, state?)` -- shallow replace that updates the URL and `history.state` without route processing.
 

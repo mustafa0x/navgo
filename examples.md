@@ -8,10 +8,10 @@ This file shows a bunch of common `routes` setups and loader patterns.
 import Navgo from 'navgo'
 
 const routes = [
-	['/', Home],
-	['/about', About],
-	['/posts', Posts],
-	['/posts/:id', Post],
+  ['/', Home],
+  ['/about', About],
+  ['/posts', Posts],
+  ['/posts/:id', Post],
 ]
 
 const router = new Navgo(routes)
@@ -23,7 +23,50 @@ router.init()
 If your app lives at `/app`, set `base` and keep patterns relative to it.
 
 ```js
-const router = new Navgo([['/', Home], ['/settings', Settings]], { base: '/app' })
+const router = new Navgo(
+  [
+    ['/', Home],
+    ['/settings', Settings],
+  ],
+  { base: '/app' },
+)
+```
+
+## Public URL rewrites
+
+Keep one canonical route tree and map public URLs in and out with `rewrite`.
+
+```js
+const locale_rewrite = {
+  input({ url }) {
+    const locale = url.pathname === '/en' || url.pathname.startsWith('/en/') ? 'en' : 'ar'
+    if (locale === 'en') url.pathname = url.pathname.replace(/^\/en(?=\/|$)/, '') || '/'
+    return { url, context: { locale } }
+  },
+  output({ url, context }) {
+    if (context?.locale === 'en') url.pathname = url.pathname === '/' ? '/en' : `/en${url.pathname}`
+    return { url, context }
+  },
+}
+
+const router = new Navgo(
+  [
+    ['/', Home],
+    ['/about', About],
+    ['/contact', Contact],
+  ],
+  {
+    rewrite: locale_rewrite,
+  },
+)
+```
+
+Generate public links from canonical internal paths:
+
+```js
+router.href('/contact') // uses current rewrite context
+router.href('/contact', { context: { locale: 'en' } }) // '/en/contact'
+router.goto('/contact', { context: { locale: 'en' } })
 ```
 
 ## Nested layouts
@@ -32,26 +75,29 @@ Use a `RouteGroup` for layouts + shared hooks.
 
 ```js
 const routes = [
-	{
-		id: 'app',
-		layout: AppLayout,
-		routes: [
-			['/', Home],
-			['/products', Products],
-			{
-				id: 'admin',
-				layout: AdminLayout,
-				routes: [['/admin', AdminHome], ['/admin/users', AdminUsers]],
-			},
-		],
-	},
+  {
+    id: 'app',
+    layout: AppLayout,
+    routes: [
+      ['/', Home],
+      ['/products', Products],
+      {
+        id: 'admin',
+        layout: AdminLayout,
+        routes: [
+          ['/admin', AdminHome],
+          ['/admin/users', AdminUsers],
+        ],
+      },
+    ],
+  },
 ]
 ```
 
 ```js
 function after_navigate(nav) {
-	const app_data = nav.to?.layouts?.app?.data
-	const admin_data = nav.to?.layouts?.admin?.data
+  const app_data = nav.to?.layouts?.app?.data
+  const admin_data = nav.to?.layouts?.admin?.data
 }
 ```
 
@@ -59,18 +105,18 @@ function after_navigate(nav) {
 
 ```js
 const routes = [
-	[
-		'/danger-zone',
-		DangerZone,
-		{
-			before_route_leave(nav) {
-				if (nav.type === 'link' || nav.type === 'goto') {
-					if (!confirm('Enter the danger zone?')) nav.cancel()
-				}
-			},
-		},
-	],
-	['/', Home],
+  [
+    '/danger-zone',
+    DangerZone,
+    {
+      before_route_leave(nav) {
+        if (nav.type === 'link' || nav.type === 'goto') {
+          if (!confirm('Enter the danger zone?')) nav.cancel()
+        }
+      },
+    },
+  ],
+  ['/', Home],
 ]
 ```
 
@@ -80,19 +126,19 @@ const routes = [
 import { v } from 'navgo'
 
 const routes = [
-	[
-		'/users/:id',
-		User,
-		{
-			param_rules: {
-				id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
-			},
-			validate(params) {
-				// params.id is already transformed by this point
-				return params.id < 10_000
-			},
-		},
-	],
+  [
+    '/users/:id',
+    User,
+    {
+      param_rules: {
+        id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
+      },
+      validate(params) {
+        // params.id is already transformed by this point
+        return params.id < 10_000
+      },
+    },
+  ],
 ]
 ```
 
@@ -103,11 +149,15 @@ Loaders receive a `LoaderContext`.
 ```js
 /** @type {import('navgo').Hooks} */
 const hooks = {
-	// NOTE: returning a Promise means "await the Promise and use the value"
-	loader: async (ctx) => {
-		const res = await ctx.fetch(`/api/account/${ctx.params.id}`)
-		return res.json()
-	},
+  // NOTE: returning a Promise means "await the Promise and use the value"
+  loader: async ctx => {
+    console.log(ctx.url.pathname) // public browser URL
+    console.log(ctx.internal_url.pathname) // canonical internal URL
+    console.log(ctx.path) // canonical pathname used for matching
+    console.log(ctx.context) // rewrite-provided metadata
+    const res = await ctx.fetch(`/api/account/${ctx.params.id}`)
+    return res.json()
+  },
 }
 ```
 
@@ -193,15 +243,15 @@ If a `LoadPlan` revalidates and updates `nav.to.data`, Navgo can notify you thro
 
 ```js
 const router = new Navgo(routes, {
-	after_navigate(nav, on_revalidate) {
-		// initial render
-		render(nav.to?.data)
+  after_navigate(nav, on_revalidate) {
+    // initial render
+    render(nav.to?.data)
 
-		// update when SWR revalidates (only when data actually changed)
-		on_revalidate?.(() => {
-			render(nav.to?.data)
-		})
-	},
+    // update when SWR revalidates (only when data actually changed)
+    on_revalidate?.(() => {
+      render(nav.to?.data)
+    })
+  },
 })
 ```
 
@@ -211,23 +261,23 @@ A group loader can return plain data (Promise) while a leaf route returns a Load
 
 ```js
 const routes = [
-	{
-		layout: AppLayout,
-		loader: async () => ({ session: { user: 'Zara' } }),
-		routes: [
-			[
-				'/dashboard',
-				Dashboard,
-				{
-					loader() {
-						return {
-							stats: 'https://dummyjson.com/carts',
-							todos: 'https://dummyjson.com/todos?limit=5',
-						}
-					},
-				},
-			],
-		],
-	},
+  {
+    layout: AppLayout,
+    loader: async () => ({ session: { user: 'Zara' } }),
+    routes: [
+      [
+        '/dashboard',
+        Dashboard,
+        {
+          loader() {
+            return {
+              stats: 'https://dummyjson.com/carts',
+              todos: 'https://dummyjson.com/todos?limit=5',
+            }
+          },
+        },
+      ],
+    ],
+  },
 ]
 ```

@@ -82,9 +82,28 @@ export interface SearchOptions {
 		  >)
 }
 
+export interface RewriteResult {
+	url?: string | URL
+	context?: unknown
+}
+
+export interface RewriteContext<T = unknown> {
+	url: URL
+	current: NavigationTarget<T> | null
+	context?: unknown
+}
+
+export interface Rewrite<T = unknown> {
+	input?(ctx: RewriteContext<T>): string | URL | RewriteResult | void
+	output?(ctx: RewriteContext<T>): string | URL | RewriteResult | void
+}
+
 export interface LoaderContext {
 	route_entry: RouteTuple
 	url: URL
+	internal_url: URL
+	path: string
+	context?: unknown
 	params: Params
 	search_params: Record<string, unknown>
 	signal: AbortSignal
@@ -153,6 +172,9 @@ export interface Hooks {
 
 export interface NavigationTarget<T = unknown> {
 	url: URL
+	internal_url: URL
+	path: string
+	context?: unknown
 	params: Params
 	/** The matched route tuple from your original `routes` list; `null` when unmatched (e.g. external). */
 	route: RouteTuple<T> | null
@@ -202,6 +224,8 @@ export interface NavgoHistoryMeta {
 export interface Options {
 	/** App base path. Default '/' */
 	base?: string
+	/** Optional bidirectional URL rewrite hooks. */
+	rewrite?: Rewrite
 	/** Delay before hover preloading in milliseconds. Default 20. */
 	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
@@ -229,25 +253,39 @@ export interface Options {
 /** Navgo default export: class-based router. */
 export default class Navgo<T = unknown> {
 	constructor(routes?: Array<RouteEntry<T>>, opts?: Options)
-	/** Format `url` relative to the configured base. */
+	/** Format a public URL into the router's internal canonical path. */
 	format(url: string): string | false
+	/** Build a public in-app href from an internal or literal input target. */
+	href(
+		url: string | URL,
+		opts?: { absolute?: boolean; literal?: boolean; context?: unknown },
+	): string | false
 	/** SvelteKit-like navigation that runs `loader` before updating the URL. */
-	goto(url: string, opts?: { replace?: boolean }): Promise<void>
+	goto(
+		url: string | URL,
+		opts?: { replace?: boolean; literal?: boolean; context?: unknown },
+	): Promise<void>
 	/** Shallow push — updates URL/state without triggering handlers. */
 	push_state(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */
 	replace_state(url?: string | URL, state?: any): void
 	/** Manually preload `loader` for a URL (deduped). */
-	preload(url: string): Promise<unknown | void>
+	preload(
+		url: string | URL,
+		opts?: { literal?: boolean; context?: unknown },
+	): Promise<unknown | void>
 	/** Try to match `url`; returns route tuple and params or `null`. Supports async `validate`. */
 	match(url: string): Promise<MatchResult<T> | null>
 	/** Attach history + click listeners and immediately process current location. */
 	init(): Promise<void>
 	/** Remove listeners installed by `init()`. */
 	destroy(): void
-	/** Writable store with current { url, route, params, matches, layouts, search_params }. */
+	/** Writable store with current { url, internal_url, path, context, route, params, matches, layouts, search_params }. */
 	readonly route: import('svelte/store').Writable<{
 		url: URL
+		internal_url: URL
+		path: string
+		context?: unknown
 		route: RouteTuple<T> | null
 		params: Params
 		matches: Match<T>[]

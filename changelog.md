@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0.7
+
+- add bidirectional `rewrite` hooks so apps can map public URLs to a canonical internal route tree and back again
+- add `router.href()` for building public in-app links from canonical internal targets
+- expose `internal_url`, `path`, and `context` on navigation targets, the route store, and loader/search hook contexts
+
 ## v6.0.6
 
 - add `data.__meta.preloads` for executed LoadPlans so consumers can reuse same-origin request URLs
@@ -56,18 +62,18 @@ Before:
 ```js
 // manual orchestration (old style)
 const routes = [
-	[
-		'/dashboard',
-		{
-			async loader({ fetch }) {
-				const [user, posts] = await Promise.all([
-					fetch('/api/user').then(r => r.json()),
-					fetch('/api/posts?limit=10').then(r => r.json()),
-				])
-				return { user, posts }
-			},
-		},
-	],
+  [
+    '/dashboard',
+    {
+      async loader({ fetch }) {
+        const [user, posts] = await Promise.all([
+          fetch('/api/user').then(r => r.json()),
+          fetch('/api/posts?limit=10').then(r => r.json()),
+        ])
+        return { user, posts }
+      },
+    },
+  ],
 ]
 ```
 
@@ -76,17 +82,17 @@ After:
 ```js
 // LoadPlan
 const routes = [
-	[
-		'/dashboard',
-		{
-			loader() {
-				return {
-					user: '/api/user',
-					posts: { request: '/api/posts?limit=10', cache: { strategy: 'swr', ttl: 5_000 } },
-				}
-			},
-		},
-	],
+  [
+    '/dashboard',
+    {
+      loader() {
+        return {
+          user: '/api/user',
+          posts: { request: '/api/posts?limit=10', cache: { strategy: 'swr', ttl: 5_000 } },
+        }
+      },
+    },
+  ],
 ]
 ```
 
@@ -96,20 +102,20 @@ Layout/group loaders now run for every matched child. Read their data from
 Before:
 
 ```js
-const routes = [
-	['/account/:id', { loader: ctx => ctx.fetch('/api/account').then(r => r.json()) }],
-]
+const routes = [['/account/:id', { loader: ctx => ctx.fetch('/api/account').then(r => r.json()) }]]
 ```
 
 After:
 
 ```js
 const routes = [
-	{
-		layout: { default: 'AccountLayout' },
-		loader: async ctx => ctx.fetch('/api/session').then(r => r.json()),
-		routes: [['/account/:id', { loader: async ctx => ctx.fetch('/api/account').then(r => r.json()) }]],
-	},
+  {
+    layout: { default: 'AccountLayout' },
+    loader: async ctx => ctx.fetch('/api/session').then(r => r.json()),
+    routes: [
+      ['/account/:id', { loader: async ctx => ctx.fetch('/api/account').then(r => r.json()) }],
+    ],
+  },
 ]
 
 // in after_navigate:

@@ -23,6 +23,7 @@ export default class Navgo {
 	/** @type {Options} */
 	#opts = {
 		base: '/',
+		rewrite: undefined,
 		preload_delay: 20,
 		preload_on_hover: true,
 		before_navigate: undefined,
@@ -51,9 +52,12 @@ export default class Navgo {
 	#base_rgx = /^\/+/
 	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
-	/** @type {{ url: URL|null, route: RouteTuple|null, params: Params, matches: Match[], layouts: Record<string, Match>, search_params: Record<string, unknown> }} */
+	/** @type {{ url: URL|null, internal_url: URL|null, path: string, context: any, route: RouteTuple|null, params: Params, matches: Match[], layouts: Record<string, Match>, search_params: Record<string, unknown> }} */
 	#current = {
 		url: null,
+		internal_url: null,
+		path: '',
+		context: undefined,
 		route: null,
 		params: {},
 		matches: [],
@@ -86,6 +90,9 @@ export default class Navgo {
 	#search_writer = null
 	route = writable({
 		url: new URL(location.href),
+		internal_url: new URL(location.href),
+		path: normalize_path(new URL(location.href).pathname),
+		context: undefined,
 		route: null,
 		params: {},
 		matches: [],
@@ -108,7 +115,7 @@ export default class Navgo {
 		const url = new URL(info.href, location.href)
 
 		// Hash-only navigation on same path: let browser handle, but track index
-		if (url.hash && url.pathname === this.#current.url.pathname) {
+		if (url.hash && this.#same_public_url(url, this.#current.url)) {
 			const cur_hash = location.href.split('#')[1]
 			const next_hash = url.href.split('#')[1] ?? ''
 			if (cur_hash === next_hash) {
@@ -143,7 +150,7 @@ export default class Navgo {
 		})
 
 		ℹ('[🧭 link]', 'intercept', { href: info.href })
-		this.goto(info.href, { replace: false }, 'link', e)
+		this.goto(info.href, { replace: false, literal: true }, 'link', e)
 	}
 
 	#on_popstate = ev => {
@@ -154,10 +161,9 @@ export default class Navgo {
 		ℹ('[🧭 event:popstate]', st)
 		// Hash-only or state-only change: pathname+search unchanged -> skip loader
 		const cur = this.#current.url
-		const target = new URL(location.href)
-		if (cur && target.pathname === cur.pathname && target.search === cur.search) {
-			const next_current = { ...this.#current, url: target }
-			this.#current = next_current
+		const target = this.#resolve_url_and_path(location.href, { literal: true })
+		if (cur && target && this.#same_public_url(target.url, cur)) {
+			const next_current = this.#update_current_info(target)
 			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loader')
 			this.#apply_scroll(ev)
 			this.route.set(next_current)
@@ -170,10 +176,9 @@ export default class Navgo {
 		// or after navigating to a different route and coming back via Back/Forward.
 		if (st?.shallow) {
 			const from = typeof st.from === 'string' ? st.from : null
-			if (!from || (cur && from === cur.pathname)) {
-				const next_current = { ...this.#current, url: target }
-				this.#current = next_current
-				this.#sync_search_from_url(target)
+			if (!from || (cur && normalize_path(from) === normalize_path(cur.pathname))) {
+				const next_current = this.#update_current_info(target)
+				this.#sync_search_from_url(next_current.url)
 				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
 				this.#apply_scroll(ev)
 				this.route.set(next_current)
@@ -183,7 +188,7 @@ export default class Navgo {
 		}
 
 		ℹ('  - [🧭 event:popstate]', { idx: st?.idx })
-		this.goto(location.href, { replace: true }, 'popstate', ev)
+		this.goto(location.href, { replace: true, literal: true }, 'popstate', ev)
 	}
 	#on_hashchange = () => {
 		// if hashchange originated from a click we tracked, bump our index and persist it
@@ -221,8 +226,10 @@ export default class Navgo {
 			}
 		}
 		// update current URL snapshot and notify
-		this.#current.url = new URL(location.href)
-		this.route.set(this.#current)
+		const next_current = this.#update_current_info(
+			this.#resolve_url_and_path(location.href, { literal: true }),
+		)
+		this.route.set(next_current)
 		this.#update_active_links()
 	}
 
@@ -232,7 +239,7 @@ export default class Navgo {
 		const info = this.#link_from_event(ev, ev.type === 'mousedown')
 		if (info) {
 			ℹ('[🧭 preload]', 'link hover/tap', { href: info.href })
-			this.preload(info.href)
+			this.preload(info.href, { literal: true })
 		}
 	}
 	#mouse_move = ev => {
@@ -287,23 +294,180 @@ export default class Navgo {
 	//
 	// Helpers
 	//
+	#info(state) {
+		if (!state?.url) return null
+		const internal_url = state.internal_url || state.url
+		return {
+			url: state.url,
+			internal_url,
+			path: state.path || internal_url.pathname || '',
+			context: state.context,
+		}
+	}
+
+	#target(state, extra = undefined) {
+		const info = this.#info(state)
+		if (!info) return null
+		const target = {
+			...info,
+			params: state?.params || {},
+			route: state?.route || null,
+			matches: state?.matches || [],
+			layouts: state?.layouts || Object.create(null),
+		}
+		return extra ? { ...target, ...extra } : target
+	}
+
+	#update_current_info(info, fallback = location.href) {
+		this.#current = info
+			? { ...this.#current, ...this.#info(info) }
+			: { ...this.#current, url: new URL(fallback, location.href) }
+		return this.#current
+	}
+
+	#coerce_url(url_raw, base = location.href) {
+		if (url_raw == null) return new URL(location.href)
+		let raw = url_raw instanceof URL ? url_raw.href : String(url_raw)
+		const has_scheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(raw)
+		const has_relative_prefix = /^(?:\/|\?|#|\.\/?|\.\.\/?)/.test(raw)
+		if (!has_scheme && !has_relative_prefix) raw = '/' + raw
+		return new URL(raw, base)
+	}
+
+	#public_key(url) {
+		return normalize_path(url.pathname) + (url.search || '')
+	}
+
+	#same_public_url(a, b) {
+		return !!a && !!b && this.#public_key(a) === this.#public_key(b)
+	}
+
+	#strip_base_path(pathname) {
+		const value = normalize_path(pathname)
+		const out = this.#base_rgx.test(value) && value.replace(this.#base_rgx, '/')
+		return out || false
+	}
+
+	#apply_base_path(pathname) {
+		const path = String(pathname || '/')
+		const out = path[0] === '/' ? path : '/' + path
+		if (this.#base == '/') return out
+		if (out === '/') return this.#base + '/'
+		return this.#base + out
+	}
+
+	#current_context(context = undefined) {
+		return context !== undefined
+			? context
+			: this.#current.context !== undefined
+				? this.#current.context
+				: this.#resolve_public_url(location.href)?.context
+	}
+
+	#resolved_info(url, internal_url = url, context = undefined) {
+		internal_url.pathname = normalize_path(internal_url.pathname)
+		return {
+			url,
+			internal_url,
+			path: internal_url.pathname,
+			load_key: this.#public_key(url),
+			context,
+		}
+	}
+
+	#apply_rewrite(kind, url, context = undefined) {
+		const fn = this.#opts.rewrite?.[kind]
+		if (typeof fn !== 'function') return { url, context }
+		try {
+			const out = fn({
+				url: new URL(url.href),
+				current: this.#target(this.#current),
+				context,
+			})
+			if (!out) return { url, context }
+			if (typeof out === 'string' || out instanceof URL) {
+				return { url: new URL(out, url), context }
+			}
+			return {
+				url: new URL(out.url ?? url, url),
+				context: out.context !== undefined ? out.context : context,
+			}
+		} catch (e) {
+			ℹ('[🧭 rewrite]', kind, 'error', { err: e })
+			return { url, context }
+		}
+	}
+
+	#resolve_public_url(url_raw) {
+		const url = this.#coerce_url(url_raw, location.href)
+		if (url.origin !== location.origin) return null
+		const stripped = this.#strip_base_path(url.pathname)
+		if (!stripped) return null
+		const internal_url = new URL(url.href)
+		internal_url.pathname = stripped
+		const rewritten = this.#apply_rewrite('input', internal_url)
+		return this.#resolved_info(url, rewritten.url, rewritten.context)
+	}
+
+	#resolve_internal_url(url_raw, context = undefined) {
+		const base =
+			this.#current.internal_url?.href ||
+			this.#resolve_public_url(location.href)?.internal_url?.href ||
+			location.href
+		const internal_url = this.#coerce_url(url_raw, base)
+		if (internal_url.origin !== location.origin) return null
+		internal_url.pathname = normalize_path(internal_url.pathname)
+		const rewritten = this.#apply_rewrite(
+			'output',
+			internal_url,
+			this.#current_context(context),
+		)
+		const url = rewritten.url
+		if (url.origin !== location.origin) return null
+		url.pathname = this.#apply_base_path(url.pathname)
+		return this.#resolved_info(url, internal_url, rewritten.context)
+	}
+
+	#resolve_url_and_path(url_raw, opts = {}) {
+		if (url_raw == null) return null
+		const raw = url_raw instanceof URL ? url_raw.href : String(url_raw)
+		const has_scheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(raw)
+		const public_info = this.#resolve_public_url(url_raw)
+		if (opts.literal) return public_info
+		if (has_scheme && !public_info) return null
+		const use_public =
+			!!public_info &&
+			(url_raw instanceof URL ||
+				has_scheme ||
+				public_info.path !== normalize_path(public_info.url.pathname))
+		const out = use_public ? public_info : this.#resolve_internal_url(url_raw, opts.context)
+		ℹ('[🧭 resolve]', {
+			url_in: url_raw,
+			mode: use_public ? 'public' : 'internal',
+			url: out?.url?.href,
+			internal_url: out?.internal_url?.href,
+			path: out?.path,
+			context: out?.context,
+		})
+		return out || public_info
+	}
+
 	/** @param {string} url @returns {string|false} */
 	format(url) {
 		if (!url) return url
-		url = normalize_path(url)
-		const out = this.#base_rgx.test(url) && url.replace(this.#base_rgx, '/')
-		ℹ('[🧭 format]', { in: url, out })
-		return out
+		const out = this.#resolve_public_url(url)
+		const value =
+			out?.internal_url?.pathname +
+			(out?.internal_url?.search || '') +
+			(out?.internal_url?.hash || '')
+		ℹ('[🧭 format]', { in: url, out: value || false })
+		return value || false
 	}
-	#resolve_url_and_path(url_raw) {
-		if (url_raw == null) return null
-		if (typeof url_raw !== 'string') url_raw = String(url_raw)
-		if (url_raw[0] == '/' && !this.#base_rgx.test(url_raw)) url_raw = this.#base + url_raw
-		const url = new URL(url_raw, location.href)
-		const path = this.format(url.pathname).match?.(/[^?#]*/)?.[0]
-		const load_key = path && path + url.search
-		ℹ('[🧭 resolve]', { url_in: url_raw, url: url.href, path })
-		return path ? { url, path, load_key } : null
+
+	href(url_raw = location.href, opts = {}) {
+		const info = this.#resolve_url_and_path(url_raw, opts)
+		if (!info) return false
+		return opts.absolute ? info.url.href : info.url.pathname + info.url.search + info.url.hash
 	}
 
 	#link_from_event(e, check_button = false) {
@@ -316,20 +480,21 @@ export default class Navgo {
 			!a.target &&
 			!a.download &&
 			a.host === location.host &&
-			this.#base_rgx.test(a.pathname)
+			this.#resolve_url_and_path(href, { literal: true })
 			? { a, href }
 			: null
 	}
 
 	#update_active_links() {
 		if (!this.#opts.aria_current) return
-		const cur = this.format(this.#current.url?.pathname)
+		const cur = this.#current.url && normalize_path(this.#current.url.pathname)
 		if (!cur) return
 		for (const a of document.querySelectorAll('a[href]')) {
 			const href = a.getAttribute('href')
 			if (href[0] === '#') continue
-			const link_path = href && this.#resolve_url_and_path(href)?.path
-			if (link_path === cur) a.setAttribute('aria-current', 'page')
+			const link_url = href && this.#resolve_url_and_path(href, { literal: true })?.url
+			if (link_url && normalize_path(link_url.pathname) === cur)
+				a.setAttribute('aria-current', 'page')
 			else if (a.getAttribute('aria-current') === 'page') a.removeAttribute('aria-current')
 		}
 	}
@@ -376,9 +541,26 @@ export default class Navgo {
 		} catch {}
 	}
 
+	#make_loader_ctx(route, info, params, search_params, controller) {
+		const { url, internal_url = url, path = internal_url?.pathname || '', context } = info || {}
+		return {
+			route_entry: route,
+			url,
+			internal_url,
+			path,
+			context,
+			params,
+			search_params,
+			signal: controller.signal,
+			fetch: (input, init) => fetch(input, { ...init, signal: controller.signal }),
+			invalidate: x => this.invalidate(x),
+		}
+	}
+
 	/* Resolve search schema + options for the current match. */
-	#resolve_search(matches, route, url, params) {
-		const ctx = { route_entry: route, url, params }
+	#resolve_search(matches, route, info, params) {
+		const { url, internal_url = url, path = internal_url?.pathname || '', context } = info || {}
+		const ctx = { route_entry: route, url, internal_url, path, context, params }
 		let schema = null
 		let opts = merge_search_opts(this.#opts.search || {})
 
@@ -611,38 +793,9 @@ export default class Navgo {
 		} catch {}
 	}
 
-	async #run_loader(route, url, params, search_params, controller, nav_id) {
-		const loader = this.#get_hooks(route)?.loader
+	async #run_loader_fn(loader, route, info, params, search_params, controller, nav_id) {
 		if (!loader) return undefined
-		const ctx = {
-			route_entry: route,
-			url,
-			params,
-			search_params,
-			signal: controller.signal,
-			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
-			invalidate: x => this.invalidate(x),
-		}
-		const ret = loader(ctx)
-		if (isPromise(ret)) return ret
-		if (ret && typeof ret === 'object' && !Array.isArray(ret))
-			return this.#run_plan(ret, controller, nav_id)
-		return ret
-	}
-
-	async #run_group_loader(group, route, url, params, search_params, controller, nav_id) {
-		const loader = group?.loader
-		if (!loader) return undefined
-		const ctx = {
-			route_entry: route,
-			url,
-			params,
-			search_params,
-			signal: controller.signal,
-			fetch: (i, init) => fetch(i, { ...init, signal: controller.signal }),
-			invalidate: x => this.invalidate(x),
-		}
-		const ret = loader(ctx)
+		const ret = loader(this.#make_loader_ctx(route, info, params, search_params, controller))
 		if (isPromise(ret)) return ret
 		if (ret && typeof ret === 'object' && !Array.isArray(ret))
 			return this.#run_plan(ret, controller, nav_id)
@@ -681,9 +834,10 @@ export default class Navgo {
 		return out
 	}
 
-	async #load_hit(hit, url, controller, nav_id) {
+	async #load_hit(hit, info, controller, nav_id) {
 		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
-		const { schema, opts } = this.#resolve_search(matches, hit.route, url, hit.params)
+		const { url } = info || {}
+		const { schema, opts } = this.#resolve_search(matches, hit.route, info, hit.params)
 
 		const defaults = schema ? v.getDefaults(schema) || {} : {}
 		const search_params = schema
@@ -691,19 +845,19 @@ export default class Navgo {
 			: {}
 
 		const ps = matches.map(m => {
-			const p =
-				m.type === 'route'
-					? this.#run_loader(m.route, url, hit.params, search_params, controller, nav_id)
-					: this.#run_group_loader(
-							m.__entry,
-							hit.route,
-							url,
-							hit.params,
-							search_params,
-							controller,
-							nav_id,
-						)
-			return Promise.resolve(p).catch(e => ({ __error: e }))
+			const entry = m.type === 'route' ? this.#get_hooks(m.route) : m.__entry
+			const route = m.type === 'route' ? m.route : hit.route
+			return Promise.resolve(
+				this.#run_loader_fn(
+					entry?.loader,
+					route,
+					info,
+					hit.params,
+					search_params,
+					controller,
+					nav_id,
+				),
+			).catch(e => ({ __error: e }))
 		})
 		const datas = await Promise.all(ps)
 		for (let i = 0; i < matches.length; i++) matches[i].data = datas[i]
@@ -719,18 +873,7 @@ export default class Navgo {
 	 * @returns {Navigation}
 	 */
 	#make_nav({ type, from = undefined, to = undefined, will_unload = false, event = undefined }) {
-		const from_obj =
-			from !== undefined
-				? from
-				: this.#current.url
-					? {
-							url: this.#current.url,
-							params: this.#current.params || {},
-							route: this.#current.route,
-							matches: this.#current.matches || [],
-							layouts: this.#current.layouts || Object.create(null),
-						}
-					: null
+		const from_obj = from !== undefined ? from : this.#target(this.#current)
 		return {
 			type, // 'link' | 'goto' | 'popstate' | 'leave'
 			from: from_obj,
@@ -768,7 +911,7 @@ export default class Navgo {
 		}
 
 		try {
-			const info = this.#resolve_url_and_path(url_raw)
+			const info = this.#resolve_url_and_path(url_raw, opts)
 			if (!info) return void ℹ('[🧭 goto]', 'invalid url', { url: url_raw })
 			this.is_navigating.set(true)
 
@@ -786,7 +929,7 @@ export default class Navgo {
 
 			let nav = this.#make_nav({
 				type: nav_type,
-				to: { url, params: {}, route: null, matches: [], layouts: Object.create(null) },
+				to: this.#target(info),
 				event: ev_param,
 			})
 			ℹ('[🧭 goto]', 'start', {
@@ -814,15 +957,17 @@ export default class Navgo {
 				ℹ('[🧭 match]', 'error', { err: e })
 			}
 			if (nav_id !== this.#nav_active) return
-			nav.to = hit
-				? {
-						url,
-						params: hit.params || {},
-						route: hit.route || null,
-						matches: hit.matches || [],
-						layouts: hit.layouts || this.#build_layouts(hit.matches || []),
-					}
-				: { url, params: {}, route: null, matches: [], layouts: Object.create(null) }
+			nav.to = this.#target(
+				hit
+					? {
+							...info,
+							params: hit.params || {},
+							route: hit.route || null,
+							matches: hit.matches || [],
+							layouts: hit.layouts || this.#build_layouts(hit.matches || []),
+						}
+					: info,
+			)
 			if (match_error) nav.to.data = { __error: match_error }
 
 			// before_navigate (skip initial)
@@ -850,7 +995,7 @@ export default class Navgo {
 				const pre = this.#preloads.get(load_key)
 				bundle =
 					pre?.data ??
-					(await (pre?.promise || this.#load_hit(hit, url, controller, nav_id)).catch(
+					(await (pre?.promise || this.#load_hit(hit, info, controller, nav_id)).catch(
 						e => ({
 							matches: [],
 							data: { __error: e },
@@ -887,20 +1032,23 @@ export default class Navgo {
 
 			const prev = this.#current
 			const matches = hit && !match_error ? bundle?.matches || [] : []
+			const layouts =
+				hit && !match_error
+					? bundle?.layouts || this.#build_layouts(matches)
+					: Object.create(null)
 			const data = match_error
 				? { __error: match_error }
 				: hit
 					? bundle?.data
 					: { __error: { status: 404 } }
 			this.#current = {
-				url,
-				route: match_error ? null : hit?.route || null,
-				params: match_error ? {} : hit?.params || {},
-				matches,
-				layouts:
-					hit && !match_error
-						? bundle?.layouts || this.#build_layouts(matches)
-						: Object.create(null),
+				...this.#target({
+					...info,
+					route: match_error ? null : hit?.route || null,
+					params: match_error ? {} : hit?.params || {},
+					matches,
+					layouts,
+				}),
 				search_params: {},
 			}
 
@@ -909,23 +1057,8 @@ export default class Navgo {
 			// Build a completion nav using the previous route as `from`
 			nav = this.#make_nav({
 				type: nav_type,
-				from: prev?.url
-					? {
-							url: prev.url,
-							params: prev.params || {},
-							route: prev.route,
-							matches: prev.matches || [],
-							layouts: prev.layouts || Object.create(null),
-						}
-					: null,
-				to: {
-					url,
-					params: match_error ? {} : hit?.params || {},
-					route: match_error ? null : hit?.route || null,
-					matches,
-					layouts: this.#current.layouts || Object.create(null),
-					data,
-				},
+				from: this.#target(prev),
+				to: this.#target(this.#current, { data }),
 				event: ev_param,
 			})
 			this.nav = nav
@@ -1010,7 +1143,7 @@ export default class Navgo {
 			)
 		} catch {}
 		const idx = prev_idx + (replace ? 0 : 1)
-		const from = this.#current.url?.pathname || location.pathname
+		const from = normalize_path(this.#current.url?.pathname || location.pathname)
 		const st = { ...state, __navgo: { shallow: true, idx, from } }
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
 		ℹ('[🧭 history]', replace ? 'replace_state(shallow)' : 'push_state(shallow)', {
@@ -1026,9 +1159,12 @@ export default class Navgo {
 		m.set('window', { x: scrollX || 0, y: scrollY || 0 })
 		this.#areas_pos.set(idx, m)
 		// update current URL snapshot and notify
-		this.#current.url = u
-		this.#sync_search_from_url(u)
-		this.route.set(this.#current)
+		const next_current = this.#update_current_info(
+			this.#resolve_url_and_path(u.href, { literal: true }),
+			u,
+		)
+		this.#sync_search_from_url(next_current.url)
+		this.route.set(next_current)
 		this.#update_active_links()
 	}
 
@@ -1087,14 +1223,12 @@ export default class Navgo {
 	 * Dedupes concurrent preloads for the same path.
 	 */
 	/** @param {string} url_raw @returns {Promise<unknown|void>} */
-	async preload(url_raw) {
+	async preload(url_raw, opts = {}) {
 		try {
-			const { path, url, load_key } = this.#resolve_url_and_path(url_raw) || {}
+			const info = this.#resolve_url_and_path(url_raw, opts)
+			const { path, load_key } = info || {}
 			if (!path) return void ℹ('[🧭 preload]', 'invalid url', { url: url_raw })
-			if (
-				this.format(this.#current.url?.pathname) + (this.#current.url?.search || '') ===
-				load_key
-			)
+			if (this.#current.url && this.#public_key(this.#current.url) === load_key)
 				return void ℹ('[🧭 preload]', 'skip current path', { path })
 			const hit = await this.match(path).catch(() => null)
 			if (!hit) return void ℹ('[🧭 preload]', 'no route', { path })
@@ -1107,7 +1241,7 @@ export default class Navgo {
 
 			const entry = {}
 			const controller = new AbortController()
-			entry.promise = this.#load_hit(hit, url, controller, 0).then(
+			entry.promise = this.#load_hit(hit, info, controller, 0).then(
 				bundle => {
 					entry.data = bundle
 					delete entry.promise
@@ -1214,6 +1348,9 @@ export default class Navgo {
 		this.#base = normalize_path(this.#opts.base || '/')
 		this.#base_rgx =
 			this.#base == '/' ? /^\/+/ : new RegExp('^\\' + this.#base + '(?=\\/|$)\\/?', 'i')
+
+		const initial = this.#resolve_public_url(location.href)
+		if (initial) this.route.set({ ...this.#target(initial), search_params: {} })
 
 		const group_ids = new Map()
 

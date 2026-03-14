@@ -465,6 +465,91 @@ describe('$.format', () => {
 
 // ---
 
+describe('rewrite + href', () => {
+	const locale_rewrite = {
+		input({ url }) {
+			const locale = url.pathname === '/en' || url.pathname.startsWith('/en/') ? 'en' : 'ar'
+			if (locale === 'en') url.pathname = url.pathname.replace(/^\/en(?=\/|$)/, '') || '/'
+			return { url, context: { locale } }
+		},
+		output({ url, context }) {
+			const locale = context?.locale || 'ar'
+			if (locale === 'en') url.pathname = url.pathname === '/' ? '/en' : `/en${url.pathname}`
+			return { url, context: { locale } }
+		},
+	}
+
+	it('formats public locale-prefixed URLs without duplicating routes', () => {
+		setupStubs('/')
+		const r = new Navgo([], { rewrite: locale_rewrite })
+		expect(r.format('/about')).toBe('/about')
+		expect(r.format('/en/about')).toBe('/about')
+		expect(r.format('/en')).toBe('/')
+	})
+
+	it('builds public hrefs from canonical internal paths using current rewrite context', () => {
+		setupStubs('/en/about')
+		const r = new Navgo([], { rewrite: locale_rewrite })
+		expect(r.href('/contact')).toBe('/en/contact')
+		expect(r.href('/contact', { context: { locale: 'ar' } })).toBe('/contact')
+		expect(r.href('/en/contact', { literal: true })).toBe('/en/contact')
+	})
+
+	it('navigates with one canonical route tree and locale-prefixed public URLs', async () => {
+		setupStubs('/en/about')
+		const r = new Navgo(
+			[
+				['/about', {}],
+				['/contact', {}],
+			],
+			{ rewrite: locale_rewrite },
+		)
+		await r.init()
+		expect(r.route).toBeTruthy()
+		expect(r.nav?.to?.path).toBe('/about')
+		expect(r.nav?.to?.context).toEqual({ locale: 'en' })
+		await r.goto('/contact')
+		expect(r.nav?.to?.url?.pathname).toBe('/en/contact')
+		expect(r.nav?.to?.internal_url?.pathname).toBe('/contact')
+		expect(r.nav?.to?.path).toBe('/contact')
+		expect(r.nav?.to?.context).toEqual({ locale: 'en' })
+	})
+
+	it('uses public URLs for aria-current so localized siblings are not both active', async () => {
+		setupStubs('/en/about')
+		const make_link = path => {
+			const url = new URL(path, 'http://example.com')
+			const attrs = { href: url.pathname }
+			return {
+				host: url.host,
+				pathname: url.pathname,
+				target: '',
+				download: '',
+				getAttribute: k => attrs[k] ?? null,
+				setAttribute: (k, v) => (attrs[k] = String(v)),
+				removeAttribute: k => delete attrs[k],
+			}
+		}
+		const links = [make_link('/about'), make_link('/en/about')]
+		const prev_doc = global.document
+		global.document = {
+			...prev_doc,
+			querySelectorAll: () => links,
+		}
+		const r = new Navgo([['/about', {}]], {
+			aria_current: true,
+			rewrite: locale_rewrite,
+		})
+		await r.init()
+		expect(links[0].getAttribute('aria-current')).toBe(null)
+		expect(links[1].getAttribute('aria-current')).toBe('page')
+		r.destroy()
+		global.document = prev_doc
+	})
+})
+
+// ---
+
 describe('$.match', () => {
 	it('returns null when no route matches', async () => {
 		const ctx = new Navgo([
