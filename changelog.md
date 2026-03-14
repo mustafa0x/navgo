@@ -2,6 +2,8 @@
 
 ## v6.0.7
 
+- add `nav.status` as the formal HTTP-like status for completed navigations
+- add route-level `ssr = {serve_shell, refresh_every}` exports
 - add bidirectional `rewrite` hooks so apps can map public URLs to a canonical internal route tree and back again
 - add `router.href()` for building public in-app links from canonical internal targets
 - expose `internal_url`, `path`, and `context` on navigation targets, the route store, and loader/search hook contexts

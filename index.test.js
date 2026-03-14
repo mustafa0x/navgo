@@ -1651,6 +1651,117 @@ describe('load plan caching', () => {
 	})
 })
 
+describe('navigation status', () => {
+	it('exposes 200, 404, and 500 on completed navigations', async () => {
+		setupStubs('/app/')
+		const statuses = []
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/soft-404',
+					{
+						async loader() {
+							return { __error: { status: 404 } }
+						},
+					},
+				],
+				[
+					'/boom',
+					{
+						async loader() {
+							return { __error: new Error('boom') }
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav) {
+					statuses.push([nav.to?.path, nav.status])
+				},
+			},
+		)
+		await r.init()
+		await r.goto('/app/missing')
+		await r.goto('/app/soft-404')
+		await r.goto('/app/boom')
+		expect(statuses).toEqual([
+			['/', 200],
+			['/missing', 404],
+			['/soft-404', 404],
+			['/boom', 500],
+		])
+		r.destroy()
+	})
+
+	it('exposes route ssr metadata on nav after goto resolves', async () => {
+		setupStubs('/app/')
+		const r = new Navgo(
+			[
+				['/', {}],
+				['/foo', { ssr: { serve_shell: true, refresh_every: 300 } }],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+		await r.goto('/app/foo')
+		expect(r.nav?.status).toBe(200)
+		expect(r.nav?.ssr?.serve_shell).toBe(true)
+		expect(r.nav?.ssr?.refresh_every).toBe(300)
+		r.destroy()
+	})
+
+	it('preserves route ssr metadata across swr revalidation', async () => {
+		setupStubs('/app/foo')
+		let fetch_calls = 0
+		const payloads = [{ v: 1 }, { v: 2 }]
+		global.fetch = async () =>
+			new Response(JSON.stringify(payloads[fetch_calls++]), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json', ETag: 'v' + fetch_calls },
+			})
+		const revals = []
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						ssr: { serve_shell: true, refresh_every: 300 },
+						loader() {
+							return {
+								data: {
+									request: 'https://example.com/data',
+									cache: { strategy: 'swr', ttl: 0 },
+								},
+							}
+						},
+					},
+				],
+			],
+			{
+				base: '/app',
+				after_navigate(nav, on_revalidate) {
+					on_revalidate?.(() => {
+						revals.push([
+							nav.status,
+							nav.ssr?.serve_shell,
+							nav.ssr?.refresh_every,
+							nav.to?.data?.data?.v,
+						])
+					})
+				},
+			},
+		)
+		await r.init()
+		await new Promise(r => setTimeout(r, 2))
+		await r.goto('/app/foo')
+		await tick(3)
+		expect(revals).toEqual([[200, true, 300, 2]])
+		r.destroy()
+	})
+})
+
 describe('scroll restore persistence', () => {
 	it('stores position on beforeunload and restores on next run', async () => {
 		// const hist = setupStubs('/app/foo')

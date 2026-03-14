@@ -4,6 +4,7 @@
 - route hooks (`loader`, `param_rules`, `search_schema`, `search_options`, `before_route_leave`) live in the route file’s `<script module>`
 - navigation: match -> leave-guard (`before_route_leave`, can `nav.cancel()`) -> loaders -> update stores -> `after_navigate(nav)`
 - `goto()` and `preload()` are safe to call without `await` from events (no unhandled rejections); errors surface via `nav.to.data.__error` (or preload bundle `data.__error`)
+- `nav.status` is the official HTTP-like status for the completed route; unmatched routes are `404`, and `data.__error.status` wins when present
 - `rewrite.input` maps a public browser URL into the canonical internal path before matching; `rewrite.output` maps an internal target back into a public URL for history/links
 - `router.href('/internal')` builds a public in-app URL from a canonical internal path; pass `{ literal: true }` only when the input is already public
 - `router.init()` attaches the router instance to `window.navgo` by default
@@ -14,7 +15,8 @@
 ## Setup (App Wiring)
 
 - `const router = new Navgo(routes, { after_navigate })`; `await router.init()` once at startup
-- `after_navigate(nav)` sets app props: `route_data = nav.to?.data ?? null`, `is_404 = nav.to?.data?.__error?.status === 404`, `Component = leaf route module default`
+- `after_navigate(nav)` sets app props: `route_data = nav.to?.data ?? null`, `is_404 = nav.status === 404`, `Component = leaf route module default`
+- `nav.ssr` is resolved from the matched leaf route's `ssr` export before `after_navigate(nav)` runs
 - render `Component` keyed by `$route.url.pathname`, pass `data={route_data}`
 
 ## Patterns / Usage
@@ -54,7 +56,7 @@
 - SWR revalidate refresh:
   - `after_navigate(nav, on_revalidate) { render(nav.to?.data); on_revalidate?.(() => render(nav.to?.data)) }`
 - Handle 404 / loader errors:
-  - `const err = nav.to?.data?.__error; if (err?.status === 404) show_404 = true`
+  - `if (nav.status === 404) show_404 = true`
 - Shared layout data:
   - use `nav.to.layouts?.id?.data` or `$route.layouts?.id?.data` for direct access to matched group data
   - `nav.to.matches` remains the ordered outer → inner structure; layouts are `m.type === 'layout'`, route leaf is `m.type === 'route'`

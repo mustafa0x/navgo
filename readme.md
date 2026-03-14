@@ -37,7 +37,7 @@ const props = $state({
 })
 
 function after_navigate(nav, on_revalidate) {
-  props.is_404 = nav.to?.data?.__error?.status === 404
+  props.is_404 = nav.status === 404
   props.route_data = nav.to?.data ?? null
   props.Component = nav.to?.route?.[1]?.default ?? null
   on_revalidate?.(() => {
@@ -150,8 +150,9 @@ Notes:
 - `before_navigate`: `(nav: Navigation) => void`
   - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` synchronously to prevent navigation.
 - `after_navigate`: `(nav: Navigation, on_revalidate?: (cb: () => void) => void) => void | Promise<void>`
-  - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data.
+  - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data, and `nav.status` is the HTTP-like status for the completed route.
   - If the active route uses SWR and a stale entry is revalidated in the background, register a callback via `on_revalidate(cb)` to refresh UI.
+  - `nav.ssr` is resolved from the matched leaf route's `ssr` export before this hook runs.
 - `tick`: `() => void | Promise<void>`
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `scroll_to_top`: `boolean` (default `true`)
@@ -314,6 +315,8 @@ requests into `Link: rel=preload` headers. Async loaders that return plain data 
   - If you return a **non-Promise object**, it is treated as a `LoadPlan` and executed (each entry can be cached).
   - If you return a **Promise**, it is awaited and the resolved value becomes `nav.to.data`.
   - To return a plain object as data, make the loader `async`.
+- ssr?: `{ serve_shell?: boolean; refresh_every?: number }`
+  - Optional SSR metadata for the leaf route. Navgo exposes it on completed navigations as `nav.ssr`.
 - validate?(params): `boolean | Promise<boolean>`
   - Predicate called during matching. If it returns or resolves to `false`, the route is skipped.
 - before_route_leave?(nav): `(nav: Navigation) => void`

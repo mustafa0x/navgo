@@ -784,6 +784,7 @@ export default class Navgo {
 		try {
 			data[as] = value
 			if (data.__meta?.source) data.__meta.source[as] = 'revalidated'
+			r.nav.status = this.#nav_status(r.nav.to)
 			r.updated = true
 			this.route.set(this.#current)
 			for (const fn of r.cbs || [])
@@ -820,6 +821,17 @@ export default class Navgo {
 		const out = Object.create(null)
 		for (const m of matches || []) if (m.type === 'layout' && m.id) out[m.id] = m
 		return out
+	}
+
+	#nav_status(target) {
+		const err = target?.data?.__error
+		return typeof err?.status === 'number'
+			? err.status
+			: err
+				? 500
+				: target?.route === null
+					? 404
+					: 200
 	}
 
 	#build_matches(route, stack) {
@@ -874,10 +886,21 @@ export default class Navgo {
 	 */
 	#make_nav({ type, from = undefined, to = undefined, will_unload = false, event = undefined }) {
 		const from_obj = from !== undefined ? from : this.#target(this.#current)
+		const ssr = to?.route && this.#get_hooks(to.route)?.ssr
 		return {
 			type, // 'link' | 'goto' | 'popstate' | 'leave'
 			from: from_obj,
 			to,
+			status: 200,
+			ssr:
+				ssr && typeof ssr === 'object'
+					? {
+							serve_shell: ssr.serve_shell === true,
+							refresh_every: Number.isFinite(ssr.refresh_every)
+								? Math.max(0, Math.floor(ssr.refresh_every))
+								: 0,
+						}
+					: undefined,
 			will_unload,
 			cancelled: false,
 			event,
@@ -969,6 +992,7 @@ export default class Navgo {
 					: info,
 			)
 			if (match_error) nav.to.data = { __error: match_error }
+			nav.status = this.#nav_status(nav.to)
 
 			// before_navigate (skip initial)
 			if (nav.from) {
@@ -1061,6 +1085,7 @@ export default class Navgo {
 				to: this.#target(this.#current, { data }),
 				event: ev_param,
 			})
+			nav.status = this.#nav_status(nav.to)
 			this.nav = nav
 
 			// Wire up revalidation tracking early (revalidate fetches can resolve before after_navigate runs).
@@ -1077,6 +1102,7 @@ export default class Navgo {
 						}
 					}
 					reval.pending.clear()
+					nav.status = this.#nav_status(nav.to)
 				}
 			}
 

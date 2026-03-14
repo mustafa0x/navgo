@@ -156,12 +156,19 @@ export interface PreloadBundle<T = unknown> {
 	data?: unknown
 }
 
+export interface SsrOptions {
+	serve_shell?: boolean
+	refresh_every?: number
+}
+
 /** Optional per-route hooks recognized by Navgo. */
 export interface Hooks {
 	/** Validate and/or coerce params (schema runs before coercer). */
 	param_rules?: Record<string, ParamRule>
 	/** Load data for a route before navigation. Return a LoadPlan (object) or a Promise for arbitrary data. */
 	loader?(ctx: LoaderContext): LoadPlan | Promise<unknown>
+	/** Optional SSR metadata exposed on completed navigations as `nav.ssr`. */
+	ssr?: SsrOptions
 	/** Predicate used during match(); may be async. If it returns `false`, the route is skipped. */
 	validate?(params: Params): boolean | Promise<boolean>
 	/** Route-level navigation guard, called on the current route when leaving it. Synchronous only; call `nav.cancel()` to prevent navigation. */
@@ -190,10 +197,14 @@ export interface Navigation {
 	type: 'link' | 'goto' | 'popstate' | 'leave'
 	from: NavigationTarget | null
 	to: NavigationTarget | null
+	/** HTTP-like status for the completed target. Unmatched routes are `404`; `data.__error.status` wins when present. */
+	status: number
 	will_unload: boolean
 	cancelled: boolean
 	/** The original browser event that initiated navigation, when available. */
 	event?: Event
+	/** Optional SSR metadata resolved from the matched leaf route's `ssr` export. */
+	ssr?: SsrOptions
 	cancel(): void
 }
 
@@ -235,7 +246,7 @@ export interface Options {
 	search?: SearchOptions
 	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
 	before_navigate?(nav: Navigation): void
-	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). */
+	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). `goto()` resolves after this hook. */
 	after_navigate?(nav: Navigation, on_revalidate?: (cb: () => void) => void): void | Promise<void>
 	/** Optional hook awaited after `after_navigate` and before scroll handling.
 	 *  Useful for UI frameworks (e.g., Svelte) to flush DOM updates so anchor/top
