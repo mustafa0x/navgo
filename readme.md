@@ -227,9 +227,9 @@ import { v } from 'navgo'
 export const search_schema = v.object({
   q: v.optional(v.fallback(v.string(), ''), ''),
   page: v.optional(v.fallback(v.number(), 1), 1),
-	// arrays are supported
-	tag: v.optional(v.fallback(v.array(v.string()), []), []),
-	cat: v.optional(v.fallback(v.array(v.string()), []), []),
+  // arrays are supported
+  tag: v.optional(v.fallback(v.array(v.string()), []), []),
+  cat: v.optional(v.fallback(v.array(v.string()), []), []),
 })
 
 export const search_options = {
@@ -237,8 +237,8 @@ export const search_options = {
   push_history: true,
   show_defaults: false,
   sort: true,
-	// arrays default to 'repeat' (?tag=a&tag=b). When using a map, `default` is the fallback for keys you don't list.
-	array_style: { default: 'repeat', cat: 'csv' },
+  // arrays default to 'repeat' (?tag=a&tag=b). When using a map, `default` is the fallback for keys you don't list.
+  array_style: { default: 'repeat', cat: 'csv' },
 }
 ```
 
@@ -269,21 +269,24 @@ Load plans let you define one or more fetches that Navgo can cache via the Cache
 
 ```js
 // sync => treated as a LoadPlan
-function loader({params}) {
+function loader({ params }) {
   return {
     product: `https://dummyjson.com/products/${params.id}`,
     reviews: {
       request: `https://example.com/reviews/${params.id}`,
-      cache: {strategy: 'cache-first', ttl: 60_000, tags: ['reviews']},
+      cache: { strategy: 'cache-first', ttl: 60_000, tags: ['reviews'] },
     },
   }
 }
 
 // async => treated as plain data
 async function loader(ctx) {
-  return {session: await ctx.fetch('/api/session').then(r => r.json())}
+  return { session: await ctx.fetch('/api/session').then(r => r.json()) }
 }
 ```
+
+`ctx.fetch(...)` is just `fetch(...)` with the current navigation's abort `signal` already attached.
+Use plain `fetch` if you do not need navigation-scoped cancellation.
 
 Global defaults for LoadPlans can be set in `options`:
 
@@ -302,7 +305,6 @@ Executed LoadPlans also expose the fetched same-origin request URLs on `data.__m
 relative `pathname + search` strings. This is useful for SSR services that want to turn LoadPlan
 requests into `Link: rel=preload` headers. Async loaders that return plain data do not produce
 `__meta.preloads`.
-
 
 - param_rules?: `Record<string, ParamRule>`
   - Each rule is either a Valibot schema or `{ schema, coercer }`.
@@ -370,7 +372,7 @@ const routes = [
       param_rules: {
         account_id: v.pipe(v.string(), v.toNumber(), v.minValue(1)),
       },
-      loader: ({params}) => fetch(`/api/account/${params.account_id}`).then(r => r.json()),
+      loader: ({ params }) => fetch(`/api/account/${params.account_id}`).then(r => r.json()),
       before_route_leave(nav) {
         if (nav.type === 'link' || nav.type === 'goto') {
           if (!confirm('Leave account settings?')) nav.cancel()
@@ -420,7 +422,7 @@ Type: `Object`
 - literal: `Boolean` (default `false`)
 - context: `Any`
 
-When `literal` is `true`, the `uri` is treated as an already-public URL and is only validated/normalized. Otherwise Navgo treats ambiguous inputs like `/about` as canonical internal targets and applies `base` + `rewrite.output` when building the final public URL.
+When `literal` is `true`, the `uri` is treated as an already-public URL and is only validated/normalized. Otherwise Navgo treats ambiguous inputs like `/about` and same-origin absolute `URL` values as canonical internal targets and applies `base` + `rewrite.output` when building the final public URL.
 
 ### goto(uri, options?)
 
@@ -432,7 +434,7 @@ Runs any matching route `loader` before updating the URL and then updates histor
 
 Type: `String | URL`
 
-The desired path to navigate. When `literal` is `false`, ambiguous paths like `/about` are treated as canonical internal targets and are passed through `base` + `rewrite.output`.
+The desired path to navigate. When `literal` is `false`, ambiguous paths like `/about` and same-origin absolute `URL` values are treated as canonical internal targets and are passed through `base` + `rewrite.output`.
 
 #### options
 
@@ -442,7 +444,7 @@ Type: `Object`
 - literal: `Boolean` (default `false`)
 - context: `Any`
 - When `true`, `replace` uses `history.replaceState`; otherwise `history.pushState`.
-- When `literal` is `true`, the `uri` is interpreted as the already-public browser URL. Otherwise ambiguous inputs like `/about` are treated as canonical internal targets and pass through `rewrite.output`.
+- When `literal` is `true`, the `uri` is interpreted as the already-public browser URL. Otherwise ambiguous inputs like `/about` and same-origin absolute `URL` values are treated as canonical internal targets and pass through `rewrite.output`.
 
 ### init()
 

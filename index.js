@@ -432,14 +432,13 @@ export default class Navgo {
 		if (url_raw == null) return null
 		const raw = url_raw instanceof URL ? url_raw.href : String(url_raw)
 		const has_scheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(raw)
-		const public_info = this.#resolve_public_url(url_raw)
+		const same_origin =
+			!has_scheme || this.#coerce_url(url_raw, location.href).origin === location.origin
+		const public_info = same_origin ? this.#resolve_public_url(url_raw) : null
 		if (opts.literal) return public_info
-		if (has_scheme && !public_info) return null
+		if (!same_origin) return null
 		const use_public =
-			!!public_info &&
-			(url_raw instanceof URL ||
-				has_scheme ||
-				public_info.path !== normalize_path(public_info.url.pathname))
+			!!public_info && public_info.path !== normalize_path(public_info.url.pathname)
 		const out = use_public ? public_info : this.#resolve_internal_url(url_raw, opts.context)
 		ℹ('[🧭 resolve]', {
 			url_in: url_raw,
@@ -456,10 +455,11 @@ export default class Navgo {
 	format(url) {
 		if (!url) return url
 		const out = this.#resolve_public_url(url)
-		const value =
-			out?.internal_url?.pathname +
-			(out?.internal_url?.search || '') +
-			(out?.internal_url?.hash || '')
+		const value = out
+			? out.internal_url.pathname +
+				(out.internal_url.search || '') +
+				(out.internal_url.hash || '')
+			: false
 		ℹ('[🧭 format]', { in: url, out: value || false })
 		return value || false
 	}

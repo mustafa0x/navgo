@@ -495,6 +495,25 @@ describe('rewrite + href', () => {
 		expect(r.href('/en/contact', { literal: true })).toBe('/en/contact')
 	})
 
+	it('treats same-origin absolute URLs as canonical targets unless literal is true', () => {
+		setupStubs('/en/about')
+		const r = new Navgo([], { rewrite: locale_rewrite })
+		expect(r.href(new URL('http://example.com/contact'))).toBe('/en/contact')
+		expect(r.href('http://example.com/contact')).toBe('/en/contact')
+		expect(r.href(new URL('http://example.com/en/contact'))).toBe('/en/contact')
+		expect(r.href(new URL('http://example.com/contact'), { literal: true })).toBe('/contact')
+	})
+
+	it('treats same-origin absolute URLs outside base as canonical targets too', () => {
+		setupStubs('/app/about')
+		const r = new Navgo([], { base: '/app' })
+		expect(r.href(new URL('http://example.com/contact'))).toBe('/app/contact')
+		expect(r.href('http://example.com/contact')).toBe('/app/contact')
+		expect(r.href(new URL('http://example.com/app/contact'), { literal: true })).toBe(
+			'/app/contact',
+		)
+	})
+
 	it('navigates with one canonical route tree and locale-prefixed public URLs', async () => {
 		setupStubs('/en/about')
 		const r = new Navgo(
@@ -513,6 +532,24 @@ describe('rewrite + href', () => {
 		expect(r.nav?.to?.internal_url?.pathname).toBe('/contact')
 		expect(r.nav?.to?.path).toBe('/contact')
 		expect(r.nav?.to?.context).toEqual({ locale: 'en' })
+	})
+
+	it('navigates URL targets through rewrite.output unless literal is true', async () => {
+		setupStubs('/en/about')
+		const r = new Navgo(
+			[
+				['/about', {}],
+				['/contact', {}],
+			],
+			{ rewrite: locale_rewrite },
+		)
+		await r.init()
+		await r.goto(new URL('http://example.com/contact'))
+		expect(r.nav?.to?.url?.pathname).toBe('/en/contact')
+		expect(r.nav?.to?.internal_url?.pathname).toBe('/contact')
+		await r.goto(new URL('http://example.com/contact'), { literal: true })
+		expect(r.nav?.to?.url?.pathname).toBe('/contact')
+		expect(r.nav?.to?.internal_url?.pathname).toBe('/contact')
 	})
 
 	it('uses public URLs for aria-current so localized siblings are not both active', async () => {

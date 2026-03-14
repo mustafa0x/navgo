@@ -69,6 +69,136 @@ router.href('/contact', { context: { locale: 'en' } }) // '/en/contact'
 router.goto('/contact', { context: { locale: 'en' } })
 ```
 
+### Multilingual paths
+
+Use one canonical route tree and translate the browser pathname per locale.
+
+```js
+const DEFAULT_LOCALE = 'ar'
+const RTL_LOCALES = new Set(['ar'])
+
+function translated_path(locale, internal_path) {
+  return slug_map[locale]?.[internal_path] || internal_path
+}
+
+const slug_map = {
+  ar: {
+    '/': '/',
+    '/about': '/حول',
+    '/contact': '/اتصل',
+    '/products': '/المنتجات',
+  },
+  en: {
+    '/': '/en',
+    '/about': '/en/about',
+    '/contact': '/en/contact',
+    '/products': '/en/products',
+  },
+}
+
+const reverse_slug_map = Object.fromEntries(
+  Object.entries(slug_map).flatMap(([locale, entries]) =>
+    Object.entries(entries).map(([internal_path, public_path]) => [
+      public_path,
+      { locale, internal_path },
+    ]),
+  ),
+)
+
+const multilingual_rewrite = {
+  input({ url }) {
+    // Public browser URL -> canonical internal path.
+    const hit = reverse_slug_map[url.pathname]
+    if (!hit) return
+    // Clone before mutating so the original public URL stays intact.
+    const next = new URL(url.href)
+    next.pathname = hit.internal_path
+    return { url: next, context: { locale: hit.locale } }
+  },
+  output({ url, context, current }) {
+    // Canonical internal path -> localized public browser URL.
+    const locale = context?.locale ?? current?.context?.locale ?? DEFAULT_LOCALE
+    // Clone before mutating so internal and public URLs can differ cleanly.
+    const next = new URL(url.href)
+    next.pathname = translated_path(locale, next.pathname)
+    return { url: next, context: { locale } }
+  },
+}
+
+const router = new Navgo(
+  [
+    ['/', Home],
+    ['/about', About],
+    ['/contact', Contact],
+    ['/products', Products],
+  ],
+  {
+    rewrite: multilingual_rewrite,
+  },
+)
+
+router.href('/about', { context: { locale: 'ar' } }) // '/حول'
+router.href('/about', { context: { locale: 'en' } }) // '/en/about'
+```
+
+What this gives you:
+
+- `/products/widget` and `/en/products/widget` can hit the same canonical route
+- `ctx.path` stays canonical while `nav.to.url.pathname` stays public
+- `nav.to.context.locale` carries the selected locale through loaders and navigation
+- `router.goto('/contact')` preserves the current locale automatically
+
+Because `href()` and `goto()` stay canonical, a language switcher can reuse the current route:
+
+```js
+function switch_locale(next_locale) {
+  return router.goto(router.nav.to?.path || '/', {
+    context: { locale: next_locale },
+    replace: true,
+  })
+}
+```
+
+If you already have the exact public browser URL, keep it as-is with `literal: true`:
+
+```js
+await router.goto('/en/products', { literal: true })
+```
+
+### Same slugs, language-prefixed
+
+If the slug stays canonical and only the locale prefix changes, the rewrite can stay very small:
+
+```js
+const prefixed_locale_rewrite = {
+  input({ url }) {
+    const locale = url.pathname === '/en' || url.pathname.startsWith('/en/') ? 'en' : 'ar'
+    if (locale === 'en') url.pathname = url.pathname.replace(/^\/en(?=\/|$)/, '') || '/'
+    return { url, context: { locale } }
+  },
+  output({ url, context }) {
+    const locale = context?.locale || 'ar'
+    if (locale === 'en') url.pathname = url.pathname === '/' ? '/en' : `/en${url.pathname}`
+    return { url, context: { locale } }
+  },
+}
+
+const router = new Navgo(
+  [
+    ['/', Home],
+    ['/about', About],
+    ['/contact', Contact],
+  ],
+  {
+    rewrite: prefixed_locale_rewrite,
+  },
+)
+
+router.href('/about', { context: { locale: 'ar' } }) // '/about'
+router.href('/about', { context: { locale: 'en' } }) // '/en/about'
+router.goto('/contact', { context: { locale: 'en' } }) // browser URL: /en/contact
+```
+
 ## Nested layouts
 
 Use a `RouteGroup` for layouts + shared hooks.
