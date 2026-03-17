@@ -588,10 +588,13 @@ export default class Navgo {
 	#set_search_store(values) {
 		const next = values || {}
 		this.#search_syncing = true
-		this.search_params.set(next)
-		this.#search_syncing = false
-		this.#current.search_params = next
-		if (this.#current.url) this.route.set(this.#current)
+		try {
+			this.#current.search_params = next
+			if (this.#current.url) this.route.set(this.#current)
+			this.search_params.set(next)
+		} finally {
+			this.#search_syncing = false
+		}
 	}
 
 	/* Apply resolved search config to current route. */

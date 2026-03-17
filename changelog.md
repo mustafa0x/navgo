@@ -1,5 +1,10 @@
 # Changelog
 
+## v6.0.8
+
+- breaking: make search-schema transitions atomic by publishing `router.route` before global `router.search_params`, with sync guard across both writes
+  - note: `router.route.subscribe(...)` now fires before `router.search_params` updates on search-schema transitions
+
 ## v6.0.7
 
 - add `nav.status` as the formal HTTP-like status for completed navigations

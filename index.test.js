@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 console.debug = () => {}
 import Navgo, { v } from './index.js'
+import { get } from 'svelte/store'
 
 global.history = {}
 
@@ -258,6 +259,58 @@ describe('search params', () => {
 		await router.init()
 		expect(cur.toString).toBe('abc')
 		expect(router.search_params.toString()).toBe('toString=abc')
+	})
+
+	it('ignores route-triggered search writes during schema transitions', async () => {
+		setupStubs('/a?sort=top&rating=5')
+		const router = new Navgo([
+			[
+				'/a',
+				{
+					search_schema: v.object({
+						q: v.optional(v.fallback(v.string(), ''), ''),
+						sort: v.optional(v.fallback(v.string(), 'new'), 'new'),
+						rating: v.optional(v.fallback(v.number(), 0), 0),
+					}),
+				},
+			],
+			[
+				'/b',
+				{
+					search_schema: v.object({
+						q: v.optional(v.fallback(v.string(), ''), ''),
+						category: v.optional(v.fallback(v.string(), 'all'), 'all'),
+						status: v.optional(v.fallback(v.string(), 'open'), 'open'),
+					}),
+				},
+			],
+		])
+		let wrote = false
+		router.route.subscribe(v => {
+			if (!v?.url || v.url.pathname !== '/b' || wrote) return
+			wrote = true
+			router.search_params.set({ category: 'books', status: 'open' })
+		})
+
+		await router.init()
+		const original_push_state = global.history.pushState
+		const original_replace_state = global.history.replaceState
+		let push_calls = 0
+		let replace_calls = 0
+		global.history.pushState = (...args) => {
+			push_calls += 1
+			return original_push_state.apply(global.history, args)
+		}
+		global.history.replaceState = (...args) => {
+			replace_calls += 1
+			return original_replace_state.apply(global.history, args)
+		}
+		await router.goto('/b?category=books&status=closed')
+		global.history.pushState = original_push_state
+		global.history.replaceState = original_replace_state
+
+		expect(push_calls + replace_calls).toBe(1)
+		expect(get(router.search_params)).toEqual({ q: '', category: 'books', status: 'closed' })
 	})
 })
 
