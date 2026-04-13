@@ -1115,6 +1115,7 @@ export default class Navgo {
 			}
 
 			this.route.set(this.#current)
+			const commit_promise = svelte.settled?.()
 			// await so that apply_scroll is after potential async work
 			try {
 				await this.#opts.after_navigate?.(nav, cb => {
@@ -1139,7 +1140,7 @@ export default class Navgo {
 
 			// allow frameworks to flush DOM before scrolling
 			try {
-				await svelte.settled?.()
+				await commit_promise
 				await this.#opts.tick?.()
 				await this.#opts.tick?.()
 			} catch (e) {
