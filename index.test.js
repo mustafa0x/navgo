@@ -86,6 +86,7 @@ function setupStubs(base = '/') {
 	global.location = new URL(href)
 	const hist = {
 		state: null,
+		scrollRestoration: 'auto',
 		pushState(state, _title, url) {
 			this.state = state
 			href = url
@@ -1811,6 +1812,38 @@ describe('navigation status', () => {
 		await r.goto('/app/foo')
 		await tick(3)
 		expect(revals).toEqual([[200, true, 300, 2]])
+		r.destroy()
+	})
+})
+
+describe('initial scroll ownership', () => {
+	it('preserves SSR scroll on init and switches to manual after boot', async () => {
+		setupStubs('/app/foo')
+		const r = new Navgo([['/foo', {}]], { base: '/app' })
+		global.scrollTo(0, 321)
+		const prev_scroll = global.scrollTo
+		let scroll_calls = 0
+		global.scrollTo = (x = 0, y = 0) => {
+			scroll_calls++
+			prev_scroll(x, y)
+		}
+		await r.init()
+		await tick(2)
+		expect(scroll_calls).toBe(0)
+		expect(global.scrollY).toBe(321)
+		expect(global.history.scrollRestoration).toBe('manual')
+		global.scrollTo = prev_scroll
+		r.destroy()
+	})
+
+	it('resets scrollRestoration to auto on beforeunload', async () => {
+		setupStubs('/app/foo')
+		const r = new Navgo([['/foo', {}]], { base: '/app' })
+		await r.init()
+		expect(global.history.scrollRestoration).toBe('manual')
+		const ev = { type: 'beforeunload', preventDefault() {}, returnValue: undefined }
+		global.dispatchEvent(ev)
+		expect(global.history.scrollRestoration).toBe('auto')
 		r.destroy()
 	})
 })

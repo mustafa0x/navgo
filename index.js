@@ -288,7 +288,12 @@ export default class Navgo {
 			ℹ('[🧭 navigate]', 'cancelled by before_route_leave during unload')
 			ev.preventDefault()
 			ev.returnValue = ''
+			return
 		}
+
+		try {
+			history.scrollRestoration = 'auto'
+		} catch {}
 	}
 
 	//
@@ -1382,7 +1387,6 @@ export default class Navgo {
 		if (initial) this.route.set({ ...this.#target(initial), search_params: {} })
 
 		const group_ids = new Map()
-
 		function compile_routes(entries, stack = []) {
 			const out = []
 			for (const e of entries || []) {
@@ -1440,9 +1444,8 @@ export default class Navgo {
 	//
 	// Lifecycle hooks
 	//
-	init() {
-		history.scrollRestoration = 'manual'
-		ℹ('[🧭 init]', 'attach listeners; scrollRestoration=manual')
+	async init() {
+		ℹ('[🧭 init]', 'attach listeners')
 
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
@@ -1475,7 +1478,11 @@ export default class Navgo {
 
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
-		return this.goto()
+		await this.goto()
+		try {
+			history.scrollRestoration = 'manual'
+			ℹ('[🧭 init]', 'scrollRestoration=manual')
+		} catch {}
 	}
 	destroy() {
 		removeEventListener('popstate', this.#on_popstate)
@@ -1500,17 +1507,27 @@ export default class Navgo {
 		const hash = location.hash
 		const t = ctx?.type || ctx?.event?.type
 		requestAnimationFrame(() => {
-			// 0) Initial (first) navigation: prefer restoring session scroll
+			// 0) Initial (first) navigation: prefer restoring session scroll,
+			// otherwise preserve whatever the browser already did for the SSR document.
 			const is_initial = ctx && 'from' in ctx ? ctx.from == null : !t
 			if (is_initial) {
 				try {
 					const k = `__navgo_scroll:${location.href}`
 					const { x, y } = JSON.parse(sessionStorage.getItem(k))
 					sessionStorage.removeItem(k)
+					try {
+						history.scrollRestoration = 'manual'
+					} catch {}
 					scrollTo(x, y)
 					ℹ('[🧭 scroll]', 'restore session', { x, y })
 					return
 				} catch {}
+				if (hash && scroll_to_hash(hash)) {
+					ℹ('[🧭 scroll]', 'initial hash')
+					return
+				}
+				ℹ('[🧭 scroll]', 'initial preserve')
+				return
 			}
 			// 1) On back/forward, restore saved position if available
 			if (t === 'popstate') {
