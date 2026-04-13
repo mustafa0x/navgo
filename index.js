@@ -12,7 +12,7 @@ import {
 	scroll_to_hash,
 	validate_search,
 } from './utils.js'
-import { tick } from 'svelte'
+import * as svelte from 'svelte'
 import { writable } from 'svelte/store'
 export { v }
 import { parse } from 'regexparam'
@@ -28,7 +28,7 @@ export default class Navgo {
 		preload_on_hover: true,
 		before_navigate: undefined,
 		after_navigate: undefined,
-		tick,
+		tick: svelte.tick,
 		scroll_to_top: true,
 		aria_current: false,
 		attach_to_window: true,
@@ -1139,6 +1139,8 @@ export default class Navgo {
 
 			// allow frameworks to flush DOM before scrolling
 			try {
+				await svelte.settled?.()
+				await this.#opts.tick?.()
 				await this.#opts.tick?.()
 			} catch (e) {
 				ℹ('[🧭 hooks]', 'tick threw', { err: e })

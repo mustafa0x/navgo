@@ -2053,7 +2053,7 @@ describe('stress and edge cases', () => {
 })
 
 describe('tick option', () => {
-	it('awaits tick between after_navigate and scroll', async () => {
+	it('awaits two ticks between after_navigate and scroll', async () => {
 		setupStubs('/app/')
 		const events = []
 		// record scroll calls
@@ -2078,14 +2078,15 @@ describe('tick option', () => {
 			},
 		)
 		await r.init()
+		const tick_calls_before_goto = events.filter(v => v === 'tick').length
 		await r.goto('/app/foo')
 		await tick(2)
 		expect(events.includes('after')).toBe(true)
-		expect(events.includes('tick')).toBe(true)
+		expect(events.filter(v => v === 'tick').length - tick_calls_before_goto).toBe(2)
 		expect(events.includes('scroll')).toBe(true)
-		// ordering: after -> tick -> scroll
+		// ordering: after -> tick -> tick -> scroll
 		expect(events.indexOf('after') < events.indexOf('tick')).toBe(true)
-		expect(events.indexOf('tick') < events.indexOf('scroll')).toBe(true)
+		expect(events.lastIndexOf('tick') < events.indexOf('scroll')).toBe(true)
 		r.destroy()
 		global.scrollTo = prevScroll
 	})
