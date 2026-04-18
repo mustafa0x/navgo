@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0.13
+
+- breaking: restore refresh/tab-restore scroll from session storage by history entry before the initial route boot, aligning the timing with SvelteKit
+  - migration:
+    - if you relied on v6.0.12 leaving refresh restoration entirely to the browser, remove any app-level workaround that re-applies scroll after `router.init()`
+
 ## v6.0.12
 
 - breaking: stop Navgo from restoring refresh/tab-restore scroll on initial load; native browser restoration now owns that path

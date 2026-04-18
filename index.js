@@ -269,8 +269,9 @@ export default class Navgo {
 	#before_unload = ev => {
 		// persist scroll for refresh / session restore
 		try {
+			const idx = history.state?.__navgo?.idx ?? this.#route_idx
 			sessionStorage.setItem(
-				`__navgo_scroll:${location.href}`,
+				`__navgo_scroll:${idx}`,
 				JSON.stringify({ x: scrollX, y: scrollY }),
 			)
 		} catch {}
@@ -1170,10 +1171,10 @@ export default class Navgo {
 			'',
 			location.href,
 		)
-		// also stash per-URL scroll in session storage as a fallback across reloads
+		// also stash per-entry scroll in session storage as a fallback across reloads
 		try {
 			sessionStorage.setItem(
-				`__navgo_scroll:${location.href}`,
+				`__navgo_scroll:${prev_idx}`,
 				JSON.stringify({ x: scrollX || 0, y: scrollY || 0 }),
 			)
 		} catch {}
@@ -1447,6 +1448,27 @@ export default class Navgo {
 	//
 	async init() {
 		ℹ('[🧭 init]', 'attach listeners')
+		// ensure current history state carries our index
+		const cur_idx = history.state?.__navgo?.idx
+		if (cur_idx == null) {
+			const prev = history.state && typeof history.state == 'object' ? history.state : {}
+			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: this.#route_idx } }
+			history.replaceState(next_state, '', location.href)
+			ℹ('[🧭 history]', 'init idx', { idx: this.#route_idx })
+		} else {
+			this.#route_idx = cur_idx
+			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
+		}
+		try {
+			const pos = JSON.parse(
+				sessionStorage.getItem(`__navgo_scroll:${this.#route_idx}`) || 'null',
+			)
+			if (pos) {
+				history.scrollRestoration = 'manual'
+				scrollTo(pos.x, pos.y)
+				ℹ('[🧭 scroll]', 'restore session', { idx: this.#route_idx, ...pos })
+			}
+		} catch {}
 
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
@@ -1463,18 +1485,6 @@ export default class Navgo {
 			ℹ('[🧭 init]', 'hover preloading enabled', {
 				delay: this.#opts.preload_delay,
 			})
-		}
-
-		// ensure current history state carries our index
-		const cur_idx = history.state?.__navgo?.idx
-		if (cur_idx == null) {
-			const prev = history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: this.#route_idx } }
-			history.replaceState(next_state, '', location.href)
-			ℹ('[🧭 history]', 'init idx', { idx: this.#route_idx })
-		} else {
-			this.#route_idx = cur_idx
-			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
 		}
 
 		ℹ('[🧭 init]', 'initial goto')
@@ -1527,9 +1537,9 @@ export default class Navgo {
 				let pos = st?.pos || m?.get?.('window')
 				if (!pos) {
 					try {
-						const k = `__navgo_scroll:${location.href}`
-						pos = JSON.parse(sessionStorage.getItem(k)) || null
-						sessionStorage.removeItem(k)
+						pos = JSON.parse(
+							sessionStorage.getItem(`__navgo_scroll:${target_idx}`) || 'null',
+						)
 					} catch {}
 				}
 				if (pos) {
