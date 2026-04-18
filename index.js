@@ -291,9 +291,7 @@ export default class Navgo {
 			return
 		}
 
-		try {
-			history.scrollRestoration = 'auto'
-		} catch {}
+		history.scrollRestoration = 'auto'
 	}
 
 	//
@@ -1482,10 +1480,7 @@ export default class Navgo {
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
-		try {
-			history.scrollRestoration = 'manual'
-			ℹ('[🧭 init]', 'scrollRestoration=manual')
-		} catch {}
+		history.scrollRestoration = 'manual'
 	}
 	destroy() {
 		removeEventListener('popstate', this.#on_popstate)
