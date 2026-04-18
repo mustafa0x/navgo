@@ -1870,6 +1870,24 @@ describe('scroll restore persistence', () => {
 		r2.destroy()
 	})
 
+	it('restores session scroll before after_navigate on init', async () => {
+		setupStubs('/app/foo')
+		global.sessionStorage.setItem(
+			`__navgo_scroll:${global.location.href}`,
+			JSON.stringify({ x: 10, y: 200 }),
+		)
+		let seen = null
+		const r = new Navgo([['/foo', {}]], {
+			base: '/app',
+			after_navigate() {
+				seen = { x: global.scrollX, y: global.scrollY }
+			},
+		})
+		await r.init()
+		expect(seen).toEqual({ x: 10, y: 200 })
+		r.destroy()
+	})
+
 	it('shallow push saves previous entry scroll into state.pos', async () => {
 		const hist = setupStubs('/app/products')
 		const r = new Navgo([['/products', {}]], { base: '/app' })

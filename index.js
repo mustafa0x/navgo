@@ -1449,6 +1449,13 @@ export default class Navgo {
 	//
 	async init() {
 		ℹ('[🧭 init]', 'attach listeners')
+		let restore = null
+		try {
+			const k = `__navgo_scroll:${location.href}`
+			restore = JSON.parse(sessionStorage.getItem(k))
+			sessionStorage.removeItem(k)
+			if (restore) scrollTo(restore.x, restore.y)
+		} catch {}
 
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
@@ -1482,6 +1489,8 @@ export default class Navgo {
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
+		if (restore && (scrollX !== restore.x || scrollY !== restore.y))
+			scrollTo(restore.x, restore.y)
 		try {
 			history.scrollRestoration = 'manual'
 			ℹ('[🧭 init]', 'scrollRestoration=manual')
