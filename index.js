@@ -1449,13 +1449,6 @@ export default class Navgo {
 	//
 	async init() {
 		ℹ('[🧭 init]', 'attach listeners')
-		let restore = null
-		try {
-			const k = `__navgo_scroll:${location.href}`
-			restore = JSON.parse(sessionStorage.getItem(k))
-			sessionStorage.removeItem(k)
-			if (restore) scrollTo(restore.x, restore.y)
-		} catch {}
 
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
@@ -1489,8 +1482,6 @@ export default class Navgo {
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
-		if (restore && (scrollX !== restore.x || scrollY !== restore.y))
-			scrollTo(restore.x, restore.y)
 		try {
 			history.scrollRestoration = 'manual'
 			ℹ('[🧭 init]', 'scrollRestoration=manual')
@@ -1519,21 +1510,10 @@ export default class Navgo {
 		const hash = location.hash
 		const t = ctx?.type || ctx?.event?.type
 		requestAnimationFrame(() => {
-			// 0) Initial (first) navigation: prefer restoring session scroll,
-			// otherwise preserve whatever the browser already did for the SSR document.
+			// 0) Initial (first) navigation: preserve whatever the browser
+			// already did for the SSR document.
 			const is_initial = ctx && 'from' in ctx ? ctx.from == null : !t
 			if (is_initial) {
-				try {
-					const k = `__navgo_scroll:${location.href}`
-					const { x, y } = JSON.parse(sessionStorage.getItem(k))
-					sessionStorage.removeItem(k)
-					try {
-						history.scrollRestoration = 'manual'
-					} catch {}
-					scrollTo(x, y)
-					ℹ('[🧭 scroll]', 'restore session', { x, y })
-					return
-				} catch {}
 				if (hash && scroll_to_hash(hash)) {
 					ℹ('[🧭 scroll]', 'initial hash')
 					return

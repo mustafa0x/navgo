@@ -474,7 +474,7 @@ Notes:
 
 ### Scroll persistence
 
-On `beforeunload`, the current scroll position is saved to `sessionStorage` and restored on the next load of the same URL (e.g., refresh or tab restore).
+On `beforeunload`, the current scroll position is saved to `sessionStorage` for later history fallback. Navgo does not restore scroll on the next load of the same URL; refresh/tab-restore scroll is left to the browser via native `history.scrollRestoration = 'auto'`.
 
 ### Scroll Restoration (areas)
 

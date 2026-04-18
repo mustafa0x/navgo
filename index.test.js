@@ -1849,42 +1849,28 @@ describe('initial scroll ownership', () => {
 })
 
 describe('scroll restore persistence', () => {
-	it('stores position on beforeunload and restores on next run', async () => {
-		// const hist = setupStubs('/app/foo')
-		const r1 = new Navgo([['/foo', {}]], { base: '/app' })
-		await r1.init()
-		// move scroll
-		global.scrollTo(10, 200)
-		// trigger beforeunload
-		const ev = { type: 'beforeunload', preventDefault() {}, returnValue: undefined }
-		global.dispatchEvent(ev)
-		const key = `__navgo_scroll:${global.location.href}`
-		expect(global.sessionStorage.getItem(key)).toBeTruthy()
-		r1.destroy()
-
-		// new router instance simulating a refresh
-		const r2 = new Navgo([['/foo', {}]], { base: '/app' })
-		await r2.init()
-		expect(global.scrollX).toBe(10)
-		expect(global.scrollY).toBe(200)
-		r2.destroy()
-	})
-
-	it('restores session scroll before after_navigate on init', async () => {
+	it('does not restore session scroll on init', async () => {
 		setupStubs('/app/foo')
+		global.scrollTo(0, 321)
+		const prev_scroll = global.scrollTo
+		let scroll_calls = 0
+		global.scrollTo = (x = 0, y = 0) => {
+			scroll_calls++
+			prev_scroll(x, y)
+		}
 		global.sessionStorage.setItem(
 			`__navgo_scroll:${global.location.href}`,
 			JSON.stringify({ x: 10, y: 200 }),
 		)
-		let seen = null
 		const r = new Navgo([['/foo', {}]], {
 			base: '/app',
-			after_navigate() {
-				seen = { x: global.scrollX, y: global.scrollY }
-			},
 		})
 		await r.init()
-		expect(seen).toEqual({ x: 10, y: 200 })
+		await tick(2)
+		expect(scroll_calls).toBe(0)
+		expect(global.scrollY).toBe(321)
+		expect(global.sessionStorage.getItem(`__navgo_scroll:${global.location.href}`)).toBeTruthy()
+		global.scrollTo = prev_scroll
 		r.destroy()
 	})
 

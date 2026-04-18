@@ -1,5 +1,11 @@
 # Changelog
 
+## v6.0.12
+
+- breaking: stop Navgo from restoring refresh/tab-restore scroll on initial load; native browser restoration now owns that path
+  - migration:
+    - if you relied on Navgo's `sessionStorage`-based refresh restore, move that behavior into app code or rely on the browser's native restoration instead
+
 ## v6.0.8
 
 - breaking: make search-schema transitions atomic by publishing `router.route` before global `router.search_params`, with sync guard across both writes
