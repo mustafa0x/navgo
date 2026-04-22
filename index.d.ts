@@ -12,6 +12,8 @@ export type SearchParamsStore = import('svelte/store').Writable<SearchParams> & 
 	toString(): string
 }
 
+export type BootstrapBranch = unknown[]
+
 export type ParamSchema = import('valibot').BaseSchema<unknown, unknown, any>
 export type ParamRule = ParamSchema | { schema?: ParamSchema; coercer?: (value: RawParam) => any }
 
@@ -51,7 +53,6 @@ export type LoadPlanSource = 'network' | 'cache' | 'stale' | 'revalidated'
 export interface LoadPlanMeta {
 	source: Record<string, LoadPlanSource>
 	at: number
-	preloads?: string[]
 }
 
 export interface SearchOptions {
@@ -241,6 +242,8 @@ export interface Options {
 	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
 	preload_on_hover?: boolean
+	/** Initial matched branch data for the current document. Consumed once on the first same-document navigation. */
+	bootstrap?: BootstrapBranch
 	/** Attach instance to window as `window.navgo`. Default true. */
 	attach_to_window?: boolean
 	search?: SearchOptions

@@ -1127,6 +1127,129 @@ describe('preload behavior', () => {
 	})
 })
 
+describe('bootstrap behavior', () => {
+	it('hydrates the initial branch without running loaders', async () => {
+		setupStubs('/app/foo?q=kit')
+		const calls = []
+		let last
+		const r = new Navgo(
+			[
+				{
+					id: 'app',
+					search_schema: v.object({
+						q: v.optional(v.fallback(v.string(), ''), ''),
+					}),
+					async loader() {
+						calls.push('app')
+						return { from: 'app-loader' }
+					},
+					routes: [
+						[
+							'/foo',
+							{
+								async loader() {
+									calls.push('page')
+									return { from: 'page-loader' }
+								},
+							},
+						],
+					],
+				},
+			],
+			{
+				base: '/app',
+				bootstrap: [{ session: true }, { page: 'boot' }],
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+
+		expect(calls).toEqual([])
+		expect(last?.status).toBe(200)
+		expect(last?.to?.layouts?.app?.data).toEqual({ session: true })
+		expect(last?.to?.matches?.map(m => m.data)).toEqual([{ session: true }, { page: 'boot' }])
+		expect(last?.to?.data).toEqual({ page: 'boot' })
+		expect(get(r.search_params)).toEqual({ q: 'kit' })
+		r.destroy()
+	})
+
+	it('falls back to loaders when bootstrap branch does not match', async () => {
+		setupStubs('/app/foo')
+		const calls = { app: 0, page: 0 }
+		let last
+		const r = new Navgo(
+			[
+				{
+					id: 'app',
+					async loader() {
+						calls.app++
+						return { from: 'app-loader' }
+					},
+					routes: [
+						[
+							'/foo',
+							{
+								async loader() {
+									calls.page++
+									return { from: 'page-loader' }
+								},
+							},
+						],
+					],
+				},
+			],
+			{
+				base: '/app',
+				bootstrap: [{ session: true }],
+				after_navigate(nav) {
+					last = nav
+				},
+			},
+		)
+		await r.init()
+
+		expect(calls).toEqual({ app: 1, page: 1 })
+		expect(last?.to?.layouts?.app?.data).toEqual({ from: 'app-loader' })
+		expect(last?.to?.data).toEqual({ from: 'page-loader' })
+		r.destroy()
+	})
+
+	it('uses bootstrap only for the initial same-document navigation', async () => {
+		setupStubs('/app/foo?x=1')
+		let calls = 0
+		const r = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						search_schema: v.object({
+							x: v.optional(v.fallback(v.string(), ''), ''),
+						}),
+						async loader() {
+							calls++
+							return { call: calls }
+						},
+					},
+				],
+			],
+			{ base: '/app', bootstrap: [{ call: 'boot' }] },
+		)
+		await r.init()
+
+		expect(calls).toBe(0)
+		expect(r.nav?.to?.data).toEqual({ call: 'boot' })
+
+		await r.goto('/app/foo?x=2')
+
+		expect(calls).toBe(1)
+		expect(r.nav?.to?.data).toEqual({ call: 1 })
+		expect(get(r.search_params)).toEqual({ x: '2' })
+		r.destroy()
+	})
+})
+
 // ---
 
 describe('layouts and shared loaders', () => {
@@ -1515,7 +1638,7 @@ describe('load plan caching', () => {
 		r.destroy()
 	})
 
-	it('exposes same-origin load plan requests as __meta.preloads', async () => {
+	it('does not expose __meta.preloads for load plans', async () => {
 		setupStubs('/app/foo')
 		global.fetch = async req =>
 			new Response(JSON.stringify({ url: req.url }), {
@@ -1532,6 +1655,7 @@ describe('load plan caching', () => {
 							return {
 								a: 'http://example.com/api/a?x=1',
 								b: { request: 'http://example.com/api/b' },
+								c: { request: 'https://other.com/api/c' },
 							}
 						},
 					},
@@ -1545,42 +1669,7 @@ describe('load plan caching', () => {
 			},
 		)
 		await r.init()
-		expect(last.to.data.__meta.preloads).toEqual(['/api/a?x=1', '/api/b'])
-		r.destroy()
-	})
-
-	it('dedupes and excludes cross-origin load plan preloads', async () => {
-		setupStubs('/app/foo')
-		global.fetch = async () =>
-			new Response(JSON.stringify({ ok: true }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			})
-		let last
-		const r = new Navgo(
-			[
-				[
-					'/foo',
-					{
-						loader() {
-							return {
-								a: 'http://example.com/api/a?x=1',
-								b: { request: 'https://other.com/api/b' },
-								c: { request: 'http://example.com/api/a?x=1' },
-							}
-						},
-					},
-				],
-			],
-			{
-				base: '/app',
-				after_navigate(nav) {
-					last = nav
-				},
-			},
-		)
-		await r.init()
-		expect(last.to.data.__meta.preloads).toEqual(['/api/a?x=1'])
+		expect(last.to.data.__meta.preloads).toBeUndefined()
 		r.destroy()
 	})
 

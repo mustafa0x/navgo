@@ -2,7 +2,7 @@
 
 A batteries-included SPA router for Svelte.
 
-Code-based routes (params + regex) • Nested layouts • Route guards and hooks • Param validation • Loader caching (SWR + tags) • Data preloading • Search schema sync (validate/coerce + URL/store) • Shallow routing • Scroll restoration • Reactive stores • Performant • Well tested • ~1k loc (fraction of other routers) • Minimal API
+Code-based routes (params + regex) • Nested layouts • Route guards and hooks • Param validation • Loader caching (SWR + tags) • Data preloading • Initial branch bootstrap • Search schema sync (validate/coerce + URL/store) • Shallow routing • Scroll restoration • Reactive stores • Performant • Well tested • ~1k loc (fraction of other routers) • Minimal API
 
 <video src="https://github.com/user-attachments/assets/0f86c635-5b78-4cdd-a7e3-e440801e1745" controls muted playsinline></video>
 
@@ -163,6 +163,9 @@ Notes:
   - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)
   - When `false`, disables hover/touch preloading.
+- `bootstrap`: `unknown[]`
+  - Optional initial matched branch data for the current document. Navgo consumes it once on the first same-document navigation instead of running loaders.
+  - The caller is responsible for ensuring the array matches the current URL and matched branch order.
 - `attach_to_window`: `boolean` (default `true`)
   - When `true`, `init()` attaches the instance to `window.navgo` for convenience.
 - `load_plan_defaults`: `{ parse?: Parser; cache?: { strategy?: CacheStrategy; ttl?: number; tags?: string[] } }`
@@ -302,10 +305,7 @@ const router = new Navgo(routes, {
 
 See `examples.md` for more setups.
 
-Executed LoadPlans also expose the fetched same-origin request URLs on `data.__meta.preloads` as
-relative `pathname + search` strings. This is useful for SSR services that want to turn LoadPlan
-requests into `Link: rel=preload` headers. Async loaders that return plain data do not produce
-`__meta.preloads`.
+Executed LoadPlans expose per-entry cache sources on `data.__meta.source` and a timestamp at `data.__meta.at`.
 
 - param_rules?: `Record<string, ParamRule>`
   - Each rule is either a Valibot schema or `{ schema, coercer }`.
@@ -468,6 +468,8 @@ In addition, `init()` wires preloading listeners (enabled by default) so route d
 
 Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preload_delay` and `preload_on_hover` options.
 
+If you pass `options.bootstrap`, the first same-document navigation can hydrate from that ordered branch data instead of running loaders. This is useful for SSR HTML that already contains the exact data used to render the page.
+
 Notes:
 
 - `preload(uri)` is a no-op when `uri` formats to the current route's path (already loaded).
@@ -602,7 +604,7 @@ scroll flow
 - `match(uri)` -- returns a Promise of `{ route, params, matches, layouts } | null` using string/RegExp patterns and `param_rules` (Valibot schemas). Awaits an async `validate(params)` if provided.
 - `href(uri, options?)` -- builds a public in-app URL from a canonical internal target (or validates a literal public URL when `literal: true`).
 - `goto(uri, { replace?, literal?, context? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
-- `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location.
+- `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location. When `options.bootstrap` is present, the first same-document navigation reuses that branch data instead of running loaders.
 - `destroy()` -- removes listeners added by `init()`.
 - `preload(uri, { literal?, context? })` -- pre-executes a route's `loader` for a path and caches the result; concurrent calls are deduped by public URL.
 - `push_state(url?, state?)` -- shallow push that updates the URL and `history.state` without route processing.

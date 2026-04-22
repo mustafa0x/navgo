@@ -26,6 +26,7 @@ export default class Navgo {
 		rewrite: undefined,
 		preload_delay: 20,
 		preload_on_hover: true,
+		bootstrap: undefined,
 		before_navigate: undefined,
 		after_navigate: undefined,
 		tick: svelte.tick,
@@ -52,6 +53,8 @@ export default class Navgo {
 	#base_rgx = /^\/+/
 	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
 	#preloads = new Map()
+	/** @type {unknown[]|null} */
+	#bootstrap = null
 	/** @type {{ url: URL|null, internal_url: URL|null, path: string, context: any, route: RouteTuple|null, params: Params, matches: Match[], layouts: Record<string, Match>, search_params: Record<string, unknown> }} */
 	#current = {
 		url: null,
@@ -588,6 +591,16 @@ export default class Navgo {
 		return { schema, opts }
 	}
 
+	#build_search_state(matches, route, info, params) {
+		const { url } = info || {}
+		const { schema, opts } = this.#resolve_search(matches, route, info, params)
+		const defaults = schema ? v.getDefaults(schema) || {} : {}
+		const search_params = schema
+			? validate_search(read_search(url, schema, opts), schema, defaults, opts)
+			: {}
+		return { schema, opts, defaults, search_params }
+	}
+
 	/* Sync search_params store and route snapshot. */
 	#set_search_store(values) {
 		const next = values || {}
@@ -701,14 +714,11 @@ export default class Navgo {
 		} catch {}
 		const out = {}
 		const sources = {}
-		const preloads = new Set()
 		const defaults = this.#opts.load_plan_defaults || {}
 		await Promise.all(
 			Object.entries(plan || {}).map(async ([as, raw]) => {
 				const spec = typeof raw === 'string' ? { request: raw } : raw || {}
 				const req = this.#to_get_request(spec.request, spec.init)
-				const url = new URL(req.url)
-				if (url.origin === location.origin) preloads.add(url.pathname + url.search)
 				const parse = spec.parse || defaults.parse || 'json'
 				const cache_hints = { ...(defaults.cache || {}), ...(spec.cache || {}) }
 				const strategy = cache_hints.strategy || 'swr'
@@ -773,7 +783,7 @@ export default class Navgo {
 		)
 		return {
 			...out,
-			__meta: { source: sources, at: Date.now(), preloads: [...preloads] },
+			__meta: { source: sources, at: Date.now() },
 		}
 	}
 
@@ -855,13 +865,7 @@ export default class Navgo {
 
 	async #load_hit(hit, info, controller, nav_id) {
 		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
-		const { url } = info || {}
-		const { schema, opts } = this.#resolve_search(matches, hit.route, info, hit.params)
-
-		const defaults = schema ? v.getDefaults(schema) || {} : {}
-		const search_params = schema
-			? validate_search(read_search(url, schema, opts), schema, defaults, opts)
-			: {}
+		const search = this.#build_search_state(matches, hit.route, info, hit.params)
 
 		const ps = matches.map(m => {
 			const entry = m.type === 'route' ? this.#get_hooks(m.route) : m.__entry
@@ -872,7 +876,7 @@ export default class Navgo {
 					route,
 					info,
 					hit.params,
-					search_params,
+					search.search_params,
 					controller,
 					nav_id,
 				),
@@ -884,7 +888,29 @@ export default class Navgo {
 			matches,
 			layouts: this.#build_layouts(matches),
 			data: datas[datas.length - 1],
-			search: { schema, opts, defaults, search_params },
+			search,
+		}
+	}
+
+	#take_bootstrap_bundle(hit, info) {
+		if (!this.#bootstrap || this.#current.url != null) return null
+		const branch = this.#bootstrap
+		this.#bootstrap = null
+		const matches = hit.matches || this.#build_matches(hit.route, hit.stack)
+		if (!Array.isArray(branch) || branch.length !== matches.length) {
+			ℹ('[🧭 bootstrap]', 'ignore mismatched branch', {
+				expected: matches.length,
+				received: Array.isArray(branch) ? branch.length : null,
+			})
+			return null
+		}
+
+		for (let i = 0; i < matches.length; i++) matches[i].data = branch[i]
+		return {
+			matches,
+			layouts: this.#build_layouts(matches),
+			data: branch[branch.length - 1],
+			search: this.#build_search_state(matches, hit.route, info, hit.params),
 		}
 	}
 
@@ -1024,8 +1050,10 @@ export default class Navgo {
 			let bundle
 			if (hit && !match_error) {
 				const pre = this.#preloads.get(load_key)
+				const bootstrap_bundle = pre ? null : this.#take_bootstrap_bundle(hit, info)
 				bundle =
 					pre?.data ??
+					bootstrap_bundle ??
 					(await (pre?.promise || this.#load_hit(hit, info, controller, nav_id)).catch(
 						e => ({
 							matches: [],
@@ -1034,11 +1062,15 @@ export default class Navgo {
 					))
 				this.#preloads.delete(load_key)
 				const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
-				ℹ('[🧭 loader]', pre ? 'using preloaded data' : 'loaded', {
-					path,
-					preloaded: !!pre,
-					has_error,
-				})
+				ℹ(
+					'[🧭 loader]',
+					pre ? 'using preloaded data' : bootstrap_bundle ? 'bootstrapped' : 'loaded',
+					{
+						path,
+						preloaded: !!pre,
+						has_error,
+					},
+				)
 			}
 			if (nav_id !== this.#nav_active) return
 
@@ -1419,6 +1451,7 @@ export default class Navgo {
 			return out
 		}
 		this.#routes = compile_routes(routes)
+		this.#bootstrap = Array.isArray(this.#opts.bootstrap) ? this.#opts.bootstrap.slice() : null
 
 		// keep URL in sync when search_params store changes
 		this.#search_unsub = this.search_params.subscribe(next => {
@@ -1440,6 +1473,7 @@ export default class Navgo {
 			routes: this.#routes.length,
 			preload_on_hover: this.#opts.preload_on_hover,
 			preload_delay: this.#opts.preload_delay,
+			bootstrapped: Array.isArray(this.#bootstrap) && this.#bootstrap.length > 0,
 		})
 	}
 
@@ -1490,6 +1524,7 @@ export default class Navgo {
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
+		this.#bootstrap = null
 		history.scrollRestoration = 'manual'
 	}
 	destroy() {

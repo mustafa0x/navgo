@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- add `bootstrap` support for hydrating the initial matched branch from SSR HTML on the first same-document navigation
+- stop exposing `data.__meta.preloads` for executed LoadPlans; SSR preload extraction now belongs on the SSR side only
+- keep Navgo's own `preload()` API and hover/tap preloading behavior unchanged
+
 ## v6.0.13
 
 - breaking: restore refresh/tab-restore scroll from session storage by history entry before the initial route boot, aligning the timing with SvelteKit
