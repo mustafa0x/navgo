@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 console.debug = () => {}
 import Navgo, { v } from './index.js'
 import { get } from 'svelte/store'
@@ -6,7 +6,7 @@ import { get } from 'svelte/store'
 global.history = {}
 
 // Shared test stubs for browser-ish globals
-function setupStubs(base = '/') {
+function setupStubs(base = '/', state = { __navgo: { idx: 0 } }) {
 	const listeners = new Map()
 	// emulate window alias in Node env for code paths that reference it
 	// tests assume browser-only library; alias keeps code minimal
@@ -85,7 +85,7 @@ function setupStubs(base = '/') {
 	let href = `http://example.com${base}`
 	global.location = new URL(href)
 	const hist = {
-		state: null,
+		state,
 		scrollRestoration: 'auto',
 		pushState(state, _title, url) {
 			this.state = state
@@ -1938,6 +1938,15 @@ describe('initial scroll ownership', () => {
 })
 
 describe('scroll restore persistence', () => {
+	it('initializes a fresh document entry with a timestamp history idx', () => {
+		const hist = setupStubs('/app/foo', null)
+		const now = vi.spyOn(Date, 'now').mockReturnValue(123456)
+		const r = new Navgo([['/foo', {}]], { base: '/app' })
+		expect(hist.state?.__navgo?.idx).toBe(123456)
+		now.mockRestore()
+		r.destroy()
+	})
+
 	it('restores session scroll by history idx before after_navigate on init', async () => {
 		setupStubs('/app/foo')
 		global.history.state = { __navgo: { idx: 7 } }
@@ -1949,6 +1958,9 @@ describe('scroll restore persistence', () => {
 				seen = { x: global.scrollX, y: global.scrollY }
 			},
 		})
+		expect(global.scrollX).toBe(10)
+		expect(global.scrollY).toBe(200)
+		expect(seen).toBe(null)
 		await r.init()
 		expect(seen).toEqual({ x: 10, y: 200 })
 		expect(global.history.scrollRestoration).toBe('manual')

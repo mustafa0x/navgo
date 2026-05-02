@@ -1420,6 +1420,28 @@ export default class Navgo {
 		const initial = this.#resolve_public_url(location.href)
 		if (initial) this.route.set({ ...this.#target(initial), search_params: {} })
 
+		const cur_idx = history.state?.__navgo?.idx
+		if (cur_idx == null) {
+			this.#route_idx = Date.now()
+			const prev = history.state && typeof history.state == 'object' ? history.state : {}
+			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: this.#route_idx } }
+			history.replaceState(next_state, '', location.href)
+			ℹ('[🧭 history]', 'init idx', { idx: this.#route_idx })
+		} else {
+			this.#route_idx = cur_idx
+			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
+		}
+		try {
+			const pos = JSON.parse(
+				sessionStorage.getItem(`__navgo_scroll:${this.#route_idx}`) || 'null',
+			)
+			if (pos) {
+				history.scrollRestoration = 'manual'
+				scrollTo(pos.x, pos.y)
+				ℹ('[🧭 scroll]', 'restore session', { idx: this.#route_idx, ...pos })
+			}
+		} catch {}
+
 		const group_ids = new Map()
 		function compile_routes(entries, stack = []) {
 			const out = []
@@ -1482,28 +1504,6 @@ export default class Navgo {
 	//
 	async init() {
 		ℹ('[🧭 init]', 'attach listeners')
-		// ensure current history state carries our index
-		const cur_idx = history.state?.__navgo?.idx
-		if (cur_idx == null) {
-			const prev = history.state && typeof history.state == 'object' ? history.state : {}
-			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: this.#route_idx } }
-			history.replaceState(next_state, '', location.href)
-			ℹ('[🧭 history]', 'init idx', { idx: this.#route_idx })
-		} else {
-			this.#route_idx = cur_idx
-			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
-		}
-		try {
-			const pos = JSON.parse(
-				sessionStorage.getItem(`__navgo_scroll:${this.#route_idx}`) || 'null',
-			)
-			if (pos) {
-				history.scrollRestoration = 'manual'
-				scrollTo(pos.x, pos.y)
-				ℹ('[🧭 scroll]', 'restore session', { idx: this.#route_idx, ...pos })
-			}
-		} catch {}
-
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
 		addEventListener('beforeunload', this.#before_unload)
