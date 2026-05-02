@@ -1436,7 +1436,6 @@ export default class Navgo {
 				sessionStorage.getItem(`__navgo_scroll:${this.#route_idx}`) || 'null',
 			)
 			if (pos) {
-				history.scrollRestoration = 'manual'
 				scrollTo(pos.x, pos.y)
 				ℹ('[🧭 scroll]', 'restore session', { idx: this.#route_idx, ...pos })
 			}
@@ -1525,7 +1524,9 @@ export default class Navgo {
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
 		this.#bootstrap = null
-		history.scrollRestoration = 'manual'
+		requestAnimationFrame(() => {
+			history.scrollRestoration = 'manual'
+		})
 	}
 	destroy() {
 		removeEventListener('popstate', this.#on_popstate)

@@ -1917,6 +1917,7 @@ describe('initial scroll ownership', () => {
 			prev_scroll(x, y)
 		}
 		await r.init()
+		expect(global.history.scrollRestoration).toBe('auto')
 		await tick(2)
 		expect(scroll_calls).toBe(0)
 		expect(global.scrollY).toBe(321)
@@ -1929,6 +1930,7 @@ describe('initial scroll ownership', () => {
 		setupStubs('/app/foo')
 		const r = new Navgo([['/foo', {}]], { base: '/app' })
 		await r.init()
+		await tick(2)
 		expect(global.history.scrollRestoration).toBe('manual')
 		const ev = { type: 'beforeunload', preventDefault() {}, returnValue: undefined }
 		global.dispatchEvent(ev)
@@ -1960,9 +1962,12 @@ describe('scroll restore persistence', () => {
 		})
 		expect(global.scrollX).toBe(10)
 		expect(global.scrollY).toBe(200)
+		expect(global.history.scrollRestoration).toBe('auto')
 		expect(seen).toBe(null)
 		await r.init()
 		expect(seen).toEqual({ x: 10, y: 200 })
+		expect(global.history.scrollRestoration).toBe('auto')
+		await tick(2)
 		expect(global.history.scrollRestoration).toBe('manual')
 		r.destroy()
 	})
