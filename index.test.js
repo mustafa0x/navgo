@@ -1949,10 +1949,11 @@ describe('scroll restore persistence', () => {
 		r.destroy()
 	})
 
-	it('restores session scroll by history idx before after_navigate on init', async () => {
+	it('leaves initial refresh scroll to the browser even with saved session scroll', async () => {
 		setupStubs('/app/foo')
 		global.history.state = { __navgo: { idx: 7 } }
 		global.sessionStorage.setItem(`__navgo_scroll:7`, JSON.stringify({ x: 10, y: 200 }))
+		global.scrollTo(5, 123)
 		let seen = null
 		const r = new Navgo([['/foo', {}]], {
 			base: '/app',
@@ -1960,12 +1961,12 @@ describe('scroll restore persistence', () => {
 				seen = { x: global.scrollX, y: global.scrollY }
 			},
 		})
-		expect(global.scrollX).toBe(10)
-		expect(global.scrollY).toBe(200)
+		expect(global.scrollX).toBe(5)
+		expect(global.scrollY).toBe(123)
 		expect(global.history.scrollRestoration).toBe('auto')
 		expect(seen).toBe(null)
 		await r.init()
-		expect(seen).toEqual({ x: 10, y: 200 })
+		expect(seen).toEqual({ x: 5, y: 123 })
 		expect(global.history.scrollRestoration).toBe('auto')
 		await tick(2)
 		expect(global.history.scrollRestoration).toBe('manual')

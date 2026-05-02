@@ -1431,16 +1431,6 @@ export default class Navgo {
 			this.#route_idx = cur_idx
 			ℹ('[🧭 history]', 'restore idx', { idx: this.#route_idx })
 		}
-		try {
-			const pos = JSON.parse(
-				sessionStorage.getItem(`__navgo_scroll:${this.#route_idx}`) || 'null',
-			)
-			if (pos) {
-				scrollTo(pos.x, pos.y)
-				ℹ('[🧭 scroll]', 'restore session', { idx: this.#route_idx, ...pos })
-			}
-		} catch {}
-
 		const group_ids = new Map()
 		function compile_routes(entries, stack = []) {
 			const out = []
