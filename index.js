@@ -17,7 +17,46 @@ import { writable } from 'svelte/store'
 export { v }
 import { parse } from 'regexparam'
 
-const ℹ = (...args) => console.debug(...args)
+function trace_arg(value, depth = 0) {
+	if (value instanceof URL) return value.href
+	if (value instanceof Error)
+		return { name: value.name, message: value.message, stack: value.stack }
+	if (value instanceof Map) {
+		return {
+			type: 'Map',
+			entries: [...value.entries()]
+				.slice(0, 20)
+				.map(([k, v]) => [k, trace_arg(v, depth + 1)]),
+		}
+	}
+	if (value instanceof Set) return [...value].slice(0, 20).map(v => trace_arg(v, depth + 1))
+	if (!value || typeof value !== 'object' || depth >= 3) return value
+	return Object.fromEntries(
+		Object.entries(value)
+			.slice(0, 30)
+			.map(([k, v]) => [k, trace_arg(v, depth + 1)]),
+	)
+}
+
+const ℹ = (...args) => {
+	console.debug(...args)
+	try {
+		const trace = globalThis.__NAVGO_TRACE__ || (globalThis.__NAVGO_TRACE__ = [])
+		trace.push({
+			t: Math.round(performance.now()),
+			x: Math.round(scrollX || 0),
+			y: Math.round(scrollY || 0),
+			h:
+				typeof document === 'object'
+					? Math.round(document.documentElement?.scrollHeight || 0)
+					: 0,
+			rs: history.scrollRestoration,
+			href: location.href,
+			args: args.map(arg => trace_arg(arg)),
+		})
+		if (trace.length > 500) trace.splice(0, trace.length - 500)
+	} catch {}
+}
 
 export default class Navgo {
 	/** @type {Options} */
@@ -31,6 +70,7 @@ export default class Navgo {
 		after_navigate: undefined,
 		tick: svelte.tick,
 		scroll_to_top: true,
+		initial_scroll_restore: 'router',
 		aria_current: false,
 		attach_to_window: true,
 		search: {
@@ -271,15 +311,21 @@ export default class Navgo {
 
 	#before_unload = ev => {
 		// persist scroll for refresh / session restore
+		const idx = history.state?.__navgo?.idx ?? this.#route_idx
 		try {
-			const idx = history.state?.__navgo?.idx ?? this.#route_idx
 			sessionStorage.setItem(
 				`__navgo_scroll:${idx}`,
 				JSON.stringify({ x: scrollX, y: scrollY }),
 			)
 		} catch {}
 
-		ℹ('[🧭 event:beforeunload]', 'persist scroll + guard')
+		ℹ('[🧭 event:beforeunload]', 'persist scroll + guard', {
+			idx,
+			x: scrollX || 0,
+			y: scrollY || 0,
+			scroll_restoration: history.scrollRestoration,
+			state: history.state?.__navgo,
+		})
 
 		const nav = this.#make_nav({
 			type: 'leave',
@@ -1345,7 +1391,7 @@ export default class Navgo {
 			if (!(arr = obj.pattern.exec(url_raw))) continue
 			const params = {}
 			if (obj.keys?.length) {
-				for (let j = 0; j < obj.keys.length; ) {
+				for (let j = 0; j < obj.keys.length;) {
 					params[obj.keys[j]] = arr[++j] || null
 				}
 			} else if (arr.groups) {
@@ -1484,6 +1530,9 @@ export default class Navgo {
 			routes: this.#routes.length,
 			preload_on_hover: this.#opts.preload_on_hover,
 			preload_delay: this.#opts.preload_delay,
+			initial_scroll_restore: this.#opts.initial_scroll_restore,
+			scroll_restoration: history.scrollRestoration,
+			history_state: history.state?.__navgo,
 			bootstrapped: Array.isArray(this.#bootstrap) && this.#bootstrap.length > 0,
 		})
 	}
@@ -1514,8 +1563,15 @@ export default class Navgo {
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
 		this.#bootstrap = null
+		ℹ('[🧭 init]', 'initial goto done', {
+			route_idx: this.#route_idx,
+			state: history.state?.__navgo,
+			scroll_restoration: history.scrollRestoration,
+		})
 		requestAnimationFrame(() => {
+			ℹ('[🧭 scrollRestoration]', 'manual scheduled')
 			history.scrollRestoration = 'manual'
+			ℹ('[🧭 scrollRestoration]', 'manual applied')
 		})
 	}
 	destroy() {
@@ -1540,13 +1596,58 @@ export default class Navgo {
 	#apply_scroll(ctx) {
 		const hash = location.hash
 		const t = ctx?.type || ctx?.event?.type
+		ℹ('[🧭 scroll]', 'schedule', {
+			type: t,
+			from: ctx?.from?.url?.href,
+			to: ctx?.to?.url?.href,
+			route_idx: this.#route_idx,
+			state: history.state?.__navgo,
+			initial_scroll_restore: this.#opts.initial_scroll_restore,
+		})
 		requestAnimationFrame(() => {
-			// 0) Initial (first) navigation: preserve whatever the browser
-			// already did for the SSR document.
+			// 0) Initial (first) navigation: either keep native SSR restore or
+			// replay the saved scroll after a SPA shell has rendered.
 			const is_initial = ctx && 'from' in ctx ? ctx.from == null : !t
+			const current_idx = history.state?.__navgo?.idx ?? this.#route_idx
+			let saved_pos = null
+			try {
+				saved_pos = JSON.parse(
+					sessionStorage.getItem(`__navgo_scroll:${current_idx}`) || 'null',
+				)
+			} catch {}
+			ℹ('[🧭 scroll]', 'apply', {
+				type: t,
+				is_initial,
+				hash,
+				route_idx: this.#route_idx,
+				current_idx,
+				state: history.state?.__navgo,
+				initial_scroll_restore: this.#opts.initial_scroll_restore,
+				saved_pos,
+			})
 			if (is_initial) {
 				if (hash && scroll_to_hash(hash)) {
 					ℹ('[🧭 scroll]', 'initial hash')
+					return
+				}
+				if (this.#opts.initial_scroll_restore === 'browser') {
+					if (
+						saved_pos &&
+						(Math.abs((scrollX || 0) - saved_pos.x) > 1 ||
+							Math.abs((scrollY || 0) - saved_pos.y) > 1)
+					) {
+						scrollTo(saved_pos.x, saved_pos.y)
+						setTimeout(() => scrollTo(saved_pos.x, saved_pos.y), 0)
+						ℹ('[🧭 scroll]', 'restore initial browser', saved_pos)
+						return
+					}
+					ℹ('[🧭 scroll]', 'initial preserve', { current_idx, saved_pos })
+					return
+				}
+				if (saved_pos) {
+					scrollTo(saved_pos.x, saved_pos.y)
+					setTimeout(() => scrollTo(saved_pos.x, saved_pos.y), 0)
+					ℹ('[🧭 scroll]', 'restore initial', saved_pos)
 					return
 				}
 				ℹ('[🧭 scroll]', 'initial preserve')

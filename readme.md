@@ -157,6 +157,9 @@ Notes:
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
 - `scroll_to_top`: `boolean` (default `true`)
   - When `false`, skips the default top scroll for non-hash navigations.
+- `initial_scroll_restore`: `'router' | 'browser'` (default `'router'`)
+  - `'router'`: restore saved refresh scroll after the initial route render. Use this for SPA shells.
+  - `'browser'`: preserve native initial scroll restoration. Use this for SSR/hydration documents.
 - `aria_current`: `boolean` (default `false`)
   - When `true`, sets `aria-current="page"` on active in-app links.
 - `preload_delay`: `number` (default `20`)
@@ -476,7 +479,7 @@ Notes:
 
 ### Scroll persistence
 
-On `beforeunload`, the current scroll position is saved to `sessionStorage` by history entry. On the next load of that same history entry (for example refresh or tab restore), Navgo restores it before the initial route boot and then switches back to manual scroll management.
+On `beforeunload`, the current scroll position is saved to `sessionStorage` by history entry. On the next load of that same history entry (for example refresh or tab restore), Navgo restores it after the initial route render when `initial_scroll_restore` is `'router'`. For SSR/hydration documents, set `initial_scroll_restore: 'browser'` so the browser's native restoration owns initial scroll.
 
 ### Scroll Restoration (areas)
 
@@ -585,6 +588,7 @@ To enable `popstate` cancellation, Navgo stores a monotonic `idx` in `history.st
 Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
 
 - Saves the current scroll position for the active history index.
+- On initial boot: restore saved scroll after route render in `'router'` mode, or preserve native browser restoration in `'browser'` mode.
 - On `link`/`goto` (after route commit):
   - If the URL has a `#hash`, scroll to the matching element `id` or `[name="..."]`.
   - Otherwise, scroll to the top `(0, 0)`.

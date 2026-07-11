@@ -26,11 +26,7 @@ export interface CacheOptions {
 }
 
 export type Parser<T = unknown> =
-	| 'json'
-	| 'text'
-	| 'blob'
-	| 'arrayBuffer'
-	| ((res: Response) => Promise<T>)
+	'json' | 'text' | 'blob' | 'arrayBuffer' | ((res: Response) => Promise<T>)
 
 export type FetchSpec<T = unknown> =
 	| string
@@ -258,6 +254,8 @@ export interface Options {
 	tick?: () => void | Promise<void>
 	/** When `false`, do not scroll to top on non-hash navigations. Default true. */
 	scroll_to_top?: boolean
+	/** Initial refresh restore mode. Use 'browser' for SSR/hydration documents and 'router' for SPA shells. Default 'router'. */
+	initial_scroll_restore?: 'router' | 'browser'
 	/** When `true`, sets `aria-current="page"` on active in-app links. Default false. */
 	aria_current?: boolean
 	/** Defaults for LoadPlan entries (parse/cache). */

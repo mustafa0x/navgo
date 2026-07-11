@@ -1949,7 +1949,7 @@ describe('scroll restore persistence', () => {
 		r.destroy()
 	})
 
-	it('leaves initial refresh scroll to the browser even with saved session scroll', async () => {
+	it('restores initial refresh scroll for SPA shells after route boot', async () => {
 		setupStubs('/app/foo')
 		global.history.state = { __navgo: { idx: 7 } }
 		global.sessionStorage.setItem(`__navgo_scroll:7`, JSON.stringify({ x: 10, y: 200 }))
@@ -1967,8 +1967,42 @@ describe('scroll restore persistence', () => {
 		expect(seen).toBe(null)
 		await r.init()
 		expect(seen).toEqual({ x: 5, y: 123 })
-		expect(global.history.scrollRestoration).toBe('auto')
 		await tick(2)
+		expect(global.scrollX).toBe(10)
+		expect(global.scrollY).toBe(200)
+		expect(global.history.scrollRestoration).toBe('manual')
+		r.destroy()
+	})
+
+	it('reapplies saved initial refresh scroll when SSR hydration disturbs it', async () => {
+		setupStubs('/app/foo')
+		global.history.state = { __navgo: { idx: 7 } }
+		global.sessionStorage.setItem(`__navgo_scroll:7`, JSON.stringify({ x: 10, y: 200 }))
+		global.scrollTo(5, 123)
+		const r = new Navgo([['/foo', {}]], {
+			base: '/app',
+			initial_scroll_restore: 'browser',
+		})
+		await r.init()
+		await tick(2)
+		expect(global.scrollX).toBe(10)
+		expect(global.scrollY).toBe(200)
+		expect(global.history.scrollRestoration).toBe('manual')
+		r.destroy()
+	})
+
+	it('leaves initial SSR hydration scroll alone when no saved refresh scroll exists', async () => {
+		setupStubs('/app/foo')
+		global.history.state = { __navgo: { idx: 7 } }
+		global.scrollTo(5, 123)
+		const r = new Navgo([['/foo', {}]], {
+			base: '/app',
+			initial_scroll_restore: 'browser',
+		})
+		await r.init()
+		await tick(2)
+		expect(global.scrollX).toBe(5)
+		expect(global.scrollY).toBe(123)
 		expect(global.history.scrollRestoration).toBe('manual')
 		r.destroy()
 	})
