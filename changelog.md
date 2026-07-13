@@ -1,5 +1,9 @@
 # Changelog
 
+## v6.0.13-beta.7
+
+- republish the `v6.0.13-beta.6` release contents under a fresh immutable version
+
 ## v6.0.13-beta.6
 
 - add `cancel_navigation()`; shallow navigation, browser history, same-page hash links, and teardown now abort and supersede pending full navigation
