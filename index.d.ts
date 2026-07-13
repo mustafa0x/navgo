@@ -198,11 +198,15 @@ export interface Navigation {
 	status: number
 	will_unload: boolean
 	cancelled: boolean
+	/** Whether this navigation will replace the current history entry. */
+	readonly replacing: boolean
 	/** The original browser event that initiated navigation, when available. */
 	event?: Event
 	/** Optional SSR metadata resolved from the matched leaf route's `ssr` export. */
 	ssr?: SsrOptions
 	cancel(): void
+	/** Request a replace commit from a navigation guard. */
+	replace(): void
 }
 
 /** A route tuple: [pattern, data?, extra?]. The `data`/`extra` may include {@link Hooks}. */
@@ -238,13 +242,28 @@ export interface Options {
 	preload_delay?: number
 	/** Disable hover/touch preloading when `false`. Default true. */
 	preload_on_hover?: boolean
+	/**
+	 * Decide whether a same-origin link should be handled by Navgo. The same policy
+	 * is applied to click navigation and intent preloading. Return `false` to opt out.
+	 */
+	should_handle_link?(input: {
+		anchor: HTMLAnchorElement
+		url: URL
+		event: Event
+		phase: 'navigate' | 'preload'
+	}): boolean | void
 	/** Initial matched branch data for the current document. Consumed once on the first same-document navigation. */
 	bootstrap?: BootstrapBranch
 	/** Attach instance to window as `window.navgo`. Default true. */
 	attach_to_window?: boolean
 	search?: SearchOptions
-	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel. */
+	/** Global hook fired after per-route `before_route_leave`, before loader/history change. Can cancel or request replacement. */
 	before_navigate?(nav: Navigation): void
+	/**
+	 * Merge application metadata into full-navigation history entries. Navgo always
+	 * writes its own reserved `__navgo` value after this hook returns.
+	 */
+	history_state?(nav: Navigation, current_state: any): any
 	/** Global hook fired after routing completes (data loaded, URL updated, handlers run). `goto()` resolves after this hook. */
 	after_navigate?(nav: Navigation, on_revalidate?: (cb: () => void) => void): void | Promise<void>
 	/** Optional hook awaited after `after_navigate` and before scroll handling.
@@ -252,6 +271,11 @@ export interface Options {
 	 *  scrolling lands on the correct elements.
 	 */
 	tick?: () => void | Promise<void>
+	/**
+	 * Disable all router-owned scroll tracking, restoration, hash scrolling, and
+	 * `history.scrollRestoration` changes. Default true.
+	 */
+	manage_scroll?: boolean
 	/** When `false`, do not scroll to top on non-hash navigations. Default true. */
 	scroll_to_top?: boolean
 	/** Initial refresh restore mode. Use 'browser' for SSR/hydration documents and 'router' for SPA shells. Default 'router'. */
@@ -277,6 +301,8 @@ export default class Navgo<T = unknown> {
 		url: string | URL,
 		opts?: { replace?: boolean; literal?: boolean; context?: unknown },
 	): Promise<void>
+	/** Cancel the active navigation without changing the current route or URL. */
+	cancel_navigation(): void
 	/** Shallow push — updates URL/state without triggering handlers. */
 	push_state(url?: string | URL, state?: any): void
 	/** Shallow replace — updates URL/state without triggering handlers. */

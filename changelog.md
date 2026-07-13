@@ -1,7 +1,19 @@
 # Changelog
 
-## Unreleased
+## v6.0.13-beta.6
 
+- add `cancel_navigation()`; shallow navigation, browser history, same-page hash links, and teardown now abort and supersede pending full navigation
+
+## v6.0.13-beta.5
+
+- add `manage_scroll: false` for applications that own all scroll state; it disables router scroll tracking/restoration, hash scrolling, session persistence, and `history.scrollRestoration` changes
+- add `should_handle_link(...)` as one synchronous policy for both intercepted navigation and hover/touch preload
+- add `history_state(nav, current_state)` so applications can namespace metadata on full-navigation history entries while Navgo retains ownership of `history.state.__navgo`
+- add `nav.replace()` for guards that need to consume the current history entry transactionally
+- accept `target="_self"` as an in-app link and reject `download` links by attribute presence
+- preserve explicit navigation context in literal `goto()` / `preload()` calls
+- keep history indexes synchronized across full, shallow, and same-URL Back/Forward entries
+- make `destroy()` remove `window.navgo` only when the destroyed instance owns it
 - add `bootstrap` support for hydrating the initial matched branch from SSR HTML on the first same-document navigation
 - stop exposing `data.__meta.preloads` for executed LoadPlans; SSR preload extraction now belongs on the SSR side only
 - keep Navgo's own `preload()` API and hover/tap preloading behavior unchanged

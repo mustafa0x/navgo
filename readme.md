@@ -148,15 +148,19 @@ Notes:
 - `rewrite`: `{ input?: (ctx) => string | URL | { url?: string | URL; context?: unknown } | void; output?: (ctx) => string | URL | { url?: string | URL; context?: unknown } | void }`
   - Optional bidirectional URL rewrite hooks. `input` maps a public URL into Navgo's canonical internal path before matching, while `output` maps an internal target back into a public URL for history, links, and preloading. Useful for locale prefixes like `/en/...` without duplicating routes.
 - `before_navigate`: `(nav: Navigation) => void`
-  - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` synchronously to prevent navigation.
+  - App-level hook called once per navigation attempt after the per-route guard and before loader/URL update. May call `nav.cancel()` to prevent navigation or `nav.replace()` to commit with `history.replaceState`.
+- `history_state`: `(nav: Navigation, current_state: unknown) => unknown`
+  - Adds application metadata to full-navigation history entries. Navgo merges the result, then writes its reserved `__navgo` metadata last.
 - `after_navigate`: `(nav: Navigation, on_revalidate?: (cb: () => void) => void) => void | Promise<void>`
   - App-level hook called after routing completes (URL updated, data loaded). `nav.to.data` holds any loader data, and `nav.status` is the HTTP-like status for the completed route.
   - If the active route uses SWR and a stale entry is revalidated in the background, register a callback via `on_revalidate(cb)` to refresh UI.
   - `nav.ssr` is resolved from the matched leaf route's `ssr` export before this hook runs.
 - `tick`: `() => void | Promise<void>`
   - Awaited after `after_navigate` and before scroll handling; useful for frameworks to flush DOM so anchor/top scrolling lands correctly.
+- `manage_scroll`: `boolean` (default `true`)
+  - When `false`, Navgo performs no scroll tracking/restoration, hash scrolling, session persistence, or `history.scrollRestoration` changes. Use this when mounted workspaces own scroll state.
 - `scroll_to_top`: `boolean` (default `true`)
-  - When `false`, skips the default top scroll for non-hash navigations.
+  - When `false`, skips the default top scroll for non-hash navigations while retaining the rest of Navgo's scroll management.
 - `initial_scroll_restore`: `'router' | 'browser'` (default `'router'`)
   - `'router'`: restore saved refresh scroll after the initial route render. Use this for SPA shells.
   - `'browser'`: preserve native initial scroll restoration. Use this for SSR/hydration documents.
@@ -166,6 +170,8 @@ Notes:
   - Delay in ms before hover preloading triggers.
 - `preload_on_hover`: `boolean` (default `true`)
   - When `false`, disables hover/touch preloading.
+- `should_handle_link`: `({ anchor, url, event, phase }) => boolean | void`
+  - Synchronous policy shared by click navigation and intent preloading. Return `false` to leave a same-origin link entirely to the browser. `phase` is `'navigate'` or `'preload'`.
 - `bootstrap`: `unknown[]`
   - Optional initial matched branch data for the current document. Navgo consumes it once on the first same-document navigation instead of running loaders.
   - The caller is responsible for ensuring the array matches the current URL and matched branch order.
@@ -460,7 +466,7 @@ Events:
 
 - Responds to: `popstate` only. No synthetic events are emitted.
 
-Navgo will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navgo **will not** intercept links that have _any_ `target` attribute or if the link was clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
+Navgo will also bind to any `click` event(s) on anchor tags (`<a href="" />`) so long as the link has a valid `href` that matches the [`base`](#base) path. Navgo **will not** intercept download links, links targeting another browsing context (`target` other than `_self`), or links clicked with a special modifier (<kbd>ALT</kbd>, <kbd>SHIFT</kbd>, <kbd>CMD</kbd>, or <kbd>CTRL</kbd>).
 
 While listening, link clicks are intercepted and translated into `goto()` navigations. You can also call `goto()` programmatically.
 
@@ -469,7 +475,7 @@ In addition, `init()` wires preloading listeners (enabled by default) so route d
 - `mousemove` (hover) -- after a short delay, hovering an in-app link triggers `preload(href)`.
 - `touchstart` and `mousedown` (tap) -- tapping or pressing on an in-app link also triggers `preload(href)`.
 
-Preloading applies only to in-app anchors that match the configured [`base`](#base). You can tweak this behavior with the `preload_delay` and `preload_on_hover` options.
+Preloading applies only to in-app anchors that match the configured [`base`](#base). `should_handle_link` is evaluated for both preload and navigation, so opt-outs cannot warm data that the router would not consume. You can tune intent timing with `preload_delay` and disable it with `preload_on_hover`.
 
 If you pass `options.bootstrap`, the first same-document navigation can hydrate from that ordered branch data instead of running loaders. This is useful for SSR HTML that already contains the exact data used to render the page.
 
@@ -479,7 +485,7 @@ Notes:
 
 ### Scroll persistence
 
-On `beforeunload`, the current scroll position is saved to `sessionStorage` by history entry. On the next load of that same history entry (for example refresh or tab restore), Navgo restores it after the initial route render when `initial_scroll_restore` is `'router'`. For SSR/hydration documents, set `initial_scroll_restore: 'browser'` so the browser's native restoration owns initial scroll.
+Set `manage_scroll: false` to leave this entire concern to the application. Otherwise, on `beforeunload`, the current scroll position is saved to `sessionStorage` by history entry. On the next load of that same history entry (for example refresh or tab restore), Navgo restores it after the initial route render when `initial_scroll_restore` is `'router'`. For SSR/hydration documents, set `initial_scroll_restore: 'browser'` so the browser's native restoration owns initial scroll.
 
 ### Scroll Restoration (areas)
 
@@ -508,11 +514,17 @@ Returns: `Promise<unknown | void>`
 Preload a route's `loader` data for a given `uri` without navigating. Concurrent calls for the same public URL are deduped. Accepts the same `literal` / `context` options as [`goto()`](#gotouri-options).
 Note: Resolves to `undefined` when the matched route has no `loader`.
 
+### cancel_navigation()
+
+Returns: `void`
+
+Abort the active navigation without changing the current route or URL.
+
 ### push_state(url?, state?)
 
 Returns: `void`
 
-Perform a shallow history push: updates the URL/state without triggering route processing.
+Perform a shallow history push: updates the URL/state without triggering route processing. It supersedes any active full navigation.
 
 ### replace_state(url?, state?)
 
@@ -556,7 +568,8 @@ For `link` and `goto` navigations that match a route:
         → before_route_leave({ type })  // per-route guard
         → before_navigate(nav)        // app-level start
             → cancelled? yes → stop
-            → no → run loaders (layouts → route)  // each may be value, Promise, or Promise[]
+            → replace requested? commit with replaceState
+            → run loaders (layouts → route)  // each may be value, Promise, or Promise[]
             → cache data by formatted path
             → history.push/replaceState(new URL)
             → after_navigate(nav, on_revalidate)
@@ -581,11 +594,11 @@ This lets you reflect UI state in the URL while deferring route transitions unti
 
 ### History Index & popstate Cancellation
 
-To enable `popstate` cancellation, Navgo stores a monotonic `idx` in `history.state.__navgo.idx`. On `popstate`, a cancelled navigation computes the delta between the target and current `idx` and calls `history.go(-delta)` to return to the prior entry.
+To enable `popstate` cancellation, Navgo stores a monotonic `idx` in `history.state.__navgo.idx`. Applications may keep their own namespaced state beside it with `history_state`; `__navgo` remains reserved. On `popstate`, a cancelled navigation computes the delta between the target and current `idx` and calls `history.go(-delta)` to return to the prior entry.
 
 ### Scroll Restoration
 
-Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior:
+With `manage_scroll: true`, Navgo manages scroll manually (sets `history.scrollRestoration = 'manual'`) and applies SvelteKit-like behavior. With `manage_scroll: false`, none of the behavior in this section runs.
 
 - Saves the current scroll position for the active history index.
 - On initial boot: restore saved scroll after route render in `'router'` mode, or preserve native browser restoration in `'browser'` mode.
@@ -607,10 +620,11 @@ scroll flow
 - `format(uri)` -- parses a public URL relative to `base` and `rewrite.input`, returning the canonical internal path. Returns `false` when `uri` is outside of `base`.
 - `match(uri)` -- returns a Promise of `{ route, params, matches, layouts } | null` using string/RegExp patterns and `param_rules` (Valibot schemas). Awaits an async `validate(params)` if provided.
 - `href(uri, options?)` -- builds a public in-app URL from a canonical internal target (or validates a literal public URL when `literal: true`).
-- `goto(uri, { replace?, literal?, context? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, saves scroll, runs loader, pushes/replaces, and completes via `after_navigate`.
+- `goto(uri, { replace?, literal?, context? })` -- fires route-level `before_route_leave('goto')`, calls global `before_navigate`, runs the loader, pushes/replaces, and completes via `after_navigate`. A guard may call `nav.replace()` to select replacement transactionally.
 - `init()` -- wires global listeners (`popstate`, `pushstate`, `replacestate`, click) and optional hover/tap preloading; immediately processes the current location. When `options.bootstrap` is present, the first same-document navigation reuses that branch data instead of running loaders.
 - `destroy()` -- removes listeners added by `init()`.
 - `preload(uri, { literal?, context? })` -- pre-executes a route's `loader` for a path and caches the result; concurrent calls are deduped by public URL.
+- `cancel_navigation()` -- aborts the active navigation without changing the current route or URL.
 - `push_state(url?, state?)` -- shallow push that updates the URL and `history.state` without route processing.
 - `replace_state(url?, state?)` -- shallow replace that updates the URL and `history.state` without route processing.
 

@@ -65,10 +65,13 @@ export default class Navgo {
 		rewrite: undefined,
 		preload_delay: 20,
 		preload_on_hover: true,
+		should_handle_link: undefined,
 		bootstrap: undefined,
 		before_navigate: undefined,
 		after_navigate: undefined,
+		history_state: undefined,
 		tick: svelte.tick,
+		manage_scroll: true,
 		scroll_to_top: true,
 		initial_scroll_restore: 'router',
 		aria_current: false,
@@ -91,7 +94,7 @@ export default class Navgo {
 	#base = '/'
 	/** @type {RegExp} */
 	#base_rgx = /^\/+/
-	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle }>} */
+	/** @type {Map<string, { promise?: Promise<PreloadBundle>, data?: PreloadBundle, controller?: AbortController, context?: any }>} */
 	#preloads = new Map()
 	/** @type {unknown[]|null} */
 	#bootstrap = null
@@ -117,6 +120,7 @@ export default class Navgo {
 	#nav_seq = 0
 	/** @type {number} */
 	#nav_active = 0
+	#destroyed = false
 	/** @type {(e: Event) => void | null} */
 	#scroll_handler = null
 	/** @type {AbortController|null} */
@@ -152,16 +156,18 @@ export default class Navgo {
 	//
 	#click = async e => {
 		ℹ('[🧭 event:click]', { type: e?.type, target: e?.target })
-		const info = this.#link_from_event(e, true)
-		if (!info) return
+		const href = this.#link_from_event(e, true, 'navigate')
+		if (!href) return
 
-		const url = new URL(info.href, location.href)
+		const url = new URL(href)
 
 		// Hash-only navigation on same path: let browser handle, but track index
 		if (url.hash && this.#same_public_url(url, this.#current.url)) {
+			this.cancel_navigation()
 			const cur_hash = location.href.split('#')[1]
 			const next_hash = url.href.split('#')[1] ?? ''
 			if (cur_hash === next_hash) {
+				if (!this.#opts.manage_scroll) return
 				// same hash: just scroll without history churn
 				e.preventDefault()
 				if (next_hash === '' || (next_hash === 'top' && !document.getElementById('top'))) {
@@ -180,6 +186,8 @@ export default class Navgo {
 		}
 
 		e.preventDefault()
+		this.cancel_navigation()
+		const click_generation = this.#nav_active
 
 		// allow the browser to repaint before navigating —
 		// this prevents INP scores being penalised
@@ -191,14 +199,16 @@ export default class Navgo {
 			// fallback for edge case where rAF doesn't fire because e.g. tab was backgrounded
 			setTimeout(fulfil, 100)
 		})
+		if (click_generation !== this.#nav_active) return
 
-		ℹ('[🧭 link]', 'intercept', { href: info.href })
-		this.goto(info.href, { replace: false, literal: true }, 'link', e)
+		ℹ('[🧭 link]', 'intercept', { href })
+		this.goto(href, { replace: false, literal: true }, 'link', e)
 	}
 
 	#on_popstate = ev => {
 		// ignore popstate while a hash-originating nav is in flight
 		if (this.#hash_target === location.href) return
+		this.cancel_navigation()
 
 		const st = ev?.state?.__navgo
 		ℹ('[🧭 event:popstate]', st)
@@ -206,9 +216,15 @@ export default class Navgo {
 		const cur = this.#current.url
 		const target = this.#resolve_url_and_path(location.href, { literal: true })
 		if (cur && target && this.#same_public_url(target.url, cur)) {
+			this.#adopt_history_index(ev?.state)
 			const next_current = this.#update_current_info(target)
 			ℹ('  - [🧭 event:popstate]', 'same path+search; skip loader')
-			this.#apply_scroll(ev)
+			if (this.#opts.manage_scroll) {
+				const pos = this.#areas_pos.get(this.#route_idx)?.get?.('window') || st?.pos
+				if (pos) scrollTo(pos.x, pos.y)
+				else if (!location.hash && this.#opts.scroll_to_top) scrollTo(0, 0)
+				this.#apply_scroll(ev)
+			}
 			this.route.set(next_current)
 			this.#update_active_links()
 			return
@@ -220,10 +236,11 @@ export default class Navgo {
 		if (st?.shallow) {
 			const from = typeof st.from === 'string' ? st.from : null
 			if (!from || (cur && normalize_path(from) === normalize_path(cur.pathname))) {
+				this.#adopt_history_index(ev?.state)
 				const next_current = this.#update_current_info(target)
 				this.#sync_search_from_url(next_current.url)
 				ℹ('  - [🧭 event:popstate]', 'shallow entry; skip loader')
-				this.#apply_scroll(ev)
+				if (this.#opts.manage_scroll) this.#apply_scroll(ev)
 				this.route.set(next_current)
 				this.#update_active_links()
 				return
@@ -248,15 +265,17 @@ export default class Navgo {
 			const next_state = { ...prev, __navgo: { ...prev.__navgo, idx: next_idx } }
 			history.replaceState(next_state, '', location.href)
 			this.#route_idx = next_idx
-			const m = new Map(this.#areas_pos.get(prev_idx) || [])
-			m.set('window', { x: scrollX || 0, y: scrollY || 0 })
-			this.#areas_pos.set(next_idx, m)
+			if (this.#opts.manage_scroll) {
+				const m = new Map(this.#areas_pos.get(prev_idx) || [])
+				m.set('window', { x: scrollX || 0, y: scrollY || 0 })
+				this.#areas_pos.set(next_idx, m)
+			}
 			ℹ('[🧭 event:hashchange]', { idx: next_idx, href: location.href })
 		} else {
 			// hashchange via Back/Forward — restore previous position when hash is removed
 			const idx = history.state?.__navgo?.idx
 			if (!hash_target && typeof idx === 'number') this.#route_idx = idx
-			if (!location.hash) {
+			if (this.#opts.manage_scroll && !location.hash) {
 				const pos = this.#areas_pos.get(this.#route_idx)?.get?.('window')
 				if (pos) {
 					setTimeout(() => scrollTo(pos.x, pos.y), 0)
@@ -279,10 +298,10 @@ export default class Navgo {
 	/** @type {any} */
 	#hover_timer = null
 	#maybe_preload = ev => {
-		const info = this.#link_from_event(ev, ev.type === 'mousedown')
-		if (info) {
-			ℹ('[🧭 preload]', 'link hover/tap', { href: info.href })
-			this.preload(info.href, { literal: true })
+		const href = this.#link_from_event(ev, ev.type === 'mousedown', 'preload')
+		if (href) {
+			ℹ('[🧭 preload]', 'link hover/tap', { href })
+			this.preload(href, { literal: true })
 		}
 	}
 	#mouse_move = ev => {
@@ -310,14 +329,16 @@ export default class Navgo {
 	}
 
 	#before_unload = ev => {
-		// persist scroll for refresh / session restore
 		const idx = history.state?.__navgo?.idx ?? this.#route_idx
-		try {
-			sessionStorage.setItem(
-				`__navgo_scroll:${idx}`,
-				JSON.stringify({ x: scrollX, y: scrollY }),
-			)
-		} catch {}
+		if (this.#opts.manage_scroll) {
+			// persist scroll for refresh / session restore
+			try {
+				sessionStorage.setItem(
+					`__navgo_scroll:${idx}`,
+					JSON.stringify({ x: scrollX, y: scrollY }),
+				)
+			} catch {}
+		}
 
 		ℹ('[🧭 event:beforeunload]', 'persist scroll + guard', {
 			idx,
@@ -341,7 +362,7 @@ export default class Navgo {
 			return
 		}
 
-		history.scrollRestoration = 'auto'
+		if (this.#opts.manage_scroll) history.scrollRestoration = 'auto'
 	}
 
 	//
@@ -369,6 +390,21 @@ export default class Navgo {
 			layouts: state?.layouts || Object.create(null),
 		}
 		return extra ? { ...target, ...extra } : target
+	}
+
+	#history_state(nav, current) {
+		try {
+			const state = this.#opts.history_state?.(nav, current)
+			return state === undefined ? current : state
+		} catch (err) {
+			ℹ('[🧭 history]', 'history_state threw', { err })
+			return current
+		}
+	}
+
+	#adopt_history_index(state) {
+		const idx = state?.__navgo?.idx
+		if (typeof idx === 'number') this.#route_idx = idx
 	}
 
 	#update_current_info(info, fallback = location.href) {
@@ -488,7 +524,10 @@ export default class Navgo {
 		const same_origin =
 			!has_scheme || this.#coerce_url(url_raw, location.href).origin === location.origin
 		const public_info = same_origin ? this.#resolve_public_url(url_raw) : null
-		if (opts.literal) return public_info
+		if (opts.literal)
+			return public_info && opts.context !== undefined
+				? { ...public_info, context: opts.context }
+				: public_info
 		if (!same_origin) return null
 		const use_public =
 			!!public_info && public_info.path !== normalize_path(public_info.url.pathname)
@@ -523,19 +562,34 @@ export default class Navgo {
 		return opts.absolute ? info.url.href : info.url.pathname + info.url.search + info.url.hash
 	}
 
-	#link_from_event(e, check_button = false) {
+	#link_from_event(e, check_button = false, phase = 'navigate') {
 		// prettier-ignore
-		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button))
+		if (!e || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (check_button && e.button !== 0))
 			return null
-		const a = (e.composedPath()[0] || e.target)?.closest?.('a')
-		const href = a?.getAttribute?.('href')
-		return href &&
-			!a.target &&
-			!a.download &&
-			a.host === location.host &&
-			this.#resolve_url_and_path(href, { literal: true })
-			? { a, href }
-			: null
+		const anchor = (e.composedPath?.()[0] || e.target)?.closest?.('a[href]')
+		const href = anchor?.getAttribute('href')
+		// prettier-ignore
+		if (!href || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return null
+
+		const info = this.#resolve_url_and_path(href, { literal: true })
+		if (!info) return null
+
+		try {
+			if (
+				this.#opts.should_handle_link?.({
+					anchor,
+					url: new URL(info.url),
+					event: e,
+					phase,
+				}) === false
+			)
+				return null
+		} catch (err) {
+			ℹ('[🧭 link]', 'should_handle_link threw', { err })
+			return null
+		}
+
+		return info.url.href
 	}
 
 	#update_active_links() {
@@ -963,7 +1017,14 @@ export default class Navgo {
 	/**
 	 * @returns {Navigation}
 	 */
-	#make_nav({ type, from = undefined, to = undefined, will_unload = false, event = undefined }) {
+	#make_nav({
+		type,
+		from = undefined,
+		to = undefined,
+		will_unload = false,
+		event = undefined,
+		replace = false,
+	}) {
 		const from_obj = from !== undefined ? from : this.#target(this.#current)
 		const ssr = to?.route && this.#get_hooks(to.route)?.ssr
 		return {
@@ -982,9 +1043,13 @@ export default class Navgo {
 					: undefined,
 			will_unload,
 			cancelled: false,
+			replacing: replace,
 			event,
 			cancel() {
 				this.cancelled = true
+			},
+			replace() {
+				this.replacing = true
 			},
 		}
 	}
@@ -999,12 +1064,14 @@ export default class Navgo {
 	async goto(url_raw = location.href, opts = {}, nav_type = 'goto', ev_param = undefined) {
 		const nav_id = ++this.#nav_seq
 		this.#nav_active = nav_id
+		const popstate_from_idx = this.#route_idx
+		if (nav_type === 'popstate') this.#adopt_history_index(ev_param?.state)
 
 		const rollback_popstate = () => {
 			if (nav_type !== 'popstate') return
 			const new_idx = ev_param?.state?.__navgo?.idx
 			if (new_idx != null) {
-				const delta = new_idx - this.#route_idx
+				const delta = new_idx - popstate_from_idx
 				if (delta) {
 					ℹ('[🧭 goto]', 'cancel popstate; correcting history', { delta })
 					history.go(-delta)
@@ -1033,6 +1100,7 @@ export default class Navgo {
 				type: nav_type,
 				to: this.#target(info),
 				event: ev_param,
+				replace: nav_type !== 'popstate' && !!opts.replace,
 			})
 			ℹ('[🧭 goto]', 'start', {
 				type: nav_type,
@@ -1091,11 +1159,16 @@ export default class Navgo {
 				}
 				if (nav_id !== this.#nav_active) return
 			}
+			const replace = !!opts.replace || nav.replacing
 
 			// loader
 			let bundle
 			if (hit && !match_error) {
-				const pre = this.#preloads.get(load_key)
+				const cached_pre = this.#preloads.get(load_key)
+				const pre =
+					cached_pre && Object.is(cached_pre.context, info.context) ? cached_pre : null
+				if (pre) this.#preloads.delete(load_key)
+				if (pre?.promise && pre.controller) this.#loader_controller = pre.controller
 				const bootstrap_bundle = pre ? null : this.#take_bootstrap_bundle(hit, info)
 				bundle =
 					pre?.data ??
@@ -1106,7 +1179,6 @@ export default class Navgo {
 							data: { __error: e },
 						}),
 					))
-				this.#preloads.delete(load_key)
 				const has_error = !!bundle?.matches?.some(m => m?.data?.__error)
 				ℹ(
 					'[🧭 loader]',
@@ -1122,17 +1194,21 @@ export default class Navgo {
 
 			// change URL (skip if popstate as browser changes, or first goto())
 			if (nav_type !== 'popstate' && !(nav_type === 'goto' && this.#current.url == null)) {
-				const next_idx = this.#route_idx + (opts.replace ? 0 : 1)
+				const next_idx = this.#route_idx + (replace ? 0 : 1)
 				const prev_state =
 					history.state && typeof history.state == 'object' ? history.state : {}
-				const next_state = { ...prev_state, __navgo: { idx: next_idx, type: nav_type } }
-				history[(opts.replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
-				ℹ('[🧭 history]', opts.replace ? 'replaceState' : 'pushState', {
+				const app_state = this.#history_state(nav, prev_state)
+				const next_state = {
+					...(app_state && typeof app_state === 'object' ? app_state : {}),
+					__navgo: { idx: next_idx, type: nav_type },
+				}
+				history[(replace ? 'replace' : 'push') + 'State'](next_state, null, url.href)
+				ℹ('[🧭 history]', replace ? 'replaceState' : 'pushState', {
 					idx: next_idx,
 					href: url.href,
 				})
 				this.#route_idx = next_idx
-				if (!opts.replace) {
+				if (!replace) {
 					this.#areas_pos.delete(next_idx)
 					this.#clear_onward_history()
 				}
@@ -1169,6 +1245,7 @@ export default class Navgo {
 				from: this.#target(prev),
 				to: this.#target(this.#current, { data }),
 				event: ev_param,
+				replace: nav_type !== 'popstate' && replace,
 			})
 			nav.status = this.#nav_status(nav.to)
 			this.nav = nav
@@ -1225,7 +1302,7 @@ export default class Navgo {
 			}
 
 			this.#update_active_links()
-			this.#apply_scroll(nav)
+			if (this.#opts.manage_scroll) this.#apply_scroll(nav)
 		} catch (e) {
 			// Prevent event handlers (click/popstate) from causing unhandled rejections.
 			ℹ('[🧭 goto]', 'error', { err: e })
@@ -1234,31 +1311,58 @@ export default class Navgo {
 		}
 	}
 
+	/** Cancel the active navigation without changing the current route or URL. */
+	cancel_navigation() {
+		this.#nav_active = ++this.#nav_seq
+		this.#loader_controller?.abort()
+		this.#loader_controller = null
+		this.#revalidation = null
+		this.is_navigating.set(false)
+	}
+
 	/**
 	 * Shallow push — updates the URL/state but DOES NOT call handlers or loader.
 	 */
 	#commit_shallow(url, state, replace) {
+		this.cancel_navigation()
 		const u = new URL(url || location.href, location.href)
 		const prev_idx = this.#route_idx
+		const current_state = history.state && typeof history.state == 'object' ? history.state : {}
 		// Pushing from a non-tip position clears forward history.
 		if (!replace) this.#clear_onward_history()
-		// persist current entry's scroll into its state so Back after refresh restores it
-		const prev = history.state && typeof history.state == 'object' ? history.state : {}
-		history.replaceState(
-			{ ...prev, __navgo: { ...prev.__navgo, pos: { x: scrollX || 0, y: scrollY || 0 } } },
-			'',
-			location.href,
-		)
-		// also stash per-entry scroll in session storage as a fallback across reloads
-		try {
-			sessionStorage.setItem(
-				`__navgo_scroll:${prev_idx}`,
-				JSON.stringify({ x: scrollX || 0, y: scrollY || 0 }),
+		if (this.#opts.manage_scroll) {
+			// persist current entry's scroll into its state so Back after refresh restores it
+			history.replaceState(
+				{
+					...current_state,
+					__navgo: {
+						...current_state.__navgo,
+						pos: { x: scrollX || 0, y: scrollY || 0 },
+					},
+				},
+				'',
+				location.href,
 			)
-		} catch {}
+			// also stash per-entry scroll in session storage as a fallback across reloads
+			try {
+				sessionStorage.setItem(
+					`__navgo_scroll:${prev_idx}`,
+					JSON.stringify({ x: scrollX || 0, y: scrollY || 0 }),
+				)
+			} catch {}
+		}
 		const idx = prev_idx + (replace ? 0 : 1)
 		const from = normalize_path(this.#current.url?.pathname || location.pathname)
-		const st = { ...state, __navgo: { shallow: true, idx, from } }
+		const base_state = state === undefined ? current_state : state
+		const st = {
+			...(base_state && typeof base_state === 'object' ? base_state : {}),
+			__navgo: {
+				shallow: true,
+				idx,
+				from,
+				...(this.#opts.manage_scroll && { pos: { x: scrollX || 0, y: scrollY || 0 } }),
+			},
+		}
 		history[(replace ? 'replace' : 'push') + 'State'](st, '', u.href)
 		ℹ('[🧭 history]', replace ? 'replace_state(shallow)' : 'push_state(shallow)', {
 			idx,
@@ -1267,11 +1371,13 @@ export default class Navgo {
 		// Popstate handler checks state.__navgo.shallow and skips router processing
 		this.#route_idx = idx
 		// Snapshot scroll areas for the new entry (so Forward restores even without new scroll events).
-		const m = replace
-			? this.#areas_pos.get(idx) || new Map()
-			: new Map(this.#areas_pos.get(prev_idx) || [])
-		m.set('window', { x: scrollX || 0, y: scrollY || 0 })
-		this.#areas_pos.set(idx, m)
+		if (this.#opts.manage_scroll) {
+			const m = replace
+				? this.#areas_pos.get(idx) || new Map()
+				: new Map(this.#areas_pos.get(prev_idx) || [])
+			m.set('window', { x: scrollX || 0, y: scrollY || 0 })
+			this.#areas_pos.set(idx, m)
+		}
 		// update current URL snapshot and notify
 		const next_current = this.#update_current_info(
 			this.#resolve_url_and_path(u.href, { literal: true }),
@@ -1347,14 +1453,15 @@ export default class Navgo {
 			const hit = await this.match(path).catch(() => null)
 			if (!hit) return void ℹ('[🧭 preload]', 'no route', { path })
 
-			if (this.#preloads.has(load_key)) {
-				const p = this.#preloads.get(load_key)
+			const cached = this.#preloads.get(load_key)
+			if (cached && Object.is(cached.context, info.context)) {
+				const p = cached
 				ℹ('[🧭 preload]', 'dedupe', { path })
 				return p.promise ? p.promise.then(b => b?.data) : p.data?.data
 			}
 
-			const entry = {}
 			const controller = new AbortController()
+			const entry = { controller, context: info.context }
 			entry.promise = this.#load_hit(hit, info, controller, 0).then(
 				bundle => {
 					entry.data = bundle
@@ -1541,13 +1648,16 @@ export default class Navgo {
 	// Lifecycle hooks
 	//
 	async init() {
+		if (this.#destroyed) return
 		ℹ('[🧭 init]', 'attach listeners')
 		addEventListener('popstate', this.#on_popstate)
 		addEventListener('click', this.#click)
 		addEventListener('beforeunload', this.#before_unload)
 		addEventListener('hashchange', this.#on_hashchange)
-		this.#scroll_handler = throttle(this.#on_scroll, 100)
-		addEventListener('scroll', this.#scroll_handler, { capture: true })
+		if (this.#opts.manage_scroll) {
+			this.#scroll_handler = throttle(this.#on_scroll, 100)
+			addEventListener('scroll', this.#scroll_handler, { capture: true })
+		}
 
 		if (this.#opts.preload_on_hover) {
 			// @ts-expect-error
@@ -1562,19 +1672,25 @@ export default class Navgo {
 		ℹ('[🧭 init]', 'initial goto')
 		if (this.#opts.attach_to_window) window.navgo = this
 		await this.goto()
+		if (this.#destroyed) return
 		this.#bootstrap = null
 		ℹ('[🧭 init]', 'initial goto done', {
 			route_idx: this.#route_idx,
 			state: history.state?.__navgo,
 			scroll_restoration: history.scrollRestoration,
 		})
-		requestAnimationFrame(() => {
-			ℹ('[🧭 scrollRestoration]', 'manual scheduled')
-			history.scrollRestoration = 'manual'
-			ℹ('[🧭 scrollRestoration]', 'manual applied')
-		})
+		if (this.#opts.manage_scroll)
+			requestAnimationFrame(() => {
+				if (this.#destroyed) return
+				ℹ('[🧭 scrollRestoration]', 'manual scheduled')
+				history.scrollRestoration = 'manual'
+				ℹ('[🧭 scrollRestoration]', 'manual applied')
+			})
 	}
 	destroy() {
+		this.#destroyed = true
+		this.cancel_navigation()
+		clearTimeout(this.#hover_timer)
 		removeEventListener('popstate', this.#on_popstate)
 		removeEventListener('click', this.#click)
 		removeEventListener('mousemove', this.#mouse_move)
@@ -1585,7 +1701,7 @@ export default class Navgo {
 		removeEventListener('scroll', this.#scroll_handler, { capture: true })
 		this.#areas_pos.clear()
 		this.#search_unsub?.()
-		delete window.navgo
+		if (window.navgo === this) delete window.navgo
 	}
 
 	#clear_onward_history() {
@@ -1626,6 +1742,11 @@ export default class Navgo {
 				saved_pos,
 			})
 			if (is_initial) {
+				if (saved_pos) {
+					const positions = this.#areas_pos.get(current_idx) || new Map()
+					positions.set('window', saved_pos)
+					this.#areas_pos.set(current_idx, positions)
+				}
 				if (hash && scroll_to_hash(hash)) {
 					ℹ('[🧭 scroll]', 'initial hash')
 					return
@@ -1661,7 +1782,7 @@ export default class Navgo {
 				const target_idx = typeof idx === 'number' ? idx : this.#route_idx - 1
 				this.#route_idx = target_idx
 				const m = this.#areas_pos.get(target_idx)
-				let pos = st?.pos || m?.get?.('window')
+				let pos = m?.get?.('window') || st?.pos
 				if (!pos) {
 					try {
 						pos = JSON.parse(

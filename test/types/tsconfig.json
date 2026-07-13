@@ -6,11 +6,10 @@
 		"moduleResolution": "Bundler",
 		"skipLibCheck": true,
 		"noEmit": true,
-		"baseUrl": "../..",
 		"types": [],
-        "paths": {
-            "navgo": ["index.d.ts"]
-        }
+		"paths": {
+			"navgo": ["../../index.d.ts"]
+		}
 	},
 	"include": ["./**/*.ts", "../../index.d.ts"]
 }

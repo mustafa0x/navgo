@@ -109,6 +109,24 @@ async function tick(n = 2) {
 	while (n--) await new Promise(r => setTimeout(r, 0))
 }
 
+function link_event(href, { type = 'click', metaKey = false, target = '', download = false } = {}) {
+	const anchor = {
+		target,
+		getAttribute: name => (name === 'href' ? href : null),
+		hasAttribute: name => name === 'download' && download,
+		closest: () => anchor,
+	}
+	return {
+		type,
+		button: 0,
+		metaKey,
+		defaultPrevented: false,
+		preventDefault: vi.fn(),
+		target: anchor,
+		composedPath: () => [anchor],
+	}
+}
+
 describe('exports', () => {
 	it('exports', () => {
 		expect(typeof Navgo).toBe('function')
@@ -343,6 +361,79 @@ describe('is_navigating store', () => {
 		// should have seen [true, false]
 		expect(events[0]).toBe(true)
 		expect(events.at(-1)).toBe(false)
+		r.destroy()
+	})
+
+	it('can cancel an in-flight loader without committing the destination', async () => {
+		setupStubs('/app/')
+		let finish
+		let signal
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/slow',
+					{
+						loader(ctx) {
+							signal = ctx.signal
+							return new Promise(resolve => (finish = resolve))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+
+		const pending = r.goto('/app/slow')
+		await tick()
+		r.cancel_navigation()
+
+		expect(signal.aborted).toBe(true)
+		expect(get(r.is_navigating)).toBe(false)
+		finish({ loaded: true })
+		await pending
+		expect(get(r.route).path).toBe('/')
+		r.destroy()
+	})
+
+	it('shallow navigation supersedes an in-flight loader', async () => {
+		const hist = setupStubs('/app/')
+		let finish
+		let signal
+		const r = new Navgo(
+			[
+				['/', {}],
+				[
+					'/slow',
+					{
+						loader(ctx) {
+							signal = ctx.signal
+							return new Promise(resolve => (finish = resolve))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await r.init()
+
+		const pending = r.goto('/app/slow')
+		await tick()
+		r.replace_state('/app/local')
+
+		expect(signal.aborted).toBe(true)
+		expect(get(r.is_navigating)).toBe(false)
+		finish({ loaded: true })
+		await pending
+
+		expect(get(r.route).path).toBe('/local')
+		expect(hist.state.__navgo).toEqual({
+			shallow: true,
+			idx: 0,
+			from: '/app',
+			pos: { x: 0, y: 0 },
+		})
 		r.destroy()
 	})
 
@@ -884,6 +975,54 @@ describe('before_navigate', () => {
 		r.destroy()
 	})
 
+	it('exposes an explicit replace to navigation guards', async () => {
+		setupStubs('/app/')
+		let replacing
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{
+				base: '/app',
+				before_navigate(nav) {
+					replacing = nav.replacing
+				},
+			},
+		)
+		await router.init()
+		await router.goto('/app/foo', { replace: true })
+
+		expect(replacing).toBe(true)
+		router.destroy()
+	})
+
+	it('does not expose popstate as a replacing navigation', async () => {
+		setupStubs('/app/foo', { __navgo: { idx: 1 } })
+		let replacing
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/foo', {}],
+			],
+			{
+				base: '/app',
+				before_navigate(nav) {
+					if (nav.type === 'popstate') replacing = nav.replacing
+				},
+			},
+		)
+		await router.init()
+		global.location = new URL('http://example.com/app/')
+		const event = new Event('popstate')
+		event.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(event)
+		await tick(2)
+
+		expect(replacing).toBe(false)
+		router.destroy()
+	})
+
 	it('popstate cancel rolls history back via history.go', async () => {
 		const hist = setupStubs('/app/')
 		const r = new Navgo(
@@ -1027,6 +1166,140 @@ describe('shallow popstate semantics', () => {
 	})
 })
 
+describe('pending navigation supersession', () => {
+	it('cancels a pending preload after navigation adopts it', async () => {
+		setupStubs('/app/')
+		let signal
+		const router = new Navgo(
+			[
+				['/', {}],
+				[
+					'/slow',
+					{
+						loader(ctx) {
+							signal = ctx.signal
+							return new Promise((_, reject) =>
+								ctx.signal.addEventListener('abort', () =>
+									reject(ctx.signal.reason),
+								),
+							)
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await router.init()
+
+		router.preload('/app/slow')
+		await tick()
+		const pending = router.goto('/app/slow')
+		await tick()
+		router.push_state('/app/?panel=1')
+
+		expect(signal.aborted).toBe(true)
+		await pending
+		expect(get(router.route).url.search).toBe('?panel=1')
+		router.destroy()
+	})
+
+	it('shallow navigation after popstate loading uses the browser target index', async () => {
+		const hist = setupStubs('/app/current', { __navgo: { idx: 1 } })
+		let finish
+		const router = new Navgo(
+			[
+				['/current', {}],
+				[
+					'/back',
+					{
+						loader() {
+							return new Promise(resolve => (finish = resolve))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await router.init()
+
+		global.location = new URL('http://example.com/app/back')
+		const event = new Event('popstate')
+		event.state = { __navgo: { idx: 0 } }
+		global.dispatchEvent(event)
+		await tick()
+
+		router.push_state('/app/back?panel=1')
+		expect(hist.state.__navgo.idx).toBe(1)
+		finish({ loaded: true })
+		await tick()
+		router.destroy()
+	})
+
+	it('shallow navigation supersedes a link waiting for repaint', async () => {
+		setupStubs('/app/')
+		let loads = 0
+		const router = new Navgo(
+			[
+				['/', {}],
+				[
+					'/slow',
+					{
+						loader() {
+							loads++
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await router.init()
+
+		global.dispatchEvent(link_event('http://example.com/app/slow'))
+		router.push_state('/app/?panel=1')
+		await tick(4)
+
+		expect(loads).toBe(0)
+		expect(get(router.route).url.search).toBe('?panel=1')
+		router.destroy()
+	})
+
+	it('shallow history traversal aborts an in-flight loader', async () => {
+		setupStubs('/app/')
+		let finish
+		let signal
+		const router = new Navgo(
+			[
+				['/', {}],
+				[
+					'/slow',
+					{
+						loader(ctx) {
+							signal = ctx.signal
+							return new Promise(resolve => (finish = resolve))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await router.init()
+
+		const pending = router.goto('/app/slow')
+		await tick()
+		global.location = new URL('http://example.com/app/?panel=1')
+		const event = new Event('popstate')
+		event.state = { __navgo: { idx: 0, shallow: true, from: '/app' } }
+		global.dispatchEvent(event)
+
+		expect(signal.aborted).toBe(true)
+		expect(get(router.is_navigating)).toBe(false)
+		finish({ loaded: true })
+		await pending
+		expect(get(router.route).url.search).toBe('?panel=1')
+		router.destroy()
+	})
+})
+
 describe('preload behavior', () => {
 	function makeRouterWithLoader() {
 		const calls = { root: 0, foo: 0 }
@@ -1089,6 +1362,34 @@ describe('preload behavior', () => {
 		await router.preload('/app/foo?x=1')
 		await router.preload('/app/foo?x=2')
 		expect(calls.foo).toBe(2)
+		router.destroy()
+	})
+
+	it('does not reuse preload data from a different explicit context', async () => {
+		setupStubs('/app/')
+		const contexts = []
+		const router = new Navgo(
+			[
+				['/', {}],
+				[
+					'/foo',
+					{
+						loader(ctx) {
+							contexts.push(ctx.context)
+							return { context: ctx.context }
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+		await router.init()
+
+		await router.preload('/app/foo', { literal: true, context: 'preload' })
+		await router.goto('/app/foo', { literal: true, context: 'navigation' })
+
+		expect(contexts).toEqual(['preload', 'navigation'])
+		expect(router.nav.to.context).toBe('navigation')
 		router.destroy()
 	})
 
@@ -1906,6 +2207,33 @@ describe('navigation status', () => {
 })
 
 describe('initial scroll ownership', () => {
+	it('does not take scroll ownership after destruction interrupts init', async () => {
+		setupStubs('/app/foo')
+		let finish
+		const router = new Navgo(
+			[
+				[
+					'/foo',
+					{
+						loader() {
+							return new Promise(resolve => (finish = resolve))
+						},
+					},
+				],
+			],
+			{ base: '/app' },
+		)
+
+		const initializing = router.init()
+		await tick()
+		router.destroy()
+		finish({ loaded: true })
+		await initializing
+		await tick(2)
+
+		expect(global.history.scrollRestoration).toBe('auto')
+	})
+
 	it('preserves SSR scroll on init and switches to manual after boot', async () => {
 		setupStubs('/app/foo')
 		const r = new Navgo([['/foo', {}]], { base: '/app' })
@@ -2035,6 +2363,7 @@ describe('scroll restore persistence', () => {
 		r.push_state('/app/products?product=1')
 		expect(calls.length).toBeGreaterThan(0)
 		expect(calls.at(-1)?.__navgo?.pos).toEqual({ x: 5, y: 123 })
+		expect(hist.state.__navgo.pos).toEqual({ x: 5, y: 123 })
 		r.destroy()
 	})
 
@@ -2049,6 +2378,27 @@ describe('scroll restore persistence', () => {
 		await tick()
 		expect(global.scrollX).toBe(11)
 		expect(global.scrollY).toBe(222)
+		r.destroy()
+	})
+
+	it('popstate prefers a newer in-memory scroll position', async () => {
+		const hist = setupStubs('/app/products')
+		const r = new Navgo([['/products', {}]], { base: '/app' })
+		await r.init()
+		global.scrollTo(0, 10)
+		r.push_state('/app/products?product=1')
+		const creation_state = structuredClone(hist.state)
+
+		global.scrollTo(0, 300)
+		global.dispatchEvent(new Event('scroll'))
+		await new Promise(resolve => setTimeout(resolve, 120))
+		global.location = new URL('http://example.com/app/products?product=1')
+		const event = new Event('popstate')
+		event.state = creation_state
+		global.dispatchEvent(event)
+		await tick()
+
+		expect(global.scrollY).toBe(300)
 		r.destroy()
 	})
 })
@@ -2482,29 +2832,13 @@ describe('scroll restoration (areas)', () => {
 		global.dispatchEvent({ type: 'scroll', target: global.window })
 
 		// click a relative same-path hash link
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '#post-1' : null),
-			pathname: '/app/posts',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('#post-1')
 		global.dispatchEvent(click)
 		// browser default: update URL then fire hashchange
 		global.location = new URL('http://example.com/app/posts#post-1')
 		global.dispatchEvent(new Event('hashchange'))
 		await tick()
-		expect(prevented).toBe(false)
+		expect(click.preventDefault).not.toHaveBeenCalled()
 
 		// user presses Back: browser sets state for previous entry and fires hashchange
 		hist.state = { __navgo: { idx: 0 } }
@@ -2520,28 +2854,12 @@ describe('scroll restoration (areas)', () => {
 		const r = new Navgo([['/posts', {}]], { base: '/app' })
 		await r.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '#post-1' : null),
-			pathname: '/app/posts',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('#post-1')
 		global.dispatchEvent(click)
 		global.location = new URL('http://example.com/app/posts#post-1')
 		global.dispatchEvent(new Event('hashchange'))
 		await tick()
-		expect(prevented).toBe(false)
+		expect(click.preventDefault).not.toHaveBeenCalled()
 
 		hist.state = { __navgo: { idx: 0 } }
 		global.location = new URL('http://example.com/app/posts')
@@ -2560,20 +2878,7 @@ describe('scroll restoration (areas)', () => {
 		const r = new Navgo([['/posts', {}]], { base: '/app' })
 		await r.init()
 
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '#post-1' : null),
-			pathname: '/app/posts',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('#post-1')
 		global.dispatchEvent(click)
 
 		hist.state = { __navgo: { idx: 1 } }
@@ -2623,234 +2928,320 @@ describe('leave (beforeunload)', () => {
 describe('link interception', () => {
 	it('intercepts internal anchor clicks and calls nav', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navgo(
+		const router = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],
 			],
 			{ base: '/app' },
 		)
-		await r.init()
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '/app/foo' : null),
-			pathname: '/app/foo',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('/app/foo')
 		global.dispatchEvent(click)
 		await tick()
-		expect(prevented).toBe(true)
-		// initial goto() leaves idx at 0; clicking link pushes to 1
+		expect(click.preventDefault).toHaveBeenCalledOnce()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
-		r.destroy()
+		router.destroy()
 	})
 
 	it('ignores clicks with modifier keys', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navgo(
+		const router = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],
 			],
 			{ base: '/app' },
 		)
-		await r.init()
+		await router.init()
 
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '/app/foo' : null),
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			metaKey: true,
-			defaultPrevented: false,
-			preventDefault() {},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('/app/foo', { metaKey: true })
 		global.dispatchEvent(click)
-		// modifier click is ignored; idx remains at 0
+		expect(click.preventDefault).not.toHaveBeenCalled()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
-		r.destroy()
+		router.destroy()
 	})
 
 	it('skips absolute same-host links outside base', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navgo(
+		const router = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],
 			],
 			{ base: '/app' },
 		)
-		await r.init()
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? 'http://example.com/outside' : null),
-			pathname: '/outside',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('http://example.com/outside')
 		global.dispatchEvent(click)
 		await tick()
-		// outside base: not intercepted
-		expect(prevented).toBe(false)
+		expect(click.preventDefault).not.toHaveBeenCalled()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
-		r.destroy()
+		router.destroy()
 	})
 
 	it('intercepts absolute same-host links within base', async () => {
 		const hist = setupStubs('/app/')
-		const r = new Navgo(
+		const router = new Navgo(
 			[
 				['/', {}],
 				['/foo', {}],
 			],
 			{ base: '/app' },
 		)
-		await r.init()
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? 'http://example.com/app/foo' : null),
-			pathname: '/app/foo',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('http://example.com/app/foo')
 		global.dispatchEvent(click)
 		await tick()
-		expect(prevented).toBe(true)
+		expect(click.preventDefault).toHaveBeenCalledOnce()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
-		r.destroy()
+		router.destroy()
 	})
 
-	it('absolute same-path hash link within base lets browser handle + bumps idx', async () => {
+	it('lets browser handle a new same-path hash and tracks its entry', async () => {
 		const hist = setupStubs('/app/about')
-		const r = new Navgo([['/about', {}]], { base: '/app' })
-		await r.init()
+		const router = new Navgo([['/about', {}]], { base: '/app' })
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? 'http://example.com/app/about#bottom' : null),
-			pathname: '/app/about',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('http://example.com/app/about#bottom')
 		global.dispatchEvent(click)
-		// simulate browser default hashchange
 		global.location = new URL('http://example.com/app/about#bottom')
 		global.dispatchEvent(new Event('hashchange'))
 		await tick()
-		// absolute same-path + hash: browser handles (no preventDefault), router bumps idx on hashchange
-		expect(prevented).toBe(false)
+		expect(click.preventDefault).not.toHaveBeenCalled()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
-		r.destroy()
+		router.destroy()
 	})
 
-	it('absolute same-path same-hash prevents default and does not bump idx', async () => {
+	it('handles the current hash without adding a history entry', async () => {
 		const hist = setupStubs('/app/about#bottom')
-		const r = new Navgo([['/about', {}]], { base: '/app' })
-		await r.init()
+		const router = new Navgo([['/about', {}]], { base: '/app' })
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? 'http://example.com/app/about#bottom' : null),
-			pathname: '/app/about',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('http://example.com/app/about#bottom')
 		global.dispatchEvent(click)
 		await tick()
-		// same-hash: router handles via preventDefault and does not change history
-		expect(prevented).toBe(true)
+		expect(click.preventDefault).toHaveBeenCalledOnce()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(0)
-		r.destroy()
+		router.destroy()
 	})
 
-	it('relative same-path hash (#...) should bump idx', async () => {
+	it('tracks a relative same-path hash entry', async () => {
 		const hist = setupStubs('/app/about')
-		const r = new Navgo([['/about', {}]], { base: '/app' })
-		await r.init()
+		const router = new Navgo([['/about', {}]], { base: '/app' })
+		await router.init()
 
-		let prevented = false
-		const anchor = {
-			host: 'example.com',
-			getAttribute: name => (name === 'href' ? '#bottom' : null),
-			pathname: '/app/about',
-			closest: () => anchor,
-		}
-		const click = {
-			type: 'click',
-			button: 0,
-			defaultPrevented: false,
-			preventDefault() {
-				prevented = true
-			},
-			target: anchor,
-			composedPath: () => [anchor],
-		}
+		const click = link_event('#bottom')
 		global.dispatchEvent(click)
-		// simulate browser behavior
 		global.location = new URL('http://example.com/app/about#bottom')
 		global.dispatchEvent(new Event('hashchange'))
 		await tick()
-		expect(prevented).toBe(false)
+		expect(click.preventDefault).not.toHaveBeenCalled()
 		expect(hist.state?.__navgo?.idx ?? 0).toBe(1)
-		r.destroy()
+		router.destroy()
+	})
+})
+
+describe('application integration primitives', () => {
+	it('merges application history state while reserving __navgo', async () => {
+		const hist = setupStubs('/', { app: 'old', __navgo: { idx: 0 } })
+		let seen
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/next', {}],
+			],
+			{
+				history_state(nav, state) {
+					seen = { nav, state }
+					return { ...state, app: 'next', __navgo: { idx: 999 } }
+				},
+			},
+		)
+		await router.init()
+		await router.goto('/next')
+
+		expect(seen.nav.to.url.pathname).toBe('/next')
+		expect(seen.state.app).toBe('old')
+		expect(hist.state.app).toBe('next')
+		expect(hist.state.__navgo).toEqual({ idx: 1, type: 'goto' })
+		router.destroy()
+	})
+
+	it('allows a navigation guard to replace the current entry transactionally', async () => {
+		const hist = setupStubs('/')
+		const push = vi.spyOn(hist, 'pushState')
+		const replace = vi.spyOn(hist, 'replaceState')
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/next', {}],
+			],
+			{
+				before_navigate(nav) {
+					if (nav.to?.url.pathname === '/next') nav.replace()
+				},
+			},
+		)
+		await router.init()
+		push.mockClear()
+		replace.mockClear()
+
+		await router.goto('/next')
+
+		expect(push).not.toHaveBeenCalled()
+		expect(replace).toHaveBeenCalledOnce()
+		expect(hist.state.__navgo.idx).toBe(0)
+		expect(router.nav.replacing).toBe(true)
+		router.destroy()
+	})
+
+	it('preserves explicit context for literal navigation', async () => {
+		setupStubs('/')
+		const context = { tab_id: 'tab-1' }
+		const router = new Navgo([
+			['/', {}],
+			['/next', {}],
+		])
+		await router.init()
+		await router.goto('/next', { literal: true, context })
+
+		expect(router.nav.to.context).toBe(context)
+		router.destroy()
+	})
+
+	it('uses one link policy for preload and navigation', async () => {
+		const hist = setupStubs('/')
+		const phases = []
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/next', {}],
+			],
+			{
+				should_handle_link({ phase, url }) {
+					phases.push([phase, url.pathname])
+					return false
+				},
+			},
+		)
+		await router.init()
+
+		const down = link_event('/next', { type: 'mousedown' })
+		const click = link_event('/next')
+		global.dispatchEvent(down)
+		global.dispatchEvent(click)
+		await tick()
+
+		expect(phases).toEqual([
+			['preload', '/next'],
+			['navigate', '/next'],
+		])
+		expect(click.preventDefault).not.toHaveBeenCalled()
+		expect(hist.state.__navgo.idx).toBe(0)
+		router.destroy()
+	})
+
+	it('accepts target=_self and rejects download links by attribute presence', async () => {
+		const hist = setupStubs('/')
+		const router = new Navgo([
+			['/', {}],
+			['/next', {}],
+		])
+		await router.init()
+
+		const download = link_event('/next', { download: true })
+		global.dispatchEvent(download)
+		await tick()
+		expect(download.preventDefault).not.toHaveBeenCalled()
+		expect(hist.state.__navgo.idx).toBe(0)
+
+		const self = link_event('/next', { target: '_self' })
+		global.dispatchEvent(self)
+		await tick()
+		expect(self.preventDefault).toHaveBeenCalledOnce()
+		expect(hist.state.__navgo.idx).toBe(1)
+		router.destroy()
+	})
+
+	it('can leave all scroll ownership to the application', async () => {
+		const hist = setupStubs('/')
+		const router = new Navgo(
+			[
+				['/', {}],
+				['/next', {}],
+			],
+			{ manage_scroll: false },
+		)
+		await router.init()
+		await tick()
+		const scroll = vi.fn(global.scrollTo)
+		global.scrollTo = scroll
+		await router.goto('/next')
+		global.dispatchEvent(new Event('beforeunload'))
+
+		expect(hist.scrollRestoration).toBe('auto')
+		expect(scroll).not.toHaveBeenCalled()
+		expect(sessionStorage.length).toBe(0)
+		router.destroy()
+	})
+
+	it('preserves application state in shallow entries when state is omitted', async () => {
+		const hist = setupStubs('/', { app: { tab_id: 'tab-1' }, __navgo: { idx: 0 } })
+		const router = new Navgo([['/', {}]], { manage_scroll: false })
+		await router.init()
+		router.push_state('/?page=2')
+
+		expect(hist.state.app).toEqual({ tab_id: 'tab-1' })
+		expect(hist.state.__navgo).toEqual({ shallow: true, idx: 1, from: '/' })
+		router.destroy()
+	})
+
+	it('adopts shallow popstate indexes even when scroll management is disabled', async () => {
+		const hist = setupStubs('/')
+		const router = new Navgo([['/', {}]], { manage_scroll: false })
+		await router.init()
+
+		global.location = new URL('http://example.com/?page=7')
+		const pop = new Event('popstate')
+		pop.state = { __navgo: { idx: 7, shallow: true, from: '/' } }
+		global.dispatchEvent(pop)
+		router.push_state('/?page=8')
+
+		expect(hist.state.__navgo.idx).toBe(8)
+		router.destroy()
+	})
+
+	it('tracks hash entry indexes when scroll management is disabled', async () => {
+		const hist = setupStubs('/')
+		const router = new Navgo([['/', {}]], { manage_scroll: false })
+		await router.init()
+
+		const click = link_event('/#section')
+		global.dispatchEvent(click)
+		global.location = new URL('http://example.com/#section')
+		global.dispatchEvent(new Event('hashchange'))
+		router.push_state('/?page=2')
+
+		expect(click.preventDefault).not.toHaveBeenCalled()
+		expect(hist.state.__navgo.idx).toBe(2)
+		router.destroy()
+	})
+
+	it('destroy only removes its own window exposure', async () => {
+		setupStubs('/')
+		const first = new Navgo([['/', {}]])
+		const second = new Navgo([['/', {}]])
+		await first.init()
+		await second.init()
+		expect(global.window.navgo).toBe(second)
+
+		first.destroy()
+		expect(global.window.navgo).toBe(second)
+		second.destroy()
+		expect(global.window.navgo).toBeUndefined()
 	})
 })

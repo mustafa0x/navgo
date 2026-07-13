@@ -55,8 +55,22 @@ const opts: Options = {
 	},
 	preload_delay: 10,
 	preload_on_hover: true,
+	manage_scroll: false,
+	should_handle_link({ anchor, url, event, phase }) {
+		const a: HTMLAnchorElement = anchor
+		const u: URL = url
+		const e: Event = event
+		const p: 'navigate' | 'preload' = phase
+		return a.href === u.href || !!e || p === 'navigate'
+	},
 	before_navigate(nav) {
 		const t: 'link' | 'goto' | 'popstate' | 'leave' = nav.type
+		const replacing: boolean = nav.replacing
+		if (!replacing) nav.replace()
+	},
+	history_state(nav, current) {
+		const replacing: boolean = nav.replacing
+		return { ...current, app: { replacing } }
 	},
 	after_navigate(nav) {
 		const to = nav.to!
@@ -90,7 +104,8 @@ expectsPromise(router.preload('/users/1', { literal: true, context: { locale: 'e
 const h1: string | false = router.href('/users/1')
 const h2: string | false = router.href('/users/1', { absolute: true, context: { locale: 'en' } })
 
-// Shallow history helpers
+// Navigation cancellation and shallow history helpers
+router.cancel_navigation()
 router.push_state('/app/foo', { x: 1 })
 router.replace_state('/app/foo', { x: 1 })
 router.invalidate(['https://dummyjson.com/products', 'products'])
