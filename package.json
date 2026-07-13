@@ -16,7 +16,7 @@
 	},
 	"scripts": {
 		"build": "perl -0777 -i -pe 's/console.debug\\(...args\\)/{}/g' index.js",
-		"prepublishOnly": "pnpm run build",
+		"prepublishOnly": "npm run build",
 		"test": "vitest run index.test.js",
 		"test:e2e": "playwright test --project=chromium",
 		"start:testsite": "pnpm vite dev test/site --port 5714",
