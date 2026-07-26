@@ -1,0 +1,14 @@
+allowBuilds:
+  '@tailwindcss/oxide': set this to true or false
+  esbuild: set this to true or false
+onlyBuiltDependencies:
+  - "@tailwindcss/oxide"
+  - "esbuild"
+minimumReleaseAgeExclude:
+  - '@mustafaj/oxfmt-binding-darwin-arm64@0.58.0-svelte.6'
+  - '@mustafaj/oxfmt-binding-linux-x64-gnu@0.58.0-svelte.6'
+  - '@mustafaj/oxfmt-binding-win32-x64-msvc@0.58.0-svelte.6'
+  - '@mustafaj/oxfmt@0.58.0-svelte.6'
+  - '@mustafaj/oxlint-binding-darwin-arm64@1.73.0-svelte.9'
+  - '@mustafaj/oxlint-binding-linux-x64-gnu@1.73.0-svelte.9'
+  - '@mustafaj/oxlint@1.73.0-svelte.9'

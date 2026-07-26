@@ -35,18 +35,18 @@
 </div>
 
 <script module>
-export function loader({params}) {
+export function loader({ params }) {
 	const id = params.id
 	return {
 		product: {
 			request: `https://dummyjson.com/products/${id}`,
-			cache: {strategy: 'swr', ttl: 10_000, tags: ['products', `product:${id}`]},
+			cache: { strategy: 'swr', ttl: 10_000, tags: ['products', `product:${id}`] },
 		},
 	}
 }
 </script>
 
 <script>
-let {params, data, router} = $props()
+let { params, data, router } = $props()
 const product = $derived(data?.product ?? null)
 </script>

@@ -36,23 +36,23 @@
 {/if}
 
 <script module>
-export function loader({params}) {
+export function loader({ params }) {
 	const id = params.id
 	return {
 		user: {
 			request: `https://dummyjson.com/users/${id}`,
-			cache: {strategy: 'swr', ttl: 10_000, tags: ['users', `user:${id}`]},
+			cache: { strategy: 'swr', ttl: 10_000, tags: ['users', `user:${id}`] },
 		},
 		todos: {
 			request: `https://dummyjson.com/users/${id}/todos`,
-			cache: {strategy: 'cache-first', ttl: 60_000, tags: ['todos', `user:${id}`]},
+			cache: { strategy: 'cache-first', ttl: 60_000, tags: ['todos', `user:${id}`] },
 		},
 	}
 }
 </script>
 
 <script>
-let {params, data} = $props()
+let { params, data } = $props()
 const user = $derived(data?.user ?? null)
 const todos = $derived(data?.todos?.todos ?? [])
 </script>

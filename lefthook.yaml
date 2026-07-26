@@ -1,13 +1,13 @@
 pre-commit:
     commands:
-        prettier:
-            glob: '*.{js,ts,html,css}'
-            run: pnpm exec prettier --write {staged_files}
+        oxfmt:
+            glob: '*.{js,ts,svelte,html,css}'
+            run: pnpm exec oxfmt -c .oxfmtrc.json {staged_files}
             stage_fixed: true
 
-        eslint:
-            glob: '*.{js,ts}'
-            run: pnpm exec eslint --concurrency auto --fix {staged_files}
+        oxlint:
+            glob: '*.{js,ts,svelte}'
+            run: pnpm exec oxlint --fix -c oxlint.config.js {staged_files}
             stage_fixed: true
 
         tests:

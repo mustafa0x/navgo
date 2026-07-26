@@ -76,26 +76,26 @@ export function loader() {
 	return {
 		products: {
 			request: PRODUCTS_URL,
-			cache: {strategy: 'swr', ttl: 2000, tags: ['products']},
+			cache: { strategy: 'swr', ttl: 2000, tags: ['products'] },
 		},
 		posts: {
 			request: POSTS_URL,
-			cache: {strategy: 'cache-first', ttl: 60_000, tags: ['posts']},
+			cache: { strategy: 'cache-first', ttl: 60_000, tags: ['posts'] },
 		},
 		user: {
 			request: 'https://dummyjson.com/users/1',
-			cache: {strategy: 'network-first', ttl: 15_000, tags: ['users']},
+			cache: { strategy: 'network-first', ttl: 15_000, tags: ['users'] },
 		},
 		quote: {
 			request: 'https://dummyjson.com/quotes/random',
-			cache: {strategy: 'no-store'},
+			cache: { strategy: 'no-store' },
 		},
 	}
 }
 </script>
 
 <script>
-let {data, router} = $props()
+let { data, router } = $props()
 
 const sources = $derived(data?.__meta?.source ?? {})
 const products = $derived(data?.products?.products ?? [])

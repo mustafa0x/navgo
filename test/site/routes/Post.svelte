@@ -15,9 +15,7 @@
 		<h2 class="text-lg font-semibold">{post.title}</h2>
 		<p class="mt-2 text-sm opacity-80">{post.body}</p>
 		<div class="mt-3 flex flex-wrap gap-2 text-xs">
-			<span class="rounded bg-gray-100 px-2 py-1"
-				>reactions: {format_reactions(post.reactions)}</span
-			>
+			<span class="rounded bg-gray-100 px-2 py-1">reactions: {format_reactions(post.reactions)}</span>
 			<a class="rounded bg-gray-100 px-2 py-1 hover:bg-gray-200" href={`/users/${post.userId}`}
 				>user: {post.userId}</a
 			>
@@ -44,23 +42,23 @@
 </div>
 
 <script module>
-export function loader({params}) {
+export function loader({ params }) {
 	const id = params.id
 	return {
 		post: {
 			request: `https://dummyjson.com/posts/${id}`,
-			cache: {strategy: 'swr', ttl: 10_000, tags: ['posts', `post:${id}`]},
+			cache: { strategy: 'swr', ttl: 10_000, tags: ['posts', `post:${id}`] },
 		},
 		comments: {
 			request: `https://dummyjson.com/posts/${id}/comments`,
-			cache: {strategy: 'cache-first', ttl: 60_000, tags: ['comments', `post:${id}`]},
+			cache: { strategy: 'cache-first', ttl: 60_000, tags: ['comments', `post:${id}`] },
 		},
 	}
 }
 </script>
 
 <script>
-let {params, data} = $props()
+let { params, data } = $props()
 
 const post = $derived(data?.post ?? null)
 const comments = $derived(data?.comments?.comments ?? [])

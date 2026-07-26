@@ -1,0 +1,35 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "tabWidth": 4,
+  "printWidth": 100,
+  "quoteProps": "as-needed",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "useTabs": true,
+  "sortPackageJson": false,
+  "svelte": {
+    "sortOrder": "options-markup-scripts-styles",
+    "indentScriptAndStyle": false
+  },
+  "ignorePatterns": [
+    "node_modules/**/*",
+    "dist/**/*",
+    "test-results/**/*",
+    "test/site/*mre*",
+    "test/site/plain-svelte*",
+    "test/site/routes/Mre*.svelte",
+    "test/site/vite.*.config.js",
+    "docs/**/*",
+    "todo.md",
+    ".github/**/*",
+    "**/*.json",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.d.ts",
+    "pnpm-lock.yaml"
+  ],
+  "overrides": [
+    {"files": ["*.html", "*.css", "*.md"], "options": {"tabWidth": 2, "useTabs": false}}
+  ]
+}

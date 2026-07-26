@@ -25,12 +25,14 @@
 			<button
 				class="flex w-full gap-3 text-left"
 				onclick={() => open_product(p.id)}
-				aria-label={`View ${p.title}`}>
+				aria-label={`View ${p.title}`}
+			>
 				<img
 					class="h-20 w-20 flex-none rounded object-cover"
 					src={p.thumbnail}
 					alt={p.title}
-					loading="lazy" />
+					loading="lazy"
+				/>
 				<div class="min-w-0">
 					<h2 class="truncate font-semibold">{p.title}</h2>
 					<p class="mt-1 line-clamp-3 text-sm opacity-80">{p.description}</p>
@@ -47,21 +49,24 @@
 <dialog
 	bind:this={dlg}
 	class="fixed w-[92vw] max-w-lg rounded-md p-0 shadow-xl"
-	onclose={close_modal}>
+	onclose={close_modal}
+>
 	{#if selected}
 		<div class="grid gap-4 p-4">
 			<div class="flex items-start justify-between gap-3">
 				<h2 class="text-lg font-semibold">{selected.title}</h2>
 				<button
 					class="rounded bg-gray-100 px-3 py-1 text-sm hover:bg-gray-200"
-					onclick={close_modal}>
+					onclick={close_modal}
+				>
 					Close
 				</button>
 			</div>
 			<img
 				class="aspect-video w-full rounded object-cover"
 				src={selected.thumbnail}
-				alt={selected.title} />
+				alt={selected.title}
+			/>
 			<p class="text-sm opacity-80">{selected.description}</p>
 			<div class="flex flex-wrap gap-2 text-xs">
 				<span class="rounded bg-gray-100 px-2 py-1">price: ${selected.price}</span>
@@ -84,15 +89,15 @@ export function loader() {
 	return {
 		products: {
 			request: PRODUCTS_URL,
-			cache: {strategy: 'swr', ttl: 10_000, tags: ['products']},
+			cache: { strategy: 'swr', ttl: 10_000, tags: ['products'] },
 		},
 	}
 }
 </script>
 
 <script>
-let {data = null, router} = $props()
-const {route} = router
+let { data = null, router } = $props()
+const { route } = router
 
 let dlg = $state(null)
 

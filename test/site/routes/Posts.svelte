@@ -5,9 +5,7 @@
 
 <nav class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Posts">
 	{#each posts as post (post.id)}
-		<a class="rounded bg-gray-100 px-2 py-1 hover:bg-gray-200" href="#post-{post.id}"
-			>{post.title}</a
-		>
+		<a class="rounded bg-gray-100 px-2 py-1 hover:bg-gray-200" href="#post-{post.id}">{post.title}</a>
 	{/each}
 </nav>
 
@@ -25,10 +23,7 @@
 
 <section class="mt-6 grid gap-4">
 	{#each posts as post (post.id)}
-		<article
-			id={`post-${post.id}`}
-			class="rounded-md border border-gray-200 bg-white p-4"
-		>
+		<article id={`post-${post.id}`} class="rounded-md border border-gray-200 bg-white p-4">
 			<h2 class="text-lg font-semibold">
 				<a class="text-blue-700 hover:underline" href={`/posts/${post.id}`}>{post.title}</a>
 			</h2>
@@ -37,9 +32,7 @@
 				<a class="rounded bg-gray-100 px-2 py-1 hover:bg-gray-200" href={`#post-${post.id}`}
 					>#{post.id}</a
 				>
-				<span class="rounded bg-gray-100 px-2 py-1"
-					>reactions: {format_reactions(post.reactions)}</span
-				>
+				<span class="rounded bg-gray-100 px-2 py-1">reactions: {format_reactions(post.reactions)}</span>
 				<span class="rounded bg-gray-100 px-2 py-1">user: {post.userId}</span>
 			</div>
 		</article>
@@ -53,14 +46,14 @@ export function loader() {
 	return {
 		posts: {
 			request: POSTS_URL,
-			cache: {strategy: 'swr', ttl: 10_000, tags: ['posts']},
+			cache: { strategy: 'swr', ttl: 10_000, tags: ['posts'] },
 		},
 	}
 }
 </script>
 
 <script>
-let {data} = $props()
+let { data } = $props()
 
 const posts = $derived(data?.posts?.posts ?? [])
 
